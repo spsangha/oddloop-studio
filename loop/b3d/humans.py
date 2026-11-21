@@ -188,12 +188,13 @@ def build_fumble():
     return F
 
 def pose_fumble(F, x=0.0, z=0.0, d=1, yaw=0.85, run=None, lean=0.0, sq=(1, 1, 1), tilt=0.0, mood='cheeky', mouth=0.2, tongue=0.0, look=(1, 0),
-                arms='swing', blink=0.0, t=0.0, pop=0.0, flat=0.0, crouch=0.0, scale=1.0, tiptoe=0.0, **_):
+                arms='swing', blink=0.0, t=0.0, pop=0.0, flat=0.0, crouch=0.0, scale=1.0, tiptoe=0.0, hand=None, hand2=None, frazzle=0.0, puff=0.0, **_):
     F.root.location = (x, 0, z); F.root.rotation_euler = (0, lean * d, -yaw if d > 0 else math.pi + yaw)
     sx, sy, sz = sq
     if flat: sx, sy, sz = lerp(sx, 0.18, flat), lerp(sy, 1.45, flat), lerp(sz, 1.12, flat)
     F.root.scale = (sx * scale, sy * scale, sz * scale)
     for o in (F.jacket, F.shirt, F.tie, F.pants, F.shoes, F.hands): o.data.elements.clear()
+    hand_ = hand; F.hands_local = [None, None]
     bob = abs(math.sin(run)) * 0.1 if run is not None else 0.0; h = bob - 0.3 * crouch + 0.12 * tiptoe
     hunch = 0.1
     # narrow tweed jacket, shirt V, skinny tie
@@ -214,6 +215,9 @@ def pose_fumble(F, x=0.0, z=0.0, d=1, yaw=0.85, run=None, lean=0.0, sq=(1, 1, 1)
     for k, side in enumerate((-1, 1)):   # thin jacket arms
         sh = Vector((0.03 + hunch * 0.5, side * 0.33, 2.08 + h))
         hand = _arm(arms, k, side, run, t, sh, (0.4, 1.28 + h, 0.75), (0.55, 2.85), (0.95, 0.25, 1.95), dict(hips=hips, push=push, sneak=sneak, wave=wave))
+        if k == 0 and hand_ is not None: hand = Vector(hand_)
+        if k == 1 and hand2 is not None: hand = Vector(hand2)
+        F.hands_local[k] = hand.copy()
         limb(F.jacket, sh, hand + (sh - hand).normalized() * 0.08, 0.075, -0.05, (1, 0, 0))
         el(F.hands, 'ELLIPSOID', hand, 0.075, (1.0, 0.75, 1.2))
     # long oval face, neat side-parted hair, big nose, rubbery mouth
@@ -221,10 +225,17 @@ def pose_fumble(F, x=0.0, z=0.0, d=1, yaw=0.85, run=None, lean=0.0, sq=(1, 1, 1)
     F.headb.data.elements.clear(); F.hair.data.elements.clear()
     el(F.headb, 'ELLIPSOID', (0, 0, 0.0), 0.3, (0.95, 0.88, 1.28)); el(F.headb, 'ELLIPSOID', (0.06, 0, -0.2), 0.22, (1.0, 0.95, 0.9))
     el(F.headb, 'CAPSULE', (-0.03, 0, -0.42), 0.075, (0.15, 1, 1), (0, -math.pi / 2, 0))
-    el(F.hair, 'ELLIPSOID', (-0.05, 0.02, 0.24), 0.27, (1.0, 0.95, 0.5)); el(F.hair, 'ELLIPSOID', (0.14, -0.08, 0.27), 0.15, (0.9, 1.3, 0.35), (0.25, 0.25, 0))
+    el(F.hair, 'ELLIPSOID', (-0.04, 0.02, 0.28), 0.3, (1.0, 0.95, 0.55));
+    for i in range(9):
+        if frazzle <= 0: break
+        a = (i - 4) * 0.36; L = (0.22 + 0.06 * (i % 3)) * frazzle
+        el(F.hair, 'ELLIPSOID', (-0.05 + math.sin(a) * 0.12 * (i % 2), math.sin(a) * 0.2, 0.36 + L * 0.5 * math.cos(a)), 0.06, (0.7, 0.7, 1 + 3.5 * frazzle), (a, 0.3 * ((i % 3) - 1), 0))
+    if puff > 0:
+        for sgn in (1, -1): el(F.headb, 'ELLIPSOID', (0.17, sgn * 0.17, -0.18), 0.13 * puff, (1.0, 1.0, 0.9))
+    el(F.hair, 'ELLIPSOID', (0.14, -0.08, 0.27), 0.15, (0.9, 1.3, 0.35), (0.25, 0.25, 0))
     for sgn in (1, -1): el(F.hair, 'ELLIPSOID', (-0.1, sgn * 0.24, 0.08), 0.1, (1.2, 0.5, 1.2))
     el(F.hair, 'ELLIPSOID', (-0.22, 0, 0.08), 0.2, (0.6, 1.0, 1.1))
-    _eyes(F, mood, look, blink, pop, 0.24, 0.11, 0.08, 0.085, 0.15)
+    _eyes(F, mood, look, blink, pop, 0.24, 0.115, 0.08, 0.095, 0.16)
     P = F.parts
     for k, sgn in enumerate((-1, 1)):
         P[f'brow{k}'].scale = (0.025, 0.08, 0.02)
