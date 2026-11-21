@@ -144,8 +144,12 @@ def skin_sss(mat, weight=0.25, radius=(1.0, 0.35, 0.2), scale=0.012):
 
 
 # ---------------------------------------------------------------- compositor
-def compositor_finish(scene, glare=True, vignette=0.2, glare_threshold=1.0, glare_mix=-0.85):
-    """Soft bloom on highlights + subtle vignette. Cheap (2D, runs once per frame after render)."""
+def compositor_finish(scene, glare=True, vignette=0.0, glare_threshold=1.0, glare_mix=-0.85, compositor_vignette=False):
+    """Soft bloom on highlights. Cheap (2D, runs once per frame after render).
+    LESSON (Kinda Wild ep_sneeze): the EllipseMask + relative-Blur vignette below rendered as a SHARP light oval in mid-frame
+    (it looked like a skin patch on the cheek). The vignette is now done softly in post_kw.grade (max -15%), so `vignette`
+    is IGNORED unless compositor_vignette=True is passed explicitly (kept only for old episodes)."""
+    if not compositor_vignette: vignette = 0.0
     S = scene; S.use_nodes = True; nt = S.node_tree; nt.nodes.clear()
     rl = nt.nodes.new('CompositorNodeRLayers'); comp = nt.nodes.new('CompositorNodeComposite')
     cur = rl.outputs['Image']

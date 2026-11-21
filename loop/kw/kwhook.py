@@ -33,11 +33,16 @@ def load_cues(src):
     return eps[0].cues()
 
 
-def word_times(cj, use_tts):
-    """[(start, end, word)] absolute, as post_kw will place them."""
+def word_times(cj, use_tts, vo_json=None):
+    """[(start, end, word)] absolute, as post_kw will place them.  Order: --tts (live voice) > the episode's .vo.json word
+    timings written by kwvo.py (same voice, same trim) > an estimate at 3.6 words/s."""
     if use_tts:
         import post_kw
         _, words = post_kw.tts(cj); return words
+    if vo_json and os.path.exists(vo_json):
+        vj = json.load(open(vo_json)); ws = vj.get('words')
+        if ws and vj.get('trim') and [l for l in vj.get('lines', [])] == [t for _, t in cj['vo']] and len(ws) == len(cj['vo']):
+            return [(t0 + a, t0 + b, w) for (t0, _), line in zip(cj['vo'], ws) for a, b, w in line]
     out = []
     for t0, text in cj['vo']:
         for i, w in enumerate(text.split()): out.append((t0 + i / 3.6, t0 + (i + 0.9) / 3.6, w))
@@ -128,7 +133,7 @@ def main(argv):
     src = argv[1]; rest = argv[2:]; use_tts = '--tts' in rest; out = None
     if '--sheet' in rest: out = rest[rest.index('--sheet') + 1]
     fdir = next((a for a in rest if os.path.isdir(a)), None)
-    cj = load_cues(src); words = word_times(cj, use_tts)
+    cj = load_cues(src); words = word_times(cj, use_tts, src[:-3] + '.vo.json' if src.endswith('.py') else None)
     items = script_items(cj, words)
     if fdir: items += frame_items(cj, fdir)
     fails = 0

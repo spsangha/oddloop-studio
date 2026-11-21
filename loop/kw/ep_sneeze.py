@@ -376,7 +376,7 @@ if K and hasattr(K, 'finish'):
     except Exception as e: print('finish failed', repr(e))
 try: import kw_realism as _R; _R.compositor_finish(S, glare=True, vignette=0, glare_threshold=1.0, glare_mix=-0.85)   # LESSON: the compositor ellipse-mask vignette renders as a sharp light oval in mid-frame (it looked like a skin patch); post_kw.grade does the vignette
 except Exception as e: print('compositor reset failed', repr(e))
-S.cycles.caustics_refractive = not os.environ.get('NOCAUS')   # MPFB eyes sit behind a refractive cornea: without this the eyeballs render black
+S.cycles.caustics_refractive = True   # MPFB eyes sit behind a refractive cornea: without this the eyeballs render black
 S.render.resolution_x, S.render.resolution_y = 1080, 1920; S.render.resolution_percentage = int(os.environ.get('PCT', '100')); S.render.fps = FPS
 # water beads that land on the lens in the last shot (children of the camera)
 splats = []
@@ -404,7 +404,6 @@ def shake(t, amp, f=9.0):
 def face(p, **vals):
     want = {}
     for nm, v in vals.items():
-        if nm in os.environ.get('FACEOFF', '').split(','): continue   # debug only
         for path, w in P.EXPR[nm]: want[path] = max(want.get(path, 0), v * w)
     for path, k in p.keys.items(): k.value = min(k.slider_max, want.get(path, 0.0))
 PINCH = dict(idx=(60.4, 9.9, 12), curl=70, th1=(44.5, -10.9, 3.8), th2=(-9.1, 0, 0), th3=(0, 0, 0), wrist=(11.5, -11.5, -60.3), guess=(0.0247, -0.0295, -0.0907), mid=0.5)   # solved with PINCHOPT
@@ -511,7 +510,6 @@ def update(t_new):
     wc = wheel_center()
     ned.reach('L', wc + Vector((0.16, 0.02, 0.05)), w=0.0 if hosp else 1.0, pole=ned.bone_world('lowerarm01.L') + Vector((0.5, 0.3, -0.6)))
     r_tgt = (wc + Vector((-0.16, 0.02, 0.05))).lerp(NOSE_W + nose_d, pinch).lerp(NECK_W, to_neck)
-    if os.environ.get('PINCHPULL'): r_tgt = r_tgt + Vector((0, -float(os.environ['PINCHPULL']), 0))   # debug only
     ned.reach('R', r_tgt, w=0.0 if hosp else 1.0, pole=R_POLE)
     pinch_hand(ned, 'R', pinch); P.fingers(ned, 'L', 0.6, thumb=0.3)
     if to_neck > 0 and not late: P.fingers(ned, 'R', 0.25 + 0.3 * (1 - to_neck), thumb=0.2)
@@ -679,84 +677,4 @@ if __name__ == '__main__':
         sys.exit(0)
     for f in frames:
         S.frame_set(f); update(f / FPS); bpy.context.view_layer.update()
-        if os.environ.get('TIPPROBE'):    # debug: how deep the pinch fingertips sit inside the face skin for nostril offsets "dx,dy,dz;..."
-            from mathutils.bvhtree import BVHTree
-            for pv in os.environ['TIPPROBE'].split(';'):
-                dx, dy, dz = [float(x) for x in pv.split(',')]
-                NOSTRIL_R = NOSE_TIP + Vector((-dx, dy, dz)); NOSTRIL_L = NOSE_TIP + Vector((dx, dy, dz))
-                calibrate_pinch(); ned.rot('wrist.R', (0, 0, 0)); HEAD_INV = (ned.rig.matrix_world @ ned.pb('head').matrix).inverted(); NOSTRIL_LOC = HEAD_INV @ NOSTRIL_L
-                update(f / FPS); bpy.context.view_layer.update()
-                dg = bpy.context.evaluated_depsgraph_get(); ev = ned.body.evaluated_get(dg); me = ev.to_mesh(); mw = ev.matrix_world
-                gi = {g.index for g in ned.body.vertex_groups if g.name in ('head', 'jaw', 'special03', 'levator03.L', 'levator03.R', 'oris04.L', 'oris04.R') or g.name.startswith(('levator', 'oris', 'orbicularis', 'risorius', 'special', 'temporalis', 'eye', 'tongue', 'jaw'))}
-                face_v = {v.index for v in ned.body.data.vertices if sum(g.weight for g in v.groups if g.group in gi) > 0.5}
-                vs_ = [mw @ v.co for v in me.vertices]; ps_ = [tuple(p.vertices) for p in me.polygons if all(i in face_v for i in p.vertices)]
-                bvh = BVHTree.FromPolygons(vs_, ps_); ev.to_mesh_clear()
-                res = []
-                for bn in ('finger2-3.R', 'finger2-2.R', 'finger1-3.R', 'finger1-2.R', 'finger3-3.R'):
-                    a_, b_ = ned.bone_world(bn), ned.bone_world(bn, tail=True)
-                    for k_ in (0.0, 0.5, 1.0):
-                        q = a_.lerp(b_, k_); loc, nor, idx, d = bvh.find_nearest(q)
-                        sd = (q - loc).dot(nor); res.append(f"{bn[6:]}@{k_}:{sd * 1000:+.0f}")
-                print('TIPPROBE', f, pv, ' '.join(res))
-            continue
-        if os.environ.get('PICK'):       # debug: which render-visible object is under image point(s) "x,y;x,y" (0..1, y from top)
-            dg = bpy.context.evaluated_depsgraph_get(); fr = [CAM.matrix_world @ v for v in cam_d.view_frame(scene=S)]   # tr, br, bl, tl
-            for pv in os.environ['PICK'].split(';'):
-                px, py = [float(x) for x in pv.split(',')]
-                top = fr[3].lerp(fr[0], px); bot = fr[2].lerp(fr[1], px); tgt = top.lerp(bot, py)
-                org = CAM.matrix_world.translation.copy(); d = (tgt - org).normalized(); hits = []
-                for _ in range(12):
-                    ok, loc, nor, idx, ob, mx = S.ray_cast(dg, org, d)
-                    if not ok: break
-                    vis_ = not ob.hide_render and not any(c.hide_render for c in ob.users_collection)
-                    try:
-                        _ev = ob.evaluated_get(dg); _mi = _ev.data.polygons[idx].material_index; _mn = _ev.material_slots[_mi].name
-                        _uvl = _ev.data.uv_layers.active
-                        if _uvl and vis_: _li = _ev.data.polygons[idx].loop_indices[0]; print('PICKUV', pv, tuple(round(c, 4) for c in _uvl.data[_li].uv))
-                        if vis_ and ob is ned.body:
-                            _hc = ned.bone_world('head'); _mw = _ev.matrix_world; _n3 = _mw.to_3x3(); _bad = 0; _tot = 0; _sm = 0
-                            for _p in _ev.data.polygons:
-                                _c = _mw @ _p.center
-                                if (_c - loc).length < 0.03:
-                                    _tot += 1; _sm += _p.use_smooth; _bad += ((_n3 @ _p.normal).dot(_c - _hc) < 0)
-                            _vn = [(_n3 @ _ev.data.vertices[v].normal).normalized().dot((_mw @ _ev.data.vertices[v].co - _hc).normalized()) for v in _ev.data.polygons[idx].vertices]
-                            print('PICKNORM', pv, 'polys', _tot, 'inward', _bad, 'smooth', _sm, 'vnormal.radial', [round(x, 2) for x in _vn], 'hitnor.radial', round(nor.dot((loc - _hc).normalized()), 2), 'mods', [m.type for m in ob.modifiers])
-                    except Exception: _mn = '?'
-                    hits.append(f"{ob.name}[{_mn}]{'' if vis_ else '(hidden)'}@{(loc - CAM.matrix_world.translation).length:.3f}")
-                    if vis_: break
-                    org = loc + d * 0.0005
-                print('PICK', f, pv, ' > '.join(hits))
-            for _m in ned.body.data.materials:
-                for _t in [_m.node_tree] + [n.node_tree for n in _m.node_tree.nodes if n.type == 'GROUP']:
-                    for n in _t.nodes:
-                        if n.type == 'TEX_IMAGE' and n.image: print('SKINIMG', _m.name, n.name, n.image.filepath, n.image.size[:])
-            from bpy_extras.object_utils import world_to_camera_view as w2c
-            for bn in [f'finger{i}-{j}.{sd}' for sd in 'RL' for i in range(1, 6) for j in (1, 2, 3)]:
-                q = ned.bone_world(bn, tail=True); v = w2c(S, CAM, q); print('TIPPROJ', bn, f'{v.x:.3f},{1 - v.y:.3f} d={v.z:.3f}')
-            for ob in S.objects:
-                if ob.type in ('MESH', 'CURVE', 'FONT') and not ob.hide_render and not any(c.hide_render for c in ob.users_collection):
-                    bb = [ob.matrix_world @ Vector(c) for c in ob.bound_box]; cc = sum(bb, Vector()) / 8
-                    if (cc - CAM.matrix_world.translation).length < 1.6: print('VISOBJ', ob.name, ob.type, tuple(round(x, 2) for x in cc), [m.name for m in getattr(ob.data, 'materials', [])][:3])
-            continue
-        if os.environ.get('CAMOV'):      # debug views: "dx,dy,dz,lens;..." around his head; PINCHVARS = list of PINCH overrides
-          for pi_, pv in enumerate(eval(os.environ.get('PINCHVARS', '[{}]'))):
-            PINCH.update(pv); calibrate_pinch(); update(f / FPS); bpy.context.view_layer.update()
-            for vi, v in enumerate(os.environ['CAMOV'].split(';')):
-                dx, dy, dz, ln = [float(x) for x in v.split(',')]
-                look_at(HC0 + Vector((dx, dy, dz)), HC0 + Vector((0, -0.06, -0.06)), ln, 16.0)
-                S.render.filepath = os.path.join(out, f'f{f:04d}_p{pi_:02d}_v{vi}.png'); bpy.ops.render.render(write_still=True)
-          continue
-        if os.environ.get('NOSSS'):       # debug only: skin without subsurface
-            for _m in ned.body.data.materials:
-                for _t in [_m.node_tree] + [n.node_tree for n in _m.node_tree.nodes if n.type == 'GROUP']:
-                    for n in _t.nodes:
-                        for _k in ('Subsurface Weight', 'SSS strength'):
-                            if _k in n.inputs and not n.inputs[_k].is_linked: n.inputs[_k].default_value = 0.0
-                    for gi in getattr(_t, 'interface', None).items_tree if hasattr(_t, 'interface') else []: pass
-            for n in [n for _m in ned.body.data.materials for n in _m.node_tree.nodes if n.type == 'GROUP']:
-                for _k in ('SSS strength',):
-                    if _k in n.inputs: n.inputs[_k].default_value = 0.0
-        if os.environ.get('NOCOMP'): S.use_nodes = False   # debug only
-        for _o in S.objects:             # debug only: HIDEOBJ=name,part hides matching objects
-            if os.environ.get('HIDEOBJ') and any(k_ in _o.name for k_ in os.environ['HIDEOBJ'].split(',')): _o.hide_render = True
         S.render.filepath = os.path.join(out, f'f{f:04d}.png'); bpy.ops.render.render(write_still=True)
