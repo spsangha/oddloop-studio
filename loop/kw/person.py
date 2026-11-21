@@ -20,6 +20,11 @@ EXPR = {  # friendly name -> list of (target file, weight)
     'worry':    [('expression/units/caucasian/eyebrows-left-inner-up', 1.0), ('expression/units/caucasian/eyebrows-right-inner-up', 1.0), ('expression/units/caucasian/mouth-depression', 0.7)],
     'smile':    [('expression/units/caucasian/mouth-corner-puller', 1.0)],
     'pressed':  [('expression/units/caucasian/mouth-compression', 1.0), ('expression/units/caucasian/mouth-pursing', 0.4)],
+    'bulge':    [('expression/units/caucasian/eye-left-opened-up', 1.5), ('expression/units/caucasian/eye-right-opened-up', 1.5),
+                 ('expression/units/caucasian/eyebrows-left-up', 1.2), ('expression/units/caucasian/eyebrows-right-up', 1.2)],
+    'neckswell': [('neck/measure-neck-circ-incr', 1.0), ('neck/neck-scale-horiz-incr', 1.0), ('neck/neck-scale-depth-incr', 0.7), ('neck/neck-double-incr', 0.5)],
+    'grimace':  [('expression/units/caucasian/mouth-retraction', 1.0), ('expression/units/caucasian/eye-left-slit', 0.8), ('expression/units/caucasian/eye-right-slit', 0.8),
+                 ('expression/units/caucasian/eyebrows-left-down', 0.8), ('expression/units/caucasian/eyebrows-right-down', 0.8), ('expression/units/caucasian/neck-platysma', 1.0)],
 }
 
 class Person:

@@ -73,12 +73,12 @@ def grade(im):
 def caption(im, t, caps):
     for a, b, txt in caps:
         if a <= t < b:
-            f = ImageFont.truetype(FONT, 74); d = ImageDraw.Draw(im)
+            f = ImageFont.truetype(FONT, 70); d = ImageDraw.Draw(im)
             while d.textlength(txt, font=f) > W * 0.84: f = ImageFont.truetype(FONT, f.size - 3)
-            pos = (W // 2, int(H * 0.66))
+            pos = (W // 2, int(H * 0.78))      # Zack D. places captions at about 78% of the height
             sh = Image.new('L', im.size, 0); ImageDraw.Draw(sh).text((pos[0] + 3, pos[1] + 5), txt, font=f, fill=200, anchor='mm', stroke_width=4, stroke_fill=200)
             sh = sh.filter(ImageFilter.GaussianBlur(7)); im.paste((0, 0, 0), (0, 0), sh)
-            d.text(pos, txt, font=f, fill=(255, 255, 255), stroke_width=2, stroke_fill=(40, 40, 40), anchor='mm')
+            d.text(pos, txt, font=f, fill=(255, 255, 255), stroke_width=3, stroke_fill=(0, 0, 0), anchor='mm')
             break
     return im
 

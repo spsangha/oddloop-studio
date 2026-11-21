@@ -15,7 +15,7 @@ env:
 jobs:
   render:
     runs-on: ubuntu-24.04
-    timeout-minutes: 150
+    timeout-minutes: 300
     strategy:
       fail-fast: true
       matrix: {shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]}
@@ -52,6 +52,7 @@ jobs:
         env: {PCT: '${{ github.event.inputs.pct }}', SAMPLES: '${{ github.event.inputs.samples }}', ZK_TEX: '${{ github.workspace }}/assets/tex'}
         run: |
           EP=loop/kw/${{ github.event.inputs.episode }}.py; test -f $EP
+          python3 -m pip install -q --break-system-packages fonttools shapely || true
           ./$BLENDER/blender -b -P $EP -- --cues cues.json >/dev/null 2>&1
           N=$(python3 -c "import json;c=json.load(open('cues.json'));print(round(c['duration']*c['fps']))")
           S=${{ matrix.shard }}; I0=$(( N * S / SHARDS )); I1=$(( N * (S + 1) / SHARDS ))
