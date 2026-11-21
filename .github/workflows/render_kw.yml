@@ -1,0 +1,89 @@
+name: Render a Kinda Wild Films Short
+# Blender Cycles + MPFB humans render the episode in 20 parallel shards (full 24 fps), then one job adds voice, captions, foley and music.
+on:
+  workflow_dispatch:
+    inputs:
+      episode: {description: 'Episode script in loop/kw, e.g. ep_sneeze', required: true, default: 'ep_sneeze'}
+      pct: {description: 'Render size percent of 1080x1920', required: false, default: '100'}
+      samples: {description: 'Cycles samples', required: false, default: '24'}
+      out: {description: 'Output file name', required: false, default: 'KindaWild.mp4'}
+env:
+  BLENDER: blender-4.2.3-linux-x64
+  SHARDS: 20
+  MPFB_URL: https://extensions.blender.org/download/sha256:c075b3e9b94b8e5556a5f03f4653602d02ea306de08126e8f55ed6dee28a2dad/add-on-mpfb-v2.0.18.zip
+  ASSETS_URL: https://files.makehumancommunity.org/asset_packs/makehuman_system_assets/makehuman_system_assets_cc0.zip
+jobs:
+  render:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    strategy:
+      fail-fast: true
+      matrix: {shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        id: bc
+        with: {path: '${{ env.BLENDER }}', key: '${{ env.BLENDER }}'}
+      - name: Blender
+        if: steps.bc.outputs.cache-hit != 'true'
+        run: |
+          for u in https://download.blender.org/release/Blender4.2/$BLENDER.tar.xz https://mirrors.ocf.berkeley.edu/blender/release/Blender4.2/$BLENDER.tar.xz https://ftp.halifax.rwth-aachen.de/blender/release/Blender4.2/$BLENDER.tar.xz; do
+            curl -fsSL --retry 3 -o b.tar.xz "$u" && break; done
+          tar xf b.tar.xz && rm b.tar.xz
+      - name: Libraries
+        run: |
+          ./$BLENDER/blender -b --python-expr "import bpy" >/dev/null 2>&1 || { sudo apt-get install -y -qq --no-install-recommends libxi6 libxxf86vm1 libxfixes3 libxrender1 libgl1 libxkbcommon0 libsm6 || (sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends libxi6 libxxf86vm1 libxfixes3 libxrender1 libgl1 libxkbcommon0 libsm6); }
+      - uses: actions/cache@v4
+        id: mc
+        with: {path: mpfb_cache, key: mpfb-2.0.18-cc0-v1}
+      - name: MPFB download
+        if: steps.mc.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p mpfb_cache && cd mpfb_cache
+          curl -fsSL --retry 4 -o mpfb.zip "$MPFB_URL"
+          curl -fsSL --retry 4 -o assets.zip "$ASSETS_URL"
+      - name: MPFB install
+        run: |
+          ./$BLENDER/blender -b --command extension install-file -r user_default -e mpfb_cache/mpfb.zip 2>&1 | tail -3
+          D="$HOME/.config/blender/4.2/extensions/.user/user_default/mpfb/data"; mkdir -p "$D"
+          unzip -q -o mpfb_cache/assets.zip -d "$D"
+          ls "$D" | head; ls "$D/skins" | wc -l
+      - name: Render shard
+        env: {PCT: '${{ github.event.inputs.pct }}', SAMPLES: '${{ github.event.inputs.samples }}', ZK_TEX: '${{ github.workspace }}/assets/tex'}
+        run: |
+          EP=loop/kw/${{ github.event.inputs.episode }}.py; test -f $EP
+          ./$BLENDER/blender -b -P $EP -- --cues cues.json >/dev/null 2>&1
+          N=$(python3 -c "import json;c=json.load(open('cues.json'));print(round(c['duration']*c['fps']))")
+          S=${{ matrix.shard }}; I0=$(( N * S / SHARDS )); I1=$(( N * (S + 1) / SHARDS ))
+          echo "frames $I0..$I1 of $N"; START=$(date +%s); mkdir -p frames
+          ./$BLENDER/blender -b -P $EP -- frames $I0 $I1 2>&1 | grep -E "Saved|Error|Traceback|line [0-9]" | tail -60
+          echo "took $(( $(date +%s) - START ))s"; ls frames | wc -l
+          test "$(ls frames | wc -l)" -eq "$(( I1 - I0 ))"
+      - uses: actions/upload-artifact@v4
+        with: {name: 'frames-${{ matrix.shard }}', path: 'frames/', retention-days: 2}
+      - uses: actions/upload-artifact@v4
+        if: matrix.shard == 0
+        with: {name: cues, path: cues.json, retention-days: 2}
+  finish:
+    needs: render
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: {pattern: 'frames-*', path: frames, merge-multiple: true}
+      - uses: actions/download-artifact@v4
+        with: {name: cues, path: .}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Tools
+        run: |
+          python -m pip install -q numpy pillow imageio-ffmpeg edge-tts
+          mkdir -p "$HOME/bin"; ln -sf "$(python -c 'import imageio_ffmpeg as f; print(f.get_ffmpeg_exe())')" "$HOME/bin/ffmpeg"; echo "$HOME/bin" >> "$GITHUB_PATH"
+      - name: Finish
+        run: |
+          ls frames | wc -l
+          python loop/kw/post_kw.py frames cues.json assets/music/sneaky_snitch.mp3 "${{ github.event.inputs.out }}"
+          ffmpeg -hide_banner -nostats -i "${{ github.event.inputs.out }}" -af ebur128=peak=true -f null - 2>&1 | tail -6 || true
+      - uses: actions/upload-artifact@v4
+        with: {name: kindawild, path: '${{ github.event.inputs.out }}*', retention-days: 30}
