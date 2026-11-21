@@ -2,11 +2,11 @@
 python post_kw.py <frames_dir> <cues.json> <music.mp3> <out.mp4>"""
 import sys, os, json, glob, subprocess, asyncio, tempfile, time
 import numpy as np
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageFilter
 HERE = os.path.dirname(os.path.abspath(__file__)); sys.path.insert(0, os.path.join(HERE, '..')); sys.path.insert(0, HERE)
 import loop_audio as A
 import fx_kw
-FONT = os.path.join(HERE, '..', 'Montserrat-Black.ttf')
+FONT = os.path.join(HERE, '..', 'Montserrat-ExtraBold.ttf')
 W, H = 1080, 1920; SR = A.SR
 
 def tts(cj):
@@ -45,24 +45,40 @@ def groups(words):
     for i, (a, b, w) in enumerate(words):
         cur.append((a, b, w))
         nxt_gap = words[i + 1][0] - b if i + 1 < len(words) else 9
-        if len(cur) == 3 or w[-1:] in ',.?!' or len(''.join(x[2] for x in cur)) > 11 or nxt_gap > 0.25:
+        if len(cur) == 4 or w[-1:] in ',.?!' or len(''.join(x[2] for x in cur)) > 15 or nxt_gap > 0.25:
             out.append(cur); cur = []
     if cur: out.append(cur)
     res = []
     for j, g in enumerate(out):
         end = out[j + 1][0][0] if j + 1 < len(out) else g[-1][1] + 0.4
         end = min(end, g[-1][1] + 0.5)
-        res.append((g[0][0], end, ' '.join(x[2] for x in g).upper().replace(',', '').replace('.', '').replace('!', '')))
+        res.append((g[0][0], end, ' '.join(x[2] for x in g).replace(',', '').replace('.', '').replace('!', '')))
     return res
+
+def grade(im):
+    """Zack D. look: punchy contrast, rich saturation, warm skin, cyan-leaning blues."""
+    a = np.asarray(im).astype(np.float32) / 255.0
+    lum = a @ np.array([0.299, 0.587, 0.114], np.float32)
+    a = lum[..., None] + (a - lum[..., None]) * 1.18                     # saturation
+    a = np.clip(a, 0, 1)
+    a = 0.5 + (a - 0.5) * 1.06; a = np.clip(a, 0, 1)                     # contrast
+    a = a ** np.array([0.98, 1.0, 1.03], np.float32)                       # slight warm overall
+    mid = 4 * lum * (1 - lum)                                              # warm midtones (skin), cool/cyan highlights in blues
+    a[..., 0] += 0.025 * mid; a[..., 2] -= 0.02 * mid
+    blue = np.clip((a[..., 2] - a[..., 0]) * 2.0, 0, 1)
+    a[..., 1] += 0.06 * blue; a[..., 0] -= 0.03 * blue
+    sh = np.clip(1 - lum * 3, 0, 1); a -= 0.04 * sh[..., None]             # deeper shadows
+    return Image.fromarray((np.clip(a, 0, 1) * 255).astype(np.uint8))
 
 def caption(im, t, caps):
     for a, b, txt in caps:
         if a <= t < b:
-            u = min(1, (t - a) / 0.08); sc = 0.85 + 0.15 * u
-            f = ImageFont.truetype(FONT, int(96 * sc))
-            d = ImageDraw.Draw(im)
-            while d.textlength(txt, font=f) > W * 0.86: f = ImageFont.truetype(FONT, f.size - 4)
-            d.text((W // 2, int(H * 0.70)), txt, font=f, fill=(255, 255, 255), stroke_width=max(6, int(f.size * 0.11)), stroke_fill=(0, 0, 0), anchor='mm')
+            f = ImageFont.truetype(FONT, 74); d = ImageDraw.Draw(im)
+            while d.textlength(txt, font=f) > W * 0.84: f = ImageFont.truetype(FONT, f.size - 3)
+            pos = (W // 2, int(H * 0.66))
+            sh = Image.new('L', im.size, 0); ImageDraw.Draw(sh).text((pos[0] + 3, pos[1] + 5), txt, font=f, fill=200, anchor='mm', stroke_width=4, stroke_fill=200)
+            sh = sh.filter(ImageFilter.GaussianBlur(7)); im.paste((0, 0, 0), (0, 0), sh)
+            d.text(pos, txt, font=f, fill=(255, 255, 255), stroke_width=2, stroke_fill=(40, 40, 40), anchor='mm')
             break
     return im
 
@@ -94,7 +110,7 @@ if __name__ == '__main__':
     last = None
     for i in range(n):
         src = idx.get(i) or last
-        base = Image.open(src).convert('RGB').resize((W, H), Image.LANCZOS) if src != last else base; last = src
+        base = grade(Image.open(src).convert('RGB').resize((W, H), Image.LANCZOS)) if src != last else base; last = src
         p.stdin.write(caption(base.copy(), i / fps, caps).tobytes())
     p.stdin.close(); assert p.wait() == 0
     audio(cj, lines, music, out + '.a.wav')

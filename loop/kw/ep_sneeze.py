@@ -62,7 +62,7 @@ def into(c, objs):
 
 # ---------------- people ----------------
 import cast as C   # new cast for every story (Zack D. style); fixed seeds keep shards identical
-ned = P.build_person('Ned', **C.cast({'gender': 'm', 'age': 'middle', 'race': 'caucasian', 'build': 'avg'}, 'sneeze', P.MP))
+ned = P.build_person('Ned', **C.cast({'gender': 'm', 'age': 'middle', 'race': 'caucasian', 'build': 'avg', 'tee': 'red'}, 'sneeze', P.MP))
 doc = P.build_person('Doc', **C.cast({'gender': 'f', 'age': 'young', 'race': 'asian', 'build': 'slim', 'hair': 'ponytail01', 'tee': 'white'}, 'sneeze-doc', P.MP))
 def sit(p):
     for s in 'LR':
@@ -83,7 +83,7 @@ doc.place((0.52, -0.08, 0.0), 90 + 25)
 
 # ---------------- car set ----------------
 C_CAR = coll('car')
-seat_m = mat('seat', (0.035, 0.035, 0.04), 0.8); dash_m = mat('dash', (0.05, 0.05, 0.055), 0.55); trim_m = mat('trim', (0.18, 0.18, 0.19), 0.4)
+seat_m = mat('seat', (0.035, 0.035, 0.04), 0.8); dash_m = mat('dash', (0.05, 0.05, 0.055), 0.55); trim_m = mat('trim', (0.12, 0.1, 0.09), 0.4)
 hz = ned.bone_world('head').z; cz = ned.bone_world('spine03').z
 seat = [bevel_box('seat_base', (0.55, 0.55, 0.14), (0, 0.05, pelvis.z - 0.12), seat_m, 0.05),
         bevel_box('seat_back', (0.55, 0.14, 0.75), (0, 0.32, pelvis.z + 0.32), seat_m, 0.05, (math.radians(-12), 0, 0)),
@@ -94,19 +94,19 @@ hub = obj_of('cylinder', 'hub', dash_m, radius=0.06, depth=0.05, location=(0, -0
 col = obj_of('cylinder', 'column', dash_m, radius=0.035, depth=0.4, location=(0, -0.7, cz + 0.02), rotation=(math.radians(65), 0, 0))
 door = bevel_box('door', (0.08, 1.6, 0.6), (-0.42, -0.2, pelvis.z + 0.18), trim_m, 0.03)
 sill = bevel_box('sill', (0.1, 1.6, 0.05), (-0.42, -0.2, pelvis.z + 0.49), dash_m, 0.02)
-roof = bevel_box('roof', (2.0, 2.2, 0.05), (0.3, -0.1, hz + 0.27), mat('headliner', (0.55, 0.53, 0.5), 0.9), 0.02)
+roof = bevel_box('roof', (2.0, 2.2, 0.05), (0.3, -0.1, hz + 0.27), mat('headliner', (0.42, 0.36, 0.3), 0.9), 0.02)
 pil = [bevel_box('apillar', (0.07, 0.07, 0.75), (-0.42, -0.95, hz - 0.12), dash_m, 0.02, (math.radians(-35), 0, 0)),
        bevel_box('bpillar', (0.08, 0.1, 0.75), (-0.42, 0.45, hz - 0.1), dash_m, 0.02)]
 # outside world: moving scenery planes (emission, defocused)
 def scenery(name, loc, rot, size, seed):
     o = obj_of('plane', name, None, size=1, location=loc, rotation=rot); o.scale = (size[0], size[1], 1)
     m = bpy.data.materials.new(name); m.use_nodes = True; nt = m.node_tree; nt.nodes.clear()
-    out = nt.nodes.new('ShaderNodeOutputMaterial'); em = nt.nodes.new('ShaderNodeEmission'); em.inputs['Strength'].default_value = 1.6
+    out = nt.nodes.new('ShaderNodeOutputMaterial'); em = nt.nodes.new('ShaderNodeEmission'); em.inputs['Strength'].default_value = 2.4
     tc = nt.nodes.new('ShaderNodeTexCoord'); mp = nt.nodes.new('ShaderNodeMapping'); mp.name = 'map'
     nz = nt.nodes.new('ShaderNodeTexNoise'); nz.inputs['Scale'].default_value = 3.0; nz.inputs['Detail'].default_value = 6
-    cr = nt.nodes.new('ShaderNodeValToRGB'); cr.color_ramp.elements[0].color = (0.10, 0.22, 0.08, 1); cr.color_ramp.elements[1].color = (0.55, 0.65, 0.35, 1)
+    cr = nt.nodes.new('ShaderNodeValToRGB'); cr.color_ramp.elements[0].color = (0.03, 0.25, 0.03, 1); cr.color_ramp.elements[1].color = (0.35, 0.78, 0.12, 1)
     sep = nt.nodes.new('ShaderNodeSeparateXYZ'); sky = nt.nodes.new('ShaderNodeMath'); sky.operation = 'GREATER_THAN'; sky.inputs[1].default_value = 0.55
-    mix = nt.nodes.new('ShaderNodeMix'); mix.data_type = 'RGBA'; mix.inputs['B'].default_value = (0.75, 0.85, 1.0, 1)
+    mix = nt.nodes.new('ShaderNodeMix'); mix.data_type = 'RGBA'; mix.inputs['B'].default_value = (0.12, 0.62, 1.0, 1)
     L = nt.links.new; L(tc.outputs['UV'], mp.inputs['Vector']); L(mp.outputs['Vector'], nz.inputs['Vector']); L(nz.outputs['Fac'], cr.inputs['Fac'])
     L(tc.outputs['UV'], sep.inputs['Vector']); L(sep.outputs['Y'], sky.inputs[0]); L(sky.outputs[0], mix.inputs['Factor']); L(cr.outputs['Color'], mix.inputs['A'])
     L(mix.outputs['Result'], em.inputs['Color']); L(em.outputs[0], out.inputs[0]); o.data.materials.append(m); return o
@@ -117,8 +117,8 @@ into(C_CAR, seat + [dash, wheel, hub, col, door, sill, roof] + pil + [side_out, 
 
 # ---------------- hospital set ----------------
 C_HOS = coll('hospital')
-wall = obj_of('plane', 'h_wall', mat('h_wall', (0.75, 0.8, 0.82), 0.7), size=8, location=(0, 1.6, 2), rotation=(math.radians(90), 0, 0))
-curtain = obj_of('plane', 'h_curtain', mat('h_curt', (0.35, 0.62, 0.62), 0.8), size=1, location=(-1.2, 0.6, 1.3), rotation=(math.radians(90), 0, math.radians(70)))
+wall = obj_of('plane', 'h_wall', mat('h_wall', (0.35, 0.72, 0.78), 0.7), size=8, location=(0, 1.6, 2), rotation=(math.radians(90), 0, 0))
+curtain = obj_of('plane', 'h_curtain', mat('h_curt', (0.04, 0.45, 0.5), 0.8), size=1, location=(-1.2, 0.6, 1.3), rotation=(math.radians(90), 0, math.radians(70)))
 curtain.scale = (1.6, 1.4, 1); sd = curtain.modifiers.new('w', 'WAVE'); sd.height = 0.05; sd.width = 0.25; sd.narrowness = 1.2; sd.use_y = False
 bed = bevel_box('h_bed', (0.9, 1.9, 0.12), (0, 0.15, pelvis.z - 0.12), mat('h_bed', (0.92, 0.93, 0.95), 0.6), 0.05)
 into(C_HOS, [wall, curtain, bed])
@@ -208,8 +208,8 @@ def area(name, loc, e, size, colr, tgt):
     L = bpy.data.lights.new(name, 'AREA'); L.energy = e; L.size = size; L.color = colr; o = bpy.data.objects.new(name, L); S.collection.objects.link(o); o.location = loc
     o.rotation_euler = (Vector(tgt) - o.location).to_track_quat('-Z', 'Y').to_euler(); return o
 head_c = ned.bone_world('head')
-L_key = area('key', (0.6, -1.6, hz + 0.5), 180, 1.6, (1, 0.96, 0.9), head_c)
-L_rim = area('rim', (-1.2, 0.3, hz + 0.3), 160, 0.8, (0.45, 0.65, 1.0), head_c)
+L_key = area('key', (0.6, -1.6, hz + 0.5), 220, 1.6, (1, 0.9, 0.78), head_c)
+L_rim = area('rim', (-1.2, 0.3, hz + 0.3), 220, 0.8, (0.3, 0.6, 1.0), head_c)
 L_fill = area('fill', (1.2, -0.4, hz - 0.2), 40, 1.5, (1, 0.9, 0.8), head_c)
 L_mac = area('mac_key', tuple(M0 + Vector((-1.2, -2.0, 1.4))), 500, 2.5, (1, 0.95, 0.92), M0)
 L_mac2 = area('mac_rim', tuple(M0 + Vector((1.5, 0.8, 1.0))), 300, 1.5, (0.5, 0.65, 1.0), M0)
@@ -218,7 +218,7 @@ cam_d = bpy.data.cameras.new('cam'); CAM = bpy.data.objects.new('cam', cam_d); S
 S.render.engine = 'CYCLES'; S.cycles.samples = int(os.environ.get('SAMPLES', '32')); S.cycles.use_denoising = True; S.cycles.max_bounces = 6
 S.cycles.transparent_max_bounces = 16; S.render.use_persistent_data = True
 S.render.resolution_x, S.render.resolution_y = 1080, 1920; S.render.resolution_percentage = int(os.environ.get('PCT', '100'))
-S.view_settings.view_transform = 'AgX'; S.view_settings.look = 'AgX - Medium High Contrast'
+S.view_settings.view_transform = 'AgX'; S.view_settings.look = 'AgX - Punchy'
 S.render.fps = FPS
 
 orig_mats = {o.name: [s.material for s in o.material_slots] for o in ned.parts if o.type == 'MESH'}

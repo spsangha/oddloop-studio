@@ -118,6 +118,15 @@ def build_person(name, *, gender=1.0, age=0.5, weight=0.55, muscle=0.5, height=0
                 else: nt.links.new(hs.outputs['Color'], to)
             nt.links.new(tx.outputs['Color'], hs.inputs['Color'])
     # Zack D. look: smooth, slightly glossy, soft-glowing skin (less pores, more SSS)
+    try:  # warmer, healthier skin tone (Zack's characters are tanned, never pale)
+        snt = p.body.active_material.node_tree
+        for nd in list(snt.nodes):
+            if nd.type == 'TEX_IMAGE' and 'diffuse' in nd.name.lower():
+                hs2 = snt.nodes.new('ShaderNodeHueSaturation'); hs2.inputs['Hue'].default_value = 0.49; hs2.inputs['Saturation'].default_value = 1.35; hs2.inputs['Value'].default_value = 0.9
+                for l in list(nd.outputs['Color'].links):
+                    to = l.to_socket; snt.links.remove(l); snt.links.new(hs2.outputs['Color'], to)
+                snt.links.new(nd.outputs['Color'], hs2.inputs['Color']); break
+    except Exception as e: print('skin warm skipped', e)
     g = p.body.active_material.node_tree.nodes[0]
     for k, v in dict(Roughness=skin_rough or 0.36, Clearcoat=0.22, **{'Clearcoat Roughness': 0.25, 'Pore strength': 0.05, 'SSS strength': 0.5, 'SSS radius scale': 0.14}).items():
         if k in g.inputs: g.inputs[k].default_value = v
