@@ -224,8 +224,8 @@ def frame(s, S, P, F, co, t):
     d, x, y = fumble_pose(t); d.pop('brow_wiggle', None); pose_fumble(F, x=x, **d); F.root.location.y = y
     for o in [F.root] + list(F.root.children_recursive): o.hide_render = (10.9 <= t < T_BOOM - 0.8) or in_hook(t)
     # soot after the boom
-    skin = bpy.data.materials['f_skin'].node_tree.nodes['Principled BSDF']; soot = 0.0 if in_hook(t) else ease(lin(st, T_BOOM, T_BOOM + 0.08))
-    skin.inputs['Base Color'].default_value = (*[a + (b - a) * soot for a, b in zip(hexc('#F1C3A0'), hexc('#3A3436'))], 1)
+    skin = bpy.data.materials['f_skin'].node_tree.nodes['Principled BSDF']; soot = 0.0 if in_hook(t) else 0.45 * ease(lin(st, T_BOOM, T_BOOM + 0.08))
+    skin.inputs['Base Color'].default_value = (*[a + (b - a) * soot for a, b in zip(hexc('#F1C3A0'), hexc('#B9AEA6'))], 1)   # light ash dusting only: skin tone must stay clearly skin (never a dark face)
     # microwave door: open at the start of the chop shot, shut at T_SHUT, blown open at the boom
     if st < T_IN + 0.05: da = -1.7
     elif st < T_SHUT: da = -1.7 * (1 - ease(lin(st, T_IN + 0.05, T_SHUT)))
