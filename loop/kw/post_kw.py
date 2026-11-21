@@ -30,17 +30,20 @@ def tts(cj):
         else: sys.exit('voice service gave no audio')
         raw = subprocess.run(['ffmpeg', '-v', 'error', '-i', mp, '-af', 'highpass=f=70,acompressor=threshold=-18dB:ratio=3:attack=5:release=80',
                               '-f', 'f32le', '-ac', '1', '-ar', str(SR), '-'], capture_output=True, check=True).stdout
-        lines.append((t0, np.frombuffer(raw, np.float32).astype(np.float64)))
+        v = np.frombuffer(raw, np.float32).astype(np.float64); shift = 0.0
+        if cj.get('vo_trim'):   # hook rule: t0 is the AUDIBLE onset of the line (the TTS lead-in silence is cut, 12 ms kept)
+            on = int(np.argmax(np.abs(v) > 0.03 * max(1e-6, np.max(np.abs(v))))); cut = max(0, on - int(0.012 * SR)); v = v[cut:]; shift = cut / SR
+        lines.append((t0, v))
         toks = text.split(); ti = 0
         for o, d, w in ws:  # restore punctuation from the script so caption groups break at commas/full stops
             key = ''.join(ch for ch in w.lower() if ch.isalnum()); lab = w
             for j in range(ti, min(ti + 4, len(toks))):
                 if ''.join(ch for ch in toks[j].lower() if ch.isalnum()) == key: lab = toks[j]; ti = j + 1; break
-            words.append((t0 + o, t0 + o + d, lab))
+            words.append((max(0.0, t0 + o - shift), t0 + o + d - shift, lab))
     return lines, words
 
-def groups(words):
-    """1-3 word caption groups; break after punctuation or long words."""
+def groups(words, lead0=False):
+    """1-4 word caption groups; break after punctuation or long words. lead0: the first caption is already on frame 0."""
     out, cur = [], []
     for i, (a, b, w) in enumerate(words):
         cur.append((a, b, w))
@@ -53,6 +56,7 @@ def groups(words):
         end = out[j + 1][0][0] if j + 1 < len(out) else g[-1][1] + 0.4
         end = min(end, g[-1][1] + 0.5)
         res.append((g[0][0], end, ' '.join(x[2] for x in g).replace(',', '').replace('.', '').replace('!', '')))
+    if lead0 and res and res[0][0] < 0.3: res[0] = (0.0,) + res[0][1:]
     return res
 
 def grade(im):
@@ -68,14 +72,17 @@ def grade(im):
     blue = np.clip((a[..., 2] - a[..., 0]) * 2.0, 0, 1)
     a[..., 1] += 0.06 * blue; a[..., 0] -= 0.03 * blue
     sh = np.clip(1 - lum * 3, 0, 1); a -= 0.04 * sh[..., None]             # deeper shadows
+    h, w = lum.shape; yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)      # soft vignette here (the Blender ellipse-mask one rendered as a sharp oval)
+    r = np.sqrt(((xx + 0.5) / w - 0.5) ** 2 / 0.25 + ((yy + 0.5) / h - 0.5) ** 2 / 0.25)
+    a *= (1 - 0.15 * np.clip((r - 0.55) / 0.6, 0, 1) ** 2)[..., None]
     return Image.fromarray((np.clip(a, 0, 1) * 255).astype(np.uint8))
 
-def caption(im, t, caps):
+def caption(im, t, caps, y=0.78):
     for a, b, txt in caps:
         if a <= t < b:
             f = ImageFont.truetype(FONT, 70); d = ImageDraw.Draw(im)
             while d.textlength(txt, font=f) > W * 0.84: f = ImageFont.truetype(FONT, f.size - 3)
-            pos = (W // 2, int(H * 0.78))      # Zack D. places captions at about 78% of the height
+            pos = (W // 2, int(H * y))         # cues 'cap_y' (fraction from the top); hook gate wants 0.66-0.72 (28-34% up from the bottom)
             sh = Image.new('L', im.size, 0); ImageDraw.Draw(sh).text((pos[0] + 3, pos[1] + 5), txt, font=f, fill=200, anchor='mm', stroke_width=4, stroke_fill=200)
             sh = sh.filter(ImageFilter.GaussianBlur(7)); im.paste((0, 0, 0), (0, 0), sh)
             d.text(pos, txt, font=f, fill=(255, 255, 255), stroke_width=3, stroke_fill=(0, 0, 0), anchor='mm')
@@ -100,7 +107,7 @@ def audio(cj, lines, music, out):
 if __name__ == '__main__':
     fdir, cjp, music, out = sys.argv[1:5]
     cj = json.load(open(cjp)); fps = cj['fps']; n = int(round(cj['duration'] * fps))
-    lines, words = tts(cj); caps = groups(words)
+    lines, words = tts(cj); caps = groups(words, cj.get('cap_lead0', False))
     json.dump(dict(words=words, caps=caps), open(out + '.captions.json', 'w'), indent=0)
     idx = {int(os.path.basename(f)[1:5]): f for f in glob.glob(os.path.join(fdir, 'f*.png'))}
     miss = [i for i in range(n) if i not in idx]
@@ -111,7 +118,7 @@ if __name__ == '__main__':
     for i in range(n):
         src = idx.get(i) or last
         base = grade(Image.open(src).convert('RGB').resize((W, H), Image.LANCZOS)) if src != last else base; last = src
-        p.stdin.write(caption(base.copy(), i / fps, caps).tobytes())
+        p.stdin.write(caption(base.copy(), i / fps, caps, cj.get('cap_y', 0.78)).tobytes())
     p.stdin.close(); assert p.wait() == 0
     audio(cj, lines, music, out + '.a.wav')
     subprocess.run(['ffmpeg', '-v', 'error', '-y', '-i', out + '.v.mp4', '-i', out + '.a.wav', '-map', '0:v', '-map', '1:a', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '256k',

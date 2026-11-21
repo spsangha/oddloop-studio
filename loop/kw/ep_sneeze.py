@@ -4,36 +4,50 @@ blender -b -P ep_sneeze.py -- --cues out.json   (timing / audio / caption data)"
 import bpy, sys, os, math, json, random
 from mathutils import Vector, Euler
 HERE = os.path.dirname(os.path.abspath(__file__)); sys.path.insert(0, HERE)
-FPS = 24; DUR = 26.4
-VO = [(0.15, "He pinched his nose and shut his mouth to stop a sneeze while he was driving."),
-      (4.30, "But with no way out, the air built up pressure in his throat."),
-      (7.85, "It could have reached twenty times the pressure of a normal sneeze, enough to tear a two-millimeter hole in his windpipe."),
-      (13.80, "Both sides of his neck swelled up, and when doctors pressed on it, they heard it crackle."),
-      (18.60, "Air had leaked through the hole and gotten trapped under his skin."),
-      (21.80, "Five weeks later, a scan showed the hole had closed.")]
-SHOTS = [(0.0, 'car_pinch'), (1.6, 'car_cheeks'), (2.9, 'car_hood'), (4.3, 'car_plunge'), (5.0, 'xray_profile'), (6.4, 'xray_throat'), (7.85, 'xray_gauge'),
-         (9.45, 'normal_sneeze'), (11.0, 'macro_tear'), (11.9, 'macro_hole'), (13.8, 'car_neck'), (15.8, 'hos_wide'), (17.2, 'hos_press'),
-         (18.6, 'macro_leak'), (20.1, 'skin_block'), (21.8, 'calendar'), (23.1, 'scan'), (24.7, 'car_sneeze')]
-T_TEAR = 11.45; T_NS = 9.95; T_END = 25.45; PRESS = (17.55, 18.05)
-CUES = [(0.0, 'engine', 0.6), (0.0, 'inhale', 0.5), (0.5, 'pinch', 0.9), (1.5, 'puff', 0.8), (2.9, 'engine', 0.7), (4.3, 'pressure', 0.5),
-        (5.0, 'rush', 0.8), (5.6, 'bounce', 0.8), (6.0, 'bounce', 0.6), (6.4, 'pressure', 0.9), (8.7, 'thud', 0.9),
-        (9.45, 'inhale', 0.5), (T_NS, 'sneeze', 0.9), (11.0, 'pressure', 0.6), (T_TEAR, 'rip', 1.0), (T_TEAR + 0.05, 'thud', 0.7), (12.3, 'bounce', 0.4),
-        (13.8, 'engine', 0.4), (14.3, 'puff', 0.7), (PRESS[0], 'crackle', 1.0), (PRESS[1], 'crackle', 1.0), (18.7, 'bubbles', 0.8),
-        (20.3, 'bubbles', 0.6), (21.1, 'crackle', 0.8), (21.95, 'pinch', 0.5), (22.2, 'pinch', 0.5), (22.45, 'pinch', 0.5), (22.7, 'pinch', 0.5),
-        (23.7, 'heal', 0.7), (24.7, 'engine', 0.5), (24.75, 'inhale', 0.9), (T_END, 'sneeze', 1.0), (T_END + 0.3, 'bounce', 0.5)]
+FPS = 24
+K_STR = 1.04   # everything after the hook (3.05 s) is spread 4 % so the Short runs >= 26 s (hook spec runtime 26-36 s) with a touch more air between lines
+def stretch(t): return t if t < 3.05 else round(3.05 + (t - 3.05) * K_STR, 3)
+DUR = round(stretch(21.59) + (25.23 - 21.59) + 0.13, 2)   # cut 130 ms after the last syllable ('closed' ends 3.64 s into line 7)
+# v3 hook rework (hook_spec.md gate): sentence 1 names the injury in 11 words; VO times are AUDIBLE onsets (post_kw 'vo_trim')
+VO = [(0.03, "Holding in a single sneeze tore a hole through his windpipe."),
+      (3.19, "He was driving, so he pinched his nose and clamped his mouth shut."),
+      (6.88, "With no way out, all that air built up pressure in his throat."),
+      (10.36, "It could have reached twenty times the pressure of a normal sneeze."),
+      (13.63, "Both sides of his neck swelled up, and when doctors pressed on it, they could hear it crackle."),
+      (18.50, "Air had leaked through the hole and gotten trapped under his skin."),
+      (21.59, "Five weeks later, a scan finally showed the hole had fully closed.")]
+# (start s, shot, performance clock at shot start, clock rate): the v2 animation is keyed to its own clock ('old' t);
+# each new shot plays a slice of that clock, so the hook can open mid-strain and jump straight into the body.
+SHOT_MAP = [(0.00, 'car_pinch', 1.90, 1.2), (1.00, 'xray_throat', 7.00, 1.3), (2.20, 'macro_tear', 11.25, 1.0),
+            (3.05, 'car_hood', 2.90, 1.0), (4.25, 'car_cheeks', 0.10, 1.0), (5.45, 'car_pinch', 1.40, 1.0), (6.75, 'car_plunge', 4.30, 1.0),
+            (7.45, 'xray_profile', 5.25, 1.0), (8.95, 'xray_throat', 6.75, 1.0), (10.35, 'xray_gauge', 7.95, 1.0), (11.95, 'normal_sneeze', 9.05, 1.0),
+            (13.65, 'car_neck', 14.15, 1.0), (15.15, 'hos_wide', 15.80, 1.0), (16.15, 'hos_press', 17.35, 1.0), (17.35, 'skin_block', 20.90, 1.0),
+            (18.50, 'macro_hole', 12.00, 1.0), (19.60, 'macro_leak', 18.55, 1.0), (21.55, 'calendar', 21.80, 1.0), (22.85, 'scan', 22.80, 1.0),
+            (24.55, 'car_end', 1.07, 1.2)]   # clock 1.07 -> 1.9 at the cut = the frame-0 performance (seamless loop)
+VO = [(stretch(a), txt) for a, txt in VO]
+SHOT_MAP = [(stretch(a), n, c, r) for a, n, c, r in SHOT_MAP]
+SHOTS = [(a, n) for a, n, _, _ in SHOT_MAP]
+T_TEAR = 11.45; T_NS = 9.95; T_END = 99.0; PRESS = (17.55, 18.05)      # (old clock) no end sneeze any more: the loop ends on the pinch
+CUES = [(0.0, 'thud', 1.0), (0.0, 'engine', 0.5), (0.02, 'puff', 0.8), (1.0, 'pressure', 0.9), (1.05, 'bounce', 0.7), (1.6, 'bounce', 0.5),
+        (2.40, 'rip', 1.0), (2.43, 'thud', 0.7), (3.05, 'engine', 0.7), (4.55, 'pinch', 0.9), (5.6, 'puff', 0.8), (6.75, 'pressure', 0.5),
+        (7.45, 'rush', 0.8), (7.70, 'bounce', 0.8), (8.1, 'bounce', 0.6), (8.95, 'pressure', 0.9), (11.10, 'thud', 0.9),
+        (12.4, 'inhale', 0.5), (12.85, 'sneeze', 0.9), (13.65, 'engine', 0.4), (14.2, 'puff', 0.6), (16.35, 'crackle', 1.0), (16.85, 'crackle', 1.0),
+        (17.75, 'crackle', 0.8), (18.6, 'bubbles', 0.8), (19.7, 'bubbles', 0.6), (21.6, 'pinch', 0.5), (21.85, 'pinch', 0.5), (22.1, 'pinch', 0.5),
+        (22.35, 'pinch', 0.5), (23.3, 'heal', 0.7), (24.55, 'engine', 0.5), (24.6, 'pinch', 0.8)]
+CUES = [(stretch(a), n, g) for a, n, g in CUES]
 def shot_at(t):
-    cur = SHOTS[0]
-    for s in SHOTS:
-        if t >= s[0]: cur = s
-    nxt = next((s[0] for s in SHOTS if s[0] > cur[0]), DUR)
-    return cur[1], t - cur[0], nxt - cur[0]
+    """-> (shot name, seconds into the shot, shot length, performance clock)"""
+    k = max(i for i, s in enumerate(SHOT_MAP) if t >= s[0] or i == 0); a, name, c0, rate = SHOT_MAP[k]
+    nxt = SHOT_MAP[k + 1][0] if k + 1 < len(SHOT_MAP) else DUR
+    return name, t - a, nxt - a, c0 + (t - a) * rate
 def ease(u): u = min(1, max(0, u)); return u * u * (3 - 2 * u)
 def ramp(t, a, b): return ease((t - a) / (b - a)) if b > a else float(t >= a)
 def P_back(u, s=2.2): u = min(1, max(0, u)) - 1; return 1 + u * u * ((s + 1) * u + s)
 def bump(t, c, w): return math.exp(-((t - c) / w) ** 2)
 
 def cues():
-    return dict(duration=DUR, fps=FPS, vo=VO, voice='en-US-ChristopherNeural', rate='+6%', cues=CUES, shots=SHOTS, music_gain=0.42)
+    return dict(duration=DUR, fps=FPS, vo=VO, voice='en-US-ChristopherNeural', rate='+6%', cues=CUES, shots=SHOTS, music_gain=0.42,
+                vo_trim=True, cap_lead0=True, cap_y=0.69, hook=dict(injury='tore a hole', inside=['xray_throat', 'macro_tear'], loop='car_end'))
 
 if '--cues' in sys.argv:
     json.dump(cues(), open(sys.argv[-1], 'w'), indent=1); sys.exit(0)
@@ -305,6 +319,7 @@ def area(name, loc, e, size, colr, tgt):
     L = bpy.data.lights.new(name, 'AREA'); L.energy = e; L.size = size; L.color = colr; o = bpy.data.objects.new(name, L); S.collection.objects.link(o); o.location = loc
     o.rotation_euler = (Vector(tgt) - o.location).to_track_quat('-Z', 'Y').to_euler(); return o
 head_c = ned.bone_world('head'); HC0 = head_c + Vector((0, -0.03, 0.03))
+CP0 = HC0 + Vector((0.06, -0.52, 0.05)); CT0 = HC0 + Vector((0, 0, -0.075))   # hook frame-0 camera: slightly above eye line, so the dark seat (not the grey roof) is behind his head
 LK = 0.55 if K else 1.0   # sets bring their own HDRI light: keep ours as shaping light only
 L_key = area('key', (0.6, -1.6, hz + 0.5), 200 * LK, 1.6, (1, 0.9, 0.78), head_c)
 L_rim = area('rim', (-1.2, 0.3, hz + 0.3), 200 * LK, 0.8, (0.35, 0.65, 1.0), head_c)
@@ -359,7 +374,9 @@ S.view_settings.view_transform = 'AgX'; S.view_settings.look = 'AgX - Punchy'
 if K and hasattr(K, 'finish'):
     try: K.finish(S, SAMPLES)
     except Exception as e: print('finish failed', repr(e))
-S.cycles.caustics_refractive = True   # MPFB eyes sit behind a refractive cornea: without this the eyeballs render black
+try: import kw_realism as _R; _R.compositor_finish(S, glare=True, vignette=0, glare_threshold=1.0, glare_mix=-0.85)   # LESSON: the compositor ellipse-mask vignette renders as a sharp light oval in mid-frame (it looked like a skin patch); post_kw.grade does the vignette
+except Exception as e: print('compositor reset failed', repr(e))
+S.cycles.caustics_refractive = not os.environ.get('NOCAUS')   # MPFB eyes sit behind a refractive cornea: without this the eyeballs render black
 S.render.resolution_x, S.render.resolution_y = 1080, 1920; S.render.resolution_percentage = int(os.environ.get('PCT', '100')); S.render.fps = FPS
 # water beads that land on the lens in the last shot (children of the camera)
 splats = []
@@ -387,6 +404,7 @@ def shake(t, amp, f=9.0):
 def face(p, **vals):
     want = {}
     for nm, v in vals.items():
+        if nm in os.environ.get('FACEOFF', '').split(','): continue   # debug only
         for path, w in P.EXPR[nm]: want[path] = max(want.get(path, 0), v * w)
     for path, k in p.keys.items(): k.value = min(k.slider_max, want.get(path, 0.0))
 PINCH = dict(idx=(60.4, 9.9, 12), curl=70, th1=(44.5, -10.9, 3.8), th2=(-9.1, 0, 0), th3=(0, 0, 0), wrist=(11.5, -11.5, -60.3), guess=(0.0247, -0.0295, -0.0907), mid=0.5)   # solved with PINCHOPT
@@ -452,8 +470,8 @@ DOC_REST = doc.bone_world('upperarm01.R') + Vector((-0.05, -0.3, -0.3)); PRESS_D
 print('calibrated', NOSE_W, NECK_W, DOC_W)
 def wheel_center(): return wheel.matrix_world.translation.copy() if K else wheel.location.copy()
 
-def update(t):
-    name, u, L = shot_at(t); un = u / L
+def update(t_new):
+    name, u, L, t = shot_at(t_new); un = u / L       # t = performance clock (v2 timing), u/L = time in / length of the shot
     xr = name.startswith('xray'); mac = name.startswith('macro'); hosp = name.startswith('hos'); carsh = name.startswith('car')
     vis(ned, carsh or xr or hosp, xr); vis(doc, hosp); vis(ns, name == 'normal_sneeze')
     if nurse: vis(nurse, hosp)
@@ -482,16 +500,18 @@ def update(t):
     wince = max(bump(t, PRESS[0] + 0.1, 0.2), bump(t, PRESS[1] + 0.1, 0.2)) if hosp else 0
     if late: pinch = puff = bulge = swell = to_neck = 0; red = 0.25 * blast
     worry = (0.9 * ramp(t, 14.2, 14.8) if not late else 0)
-    face(ned, twitch=pre * 0.8, open=max(pre * 0.45 * (1 - ramp(t, 0.9, 1.3)), inhale * 0.5, blast), squint=max(pre * 0.5, inhale * 0.7, blast, wince * 0.5),
-         puff=puff * (1.3 + 0.15 * math.sin(t * 9)), pressed=puff, bulge=bulge * (1 + 0.08 * math.sin(t * 7)), neckswell=swell * 1.3, worry=worry, grimace=wince * 0.7,
+    strain = puff * (1 - swell)                                       # eyes screwed shut while he fights the sneeze (hook: violent pressure, not a calm stare)
+    face(ned, twitch=pre * 0.8, open=max(pre * 0.45 * (1 - ramp(t, 0.9, 1.3)), inhale * 0.5, blast), squint=max(pre * 0.5, inhale * 0.7, blast, wince * 0.5, strain * (0.85 + 0.1 * math.sin(t * 11))),
+         puff=puff * (1.3 + 0.15 * math.sin(t * 9)), pressed=puff, bulge=bulge * (1 + 0.08 * math.sin(t * 7)), neckswell=swell * 1.3, worry=worry, grimace=max(wince * 0.7, strain * 0.3),
          wide=0.5 * worry, smile=relief * 0.8)
     flush(red)
-    head_back = -pre * 12 - inhale * 16 + blast * 14
+    head_back = -pre * 12 - inhale * 16 + blast * 14 + strain * 2.0 * math.sin(t * 23)   # small strain tremble
     ned.rot('head', (head_back - 4 + 6 * worry * (0 if hosp else 1), 0, 0)); ned.rot('neck02', (head_back * 0.5, 0, 0)); ned.rot('spine02', (blast * 7 - inhale * 5, 0, 0))
     bpy.context.view_layer.update(); nose_d = (ned.rig.matrix_world @ ned.pb('head').matrix @ NOSTRIL_LOC) - NOSTRIL_L
     wc = wheel_center()
     ned.reach('L', wc + Vector((0.16, 0.02, 0.05)), w=0.0 if hosp else 1.0, pole=ned.bone_world('lowerarm01.L') + Vector((0.5, 0.3, -0.6)))
     r_tgt = (wc + Vector((-0.16, 0.02, 0.05))).lerp(NOSE_W + nose_d, pinch).lerp(NECK_W, to_neck)
+    if os.environ.get('PINCHPULL'): r_tgt = r_tgt + Vector((0, -float(os.environ['PINCHPULL']), 0))   # debug only
     ned.reach('R', r_tgt, w=0.0 if hosp else 1.0, pole=R_POLE)
     pinch_hand(ned, 'R', pinch); P.fingers(ned, 'L', 0.6, thumb=0.3)
     if to_neck > 0 and not late: P.fingers(ned, 'R', 0.25 + 0.3 * (1 - to_neck), thumb=0.2)
@@ -562,8 +582,10 @@ def update(t):
         k = ramp(t, T_END + 0.2 + d, T_END + 0.28 + d) if name == 'car_sneeze' else 0
         o.location = (x, y - 0.006 * max(0, t - T_END - 0.3 - d), -0.14); o.scale = (max(r * k, 0.00001), max(r * k * 1.15, 0.00001), max(r * k * 0.35, 0.00001))
     # ---- cameras ----
-    if name == 'car_pinch':
-        look_at(HC0 + Vector((0.07, -0.6 + 0.12 * ease(un), 0.0)) + shake(t, 0.002), HC0 + Vector((0, 0, -0.035)), 42, 5.6)
+    if name == 'car_pinch':      # hook frame 0: tight, already mid-strain; the push keeps the frame moving from f0000
+        look_at(CP0 + Vector((0, 0.1 * ease(un), -0.012 * ease(un))) + shake(t, 0.002 + 0.003 * puff, 17), CT0, 42, 5.6)
+    elif name == 'car_end':      # loop: ends exactly on the frame-0 camera while the pinch lands again
+        look_at(CP0 + Vector((0, -0.08 * (1 - ease(un)), 0.0)) + shake(t, 0.002), CT0, 42, 5.6)
     elif name == 'car_cheeks':
         look_at(hc + Vector((0.34 - 0.06 * un, -0.5 + 0.07 * un, 0.0)) + shake(t, 0.002 * (1 + 2 * puff), 14), hc + Vector((0.01, -0.03, -0.03)), 50, 5.6)
     elif name == 'car_hood':
@@ -575,7 +597,9 @@ def update(t):
         tg = tr_bot.lerp(ph, ease(un) * 0.9) + Vector((0, -0.03, 0.02))
         look_at(tg + Vector((0.72 - 0.16 * un, -0.12, 0.03)), tg, 38, 8.0)
     elif name == 'xray_throat':
-        look_at(tr_top + Vector((0.3, -0.5 + 0.07 * un, -0.02)) + shake(t, 0.002, 15), tr_top + Vector((0.035, 0, -0.07)), 42, 8.0)
+        if t_new < 3.0:   # hook: fast push from the whole neck down onto the windpipe (frames 24 -> 48 must change a lot)
+            e_ = ease(un); look_at(tr_top + Vector((0.3, -0.5, -0.02)) * (1.7 - 0.95 * e_) + Vector((0, 0, -0.06 * e_)) + shake(t, 0.003, 15), tr_top + Vector((0.035, 0, -0.07 - 0.05 * e_)), 42, 8.0)
+        else: look_at(tr_top + Vector((0.3, -0.5 + 0.07 * un, -0.02)) + shake(t, 0.002, 15), tr_top + Vector((0.035, 0, -0.07)), 42, 8.0)
     elif name == 'xray_gauge':
         look_at(G0 + Vector((0.1, -0.5 + 0.1 * ease(un), 0.04)) + shake(t, 0.006 * ramp(t, 8.6, 8.8) * (1 - ramp(t, 9.0, 9.4)), 26), G0 + Vector((-0.045, 0, 0.035)), 44, 8.0)
     elif name == 'normal_sneeze':
@@ -655,6 +679,65 @@ if __name__ == '__main__':
         sys.exit(0)
     for f in frames:
         S.frame_set(f); update(f / FPS); bpy.context.view_layer.update()
+        if os.environ.get('TIPPROBE'):    # debug: how deep the pinch fingertips sit inside the face skin for nostril offsets "dx,dy,dz;..."
+            from mathutils.bvhtree import BVHTree
+            for pv in os.environ['TIPPROBE'].split(';'):
+                dx, dy, dz = [float(x) for x in pv.split(',')]
+                NOSTRIL_R = NOSE_TIP + Vector((-dx, dy, dz)); NOSTRIL_L = NOSE_TIP + Vector((dx, dy, dz))
+                calibrate_pinch(); ned.rot('wrist.R', (0, 0, 0)); HEAD_INV = (ned.rig.matrix_world @ ned.pb('head').matrix).inverted(); NOSTRIL_LOC = HEAD_INV @ NOSTRIL_L
+                update(f / FPS); bpy.context.view_layer.update()
+                dg = bpy.context.evaluated_depsgraph_get(); ev = ned.body.evaluated_get(dg); me = ev.to_mesh(); mw = ev.matrix_world
+                gi = {g.index for g in ned.body.vertex_groups if g.name in ('head', 'jaw', 'special03', 'levator03.L', 'levator03.R', 'oris04.L', 'oris04.R') or g.name.startswith(('levator', 'oris', 'orbicularis', 'risorius', 'special', 'temporalis', 'eye', 'tongue', 'jaw'))}
+                face_v = {v.index for v in ned.body.data.vertices if sum(g.weight for g in v.groups if g.group in gi) > 0.5}
+                vs_ = [mw @ v.co for v in me.vertices]; ps_ = [tuple(p.vertices) for p in me.polygons if all(i in face_v for i in p.vertices)]
+                bvh = BVHTree.FromPolygons(vs_, ps_); ev.to_mesh_clear()
+                res = []
+                for bn in ('finger2-3.R', 'finger2-2.R', 'finger1-3.R', 'finger1-2.R', 'finger3-3.R'):
+                    a_, b_ = ned.bone_world(bn), ned.bone_world(bn, tail=True)
+                    for k_ in (0.0, 0.5, 1.0):
+                        q = a_.lerp(b_, k_); loc, nor, idx, d = bvh.find_nearest(q)
+                        sd = (q - loc).dot(nor); res.append(f"{bn[6:]}@{k_}:{sd * 1000:+.0f}")
+                print('TIPPROBE', f, pv, ' '.join(res))
+            continue
+        if os.environ.get('PICK'):       # debug: which render-visible object is under image point(s) "x,y;x,y" (0..1, y from top)
+            dg = bpy.context.evaluated_depsgraph_get(); fr = [CAM.matrix_world @ v for v in cam_d.view_frame(scene=S)]   # tr, br, bl, tl
+            for pv in os.environ['PICK'].split(';'):
+                px, py = [float(x) for x in pv.split(',')]
+                top = fr[3].lerp(fr[0], px); bot = fr[2].lerp(fr[1], px); tgt = top.lerp(bot, py)
+                org = CAM.matrix_world.translation.copy(); d = (tgt - org).normalized(); hits = []
+                for _ in range(12):
+                    ok, loc, nor, idx, ob, mx = S.ray_cast(dg, org, d)
+                    if not ok: break
+                    vis_ = not ob.hide_render and not any(c.hide_render for c in ob.users_collection)
+                    try:
+                        _ev = ob.evaluated_get(dg); _mi = _ev.data.polygons[idx].material_index; _mn = _ev.material_slots[_mi].name
+                        _uvl = _ev.data.uv_layers.active
+                        if _uvl and vis_: _li = _ev.data.polygons[idx].loop_indices[0]; print('PICKUV', pv, tuple(round(c, 4) for c in _uvl.data[_li].uv))
+                        if vis_ and ob is ned.body:
+                            _hc = ned.bone_world('head'); _mw = _ev.matrix_world; _n3 = _mw.to_3x3(); _bad = 0; _tot = 0; _sm = 0
+                            for _p in _ev.data.polygons:
+                                _c = _mw @ _p.center
+                                if (_c - loc).length < 0.03:
+                                    _tot += 1; _sm += _p.use_smooth; _bad += ((_n3 @ _p.normal).dot(_c - _hc) < 0)
+                            _vn = [(_n3 @ _ev.data.vertices[v].normal).normalized().dot((_mw @ _ev.data.vertices[v].co - _hc).normalized()) for v in _ev.data.polygons[idx].vertices]
+                            print('PICKNORM', pv, 'polys', _tot, 'inward', _bad, 'smooth', _sm, 'vnormal.radial', [round(x, 2) for x in _vn], 'hitnor.radial', round(nor.dot((loc - _hc).normalized()), 2), 'mods', [m.type for m in ob.modifiers])
+                    except Exception: _mn = '?'
+                    hits.append(f"{ob.name}[{_mn}]{'' if vis_ else '(hidden)'}@{(loc - CAM.matrix_world.translation).length:.3f}")
+                    if vis_: break
+                    org = loc + d * 0.0005
+                print('PICK', f, pv, ' > '.join(hits))
+            for _m in ned.body.data.materials:
+                for _t in [_m.node_tree] + [n.node_tree for n in _m.node_tree.nodes if n.type == 'GROUP']:
+                    for n in _t.nodes:
+                        if n.type == 'TEX_IMAGE' and n.image: print('SKINIMG', _m.name, n.name, n.image.filepath, n.image.size[:])
+            from bpy_extras.object_utils import world_to_camera_view as w2c
+            for bn in [f'finger{i}-{j}.{sd}' for sd in 'RL' for i in range(1, 6) for j in (1, 2, 3)]:
+                q = ned.bone_world(bn, tail=True); v = w2c(S, CAM, q); print('TIPPROJ', bn, f'{v.x:.3f},{1 - v.y:.3f} d={v.z:.3f}')
+            for ob in S.objects:
+                if ob.type in ('MESH', 'CURVE', 'FONT') and not ob.hide_render and not any(c.hide_render for c in ob.users_collection):
+                    bb = [ob.matrix_world @ Vector(c) for c in ob.bound_box]; cc = sum(bb, Vector()) / 8
+                    if (cc - CAM.matrix_world.translation).length < 1.6: print('VISOBJ', ob.name, ob.type, tuple(round(x, 2) for x in cc), [m.name for m in getattr(ob.data, 'materials', [])][:3])
+            continue
         if os.environ.get('CAMOV'):      # debug views: "dx,dy,dz,lens;..." around his head; PINCHVARS = list of PINCH overrides
           for pi_, pv in enumerate(eval(os.environ.get('PINCHVARS', '[{}]'))):
             PINCH.update(pv); calibrate_pinch(); update(f / FPS); bpy.context.view_layer.update()
@@ -663,4 +746,17 @@ if __name__ == '__main__':
                 look_at(HC0 + Vector((dx, dy, dz)), HC0 + Vector((0, -0.06, -0.06)), ln, 16.0)
                 S.render.filepath = os.path.join(out, f'f{f:04d}_p{pi_:02d}_v{vi}.png'); bpy.ops.render.render(write_still=True)
           continue
+        if os.environ.get('NOSSS'):       # debug only: skin without subsurface
+            for _m in ned.body.data.materials:
+                for _t in [_m.node_tree] + [n.node_tree for n in _m.node_tree.nodes if n.type == 'GROUP']:
+                    for n in _t.nodes:
+                        for _k in ('Subsurface Weight', 'SSS strength'):
+                            if _k in n.inputs and not n.inputs[_k].is_linked: n.inputs[_k].default_value = 0.0
+                    for gi in getattr(_t, 'interface', None).items_tree if hasattr(_t, 'interface') else []: pass
+            for n in [n for _m in ned.body.data.materials for n in _m.node_tree.nodes if n.type == 'GROUP']:
+                for _k in ('SSS strength',):
+                    if _k in n.inputs: n.inputs[_k].default_value = 0.0
+        if os.environ.get('NOCOMP'): S.use_nodes = False   # debug only
+        for _o in S.objects:             # debug only: HIDEOBJ=name,part hides matching objects
+            if os.environ.get('HIDEOBJ') and any(k_ in _o.name for k_ in os.environ['HIDEOBJ'].split(',')): _o.hide_render = True
         S.render.filepath = os.path.join(out, f'f{f:04d}.png'); bpy.ops.render.render(write_still=True)
