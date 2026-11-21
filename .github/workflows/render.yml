@@ -1,0 +1,78 @@
+name: Render an Odd Loop 3D cartoon
+# Blender (Cycles, CPU) renders the episode in parallel shards, then one job adds impact words, cartoon foley and music.
+on:
+  workflow_dispatch:
+    inputs:
+      episode: {description: 'Episode script in loop/b3d, e.g. ep_door', required: true, default: 'ep_door'}
+      pct: {description: 'Render size percent of 1080x1920', required: false, default: '67'}
+      samples: {description: 'Cycles samples', required: false, default: '8'}
+  push:
+    paths: ['loop/b3d/ep_*.py']
+env:
+  BLENDER: blender-4.2.3-linux-x64
+  SHARDS: 12
+jobs:
+  render:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: true
+      matrix: {shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]}
+    steps:
+      - uses: actions/checkout@v4
+        with: {fetch-depth: 2}
+      - name: Which episode
+        id: e
+        run: |
+          E="${{ github.event.inputs.episode }}"
+          if [ -z "$E" ]; then E=$(git diff --name-only HEAD~1 HEAD | grep -E '^loop/b3d/ep_[^/]+\.py$' | head -1 | xargs -r basename | sed 's/\.py$//'); fi
+          test -f "loop/b3d/$E.py"; echo "ep=$E" >> $GITHUB_OUTPUT
+      - uses: actions/cache@v4
+        id: bc
+        with: {path: '${{ env.BLENDER }}', key: '${{ env.BLENDER }}'}
+      - name: Blender
+        if: steps.bc.outputs.cache-hit != 'true'
+        run: |
+          for u in https://download.blender.org/release/Blender4.2/$BLENDER.tar.xz https://mirrors.ocf.berkeley.edu/blender/release/Blender4.2/$BLENDER.tar.xz https://ftp.halifax.rwth-aachen.de/blender/release/Blender4.2/$BLENDER.tar.xz; do
+            curl -fsSL --retry 3 -o b.tar.xz "$u" && break; done
+          tar xf b.tar.xz && rm b.tar.xz
+      - name: Libraries
+        run: |
+          ./$BLENDER/blender -b --python-expr "import bpy" >/dev/null 2>&1 || { sudo apt-get install -y -qq --no-install-recommends libxi6 libxxf86vm1 libxfixes3 libxrender1 libgl1 libxkbcommon0 libsm6 || (sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends libxi6 libxxf86vm1 libxfixes3 libxrender1 libgl1 libxkbcommon0 libsm6); }
+      - name: Render shard
+        env: {PCT: '${{ github.event.inputs.pct || 67 }}', SAMPLES: '${{ github.event.inputs.samples || 8 }}'}
+        run: |
+          EP=loop/b3d/${{ steps.e.outputs.ep }}.py
+          N=$(./$BLENDER/blender -b -P $EP -- --cues cues.json >/dev/null 2>&1; python3 -c "import json;c=json.load(open('cues.json'));print(round(c['duration']*c['fps']))")
+          S=${{ matrix.shard }}; I0=$(( N * S / SHARDS )); I1=$(( N * (S + 1) / SHARDS ))
+          echo "frames $I0..$I1 of $N"; START=$(date +%s)
+          ./$BLENDER/blender -b -P $EP -- frames $I0 $I1 2>&1 | grep -E "Saved|Error|Traceback" | tail -40
+          echo "took $(( $(date +%s) - START ))s"; ls frames | wc -l
+      - uses: actions/upload-artifact@v4
+        with: {name: 'frames-${{ matrix.shard }}', path: 'frames/', retention-days: 2}
+      - uses: actions/upload-artifact@v4
+        if: matrix.shard == 0
+        with: {name: cues, path: cues.json, retention-days: 2}
+  finish:
+    needs: render
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: {pattern: 'frames-*', path: frames, merge-multiple: true}
+      - uses: actions/download-artifact@v4
+        with: {name: cues, path: .}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Tools
+        run: |
+          python -m pip install -q --only-binary=:all: numpy pillow imageio-ffmpeg
+          mkdir -p "$HOME/bin"; ln -sf "$(python -c 'import imageio_ffmpeg as f; print(f.get_ffmpeg_exe())')" "$HOME/bin/ffmpeg"; echo "$HOME/bin" >> "$GITHUB_PATH"
+      - name: Finish
+        run: |
+          ls frames | wc -l
+          python loop/b3d/post.py frames cues.json assets/music/sneaky_snitch.mp3 OddLoop3D.mp4
+          ffmpeg -hide_banner -nostats -i OddLoop3D.mp4 -af ebur128=peak=true -f null - 2>&1 | tail -6 || true
+      - uses: actions/upload-artifact@v4
+        with: {name: oddloop3d, path: OddLoop3D.mp4, retention-days: 30}
