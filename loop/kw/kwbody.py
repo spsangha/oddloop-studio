@@ -41,6 +41,12 @@ class Body:
         else:
             self.xmat, self.xem = L.glow(f'kw_xray_body_{p.name}', *XRAY_BODY)
         self.orig = [s.material for s in p.body.material_slots]
+        # MPFB clothes leave per-asset culling masks on the body even when the
+        # outfit is hidden. Keep the basemesh helper/internal face masks intact.
+        self.scan_masks = [(m, m.show_render) for m in p.body.modifiers
+                           if self.scan2 and m.type == 'MASK' and m.vertex_group.startswith('Delete.')
+                           and not any(k in m.vertex_group.lower() for k in
+                                       ('eye', 'high-poly', 'teeth', 'tongue'))]
         self._build()
 
     # ------------------------------------------------------------------ helpers
@@ -278,6 +284,9 @@ class Body:
         for i, s in enumerate(self.p.body.material_slots):
             m = self.xmat if on else self.orig[i]
             if s.material is not m: s.material = m
+        for mask, original in self.scan_masks:
+            value = original and not on
+            if mask.show_render != value: mask.show_render = value
     def reset_fx(self):
         for o, (sc, bev) in self.base.items():
             o.scale = sc
