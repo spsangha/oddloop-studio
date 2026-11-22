@@ -19,6 +19,9 @@ TEES = ['teal', 'white', 'red', 'navy', 'mustard', 'grey', 'maroon', 'olive', 'o
 BUILD = {'slim': (0.3, 0.4), 'avg': (0.5, 0.5), 'heavy': (0.85, 0.45), 'muscular': (0.5, 0.85)}
 
 
+def _scan(): return os.environ.get('KW_HEADS', '') == 'scan'
+
+
 def _targets(mp):
     out = {}
     for g in FACE_GROUPS:
@@ -47,6 +50,8 @@ def cast(role=None, seed=0, mp=None):
     else:
         hair = role.get('hair', r.choice(HAIR_F))
         clothes = ('male_casualsuit04', 'shoes01')  # logo-free tee works on both bodies
+    if _scan() and hair == 'afro01' and 'hair' not in role and (g == 'f' or skin_r != 'african'):   # KW_HEADS=scan: the afro shell only on African men (strand coils)
+        hair = random.Random(f'kw-hair-{seed}').choice(['bob01', 'long01', 'bob02'] if g == 'f' else ['short01', 'short02', 'short03'])
     hv = {'african': 0.18, 'asian': 0.2}.get(skin_r, r.choice([0.2, 0.35, 0.55, 0.8]))
     if age == 'old': hv = r.choice([1.8, 2.2, 2.6])  # grey/white
     extra = []
@@ -54,7 +59,8 @@ def cast(role=None, seed=0, mp=None):
         T = _targets(mp)
         for grp, (n, mx) in FACE_GROUPS.items():
             for t in r.sample(T[grp], min(n, len(T[grp]))):
-                extra.append((f'{grp}/{t}', round(r.uniform(0.15, mx), 2)))
+                wv = round(r.uniform(0.15, mx), 2)
+                extra.append((f'{grp}/{t}', round(wv * 0.5, 2) if _scan() else wv))   # KW_HEADS=scan: the scan identity carries most of the shape
     # round 3: a distinct face per person (own random stream so every earlier pick stays the same): jaw/brow for men, lips/cheekbones for women, small asymmetry
     rf = random.Random(f'kw-face-{seed}'); beard = None
     if g == 'm':
@@ -70,4 +76,4 @@ def cast(role=None, seed=0, mp=None):
     return dict(gender=1.0 if g == 'm' else 0.0, age=AGE[age], weight=wgt, muscle=mus, height=r.uniform(0.4, 0.6) if age != 'kid' else 0.2,
                 race=rv, skin=skin, eyes=r.choice(['brown', 'brown', 'blue', 'green', 'lightblue']) if skin_r == 'caucasian' else 'darkbrown',
                 hair=hair, brows=f'eyebrow{r.randint(1, 12):03d}', clothes=role.get('outfit', clothes), tee=role.get('tee') or r.choice(TEES),
-                hair_value=hv, extra_targets=tuple(extra), beard=beard)
+                hair_value=hv, extra_targets=tuple(extra), beard=beard, scan_seed=seed)
