@@ -6,7 +6,9 @@ PCT=18 SAMPLES=2 flock /tmp/blender.lock blender -b --python-exit-code 1 -P kit/
 
 The last two arguments are indices at 8 sampled frames/sec. Keeping batches short
 lets another process render between them. Results are review footage, not episode media.
+Set KW_PROBE_MEDIUM=1 to use identical medium framing if the legacy camera is occluded.
 """
+import os
 from math import ceil
 from pathlib import Path
 import runpy
@@ -26,6 +28,10 @@ ep.check(strict=False)  # Populate shot endpoints before isolating the take.
 shot = next(s for s in ep.shots if s.name == shot_name)
 if shot.cam.kind == 'loop' or shot.set not in kwkit.SPOTS:
     raise ValueError('Use a regular actor shot, not a loop or effect station.')
+if os.environ.get('KW_PROBE_MEDIUM') == '1':
+    shot.cam = kwkit.cam.medium(shot.cam.subj, side=28, height=0.12,
+                                 push=shot.cam.o.get('push', 0.08), shake=shot.cam.o.get('shake', 0.0),
+                                 hits=shot.cam.o.get('hits', ()))
 ep.shots = [shot]
 ep.people = [a for a in ep.people if a in shot.cast]
 ep.macros = []

@@ -70,7 +70,7 @@ Enabled by default; set a variable to `0` to isolate or revert that class of cha
 - `KW_DRESSING_R4`: Dressed kitchen and clinic, with physical set backgrounds on medium/two/over-shoulder shots. Close views retain the Round 3 sky card where applicable. Existing `KW_BACKDROP=0` and `ROOM_WINDOW=1` still work.
 - `KW_ACTING_R4`: Adds irregular breathing and blinks, lateral weight shifts, delayed shoulder and elbow recoil, non-contact finger flex, modest walking arm swing, and steering-wheel hand tracking. Hand contacts still use the authored IK solver; the slushie hold solves to its straw tip rather than the cup body.
 - `KW_MOCAP_R4`: Opt out of the two trimmed CMU torso tracks for `drink` and `eat` while retaining the rest of the acting pass. No root, fingers or full limbs come from the capture; all other acts are procedural. See `assets/LICENCES.md`.
-- `KW_CAMERA_R4`: Keeps authored push/orbit endpoints, softens their timing and transforms the old drift/shake into gentler float plus damped responses to explicit hits.
+- `KW_CAMERA_R4`: Softens push/orbit timing, replaces jitter with gentler drift and damped impacts, and shortens a wide room dolly only when its camera would cross a set wall.
 - `KW_XRAY_R4`: Clearer contour shell, differentiated tissue and skull response, sparse cerebral branches and a physical anatomy key.
 - `KW_MACRO_R4`: Layered macro tissue and vessel finish, plus a slight diagonal framing bias on tube wides. Existing effect anchors and explicit f-stops are preserved.
 

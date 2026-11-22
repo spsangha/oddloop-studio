@@ -801,6 +801,16 @@ class Runtime:
                 base_f = V((0, 0, 1)); Uax = V((0, 0, 1))
             dirv = Matrix.Rotation(ang, 3, V((0, 0, 1))) @ base_f
             pos = A + dirv * dd + V((0, 0, 1)) * height + self._shake(t, o, u)
+            if self.camera_r4 and kind == 'wide' and shot.set == 'room':
+                bounds = getattr(self.set_obj.get('room'), 'camera_bounds', None)
+                if bounds and all(bounds[0][i] < tgt[i] < bounds[1][i] for i in range(3)):
+                    # A point outside the wall can pass a collision check while filming its
+                    # opaque exterior. Dolly inside along the same sight line and widen the lens.
+                    lo, hi = bounds; k = 1.0
+                    for i in range(3):
+                        if pos[i] > hi[i]: k = min(k, (hi[i] - tgt[i]) / (pos[i] - tgt[i]))
+                        if pos[i] < lo[i]: k = min(k, (lo[i] - tgt[i]) / (pos[i] - tgt[i]))
+                    if k < 1.0: pos = tgt.lerp(pos, k); lens = max(16.0, lens * k)
             return pos, tgt, up, lens, fstop or (2.0 if kind == 'face' else 4.0), A   # Zack look round 2: f/2 face DOF
         if kind in ('two_shot', 'over_shoulder'):
             ra, C0 = anc(c.subj); rb, C1 = anc(o['other'])

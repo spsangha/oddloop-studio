@@ -79,6 +79,7 @@ def room(S, ref, K):
     c = L.coll('kw_room'); s = Set(); s.coll = c
     P = ref.bone_world('spine05'); H = ref.bone_world('head').z; seat = P.z - 0.075
     YW, XW, XR, ZC = 1.45, -2.2, 2.2, 2.65      # back wall (behind the desk chair), left/right walls, ceiling
+    s.camera_bounds = ((XW + 0.10, -3.85, 0.10), (XR - 0.10, YW - 0.10, ZC - 0.10))
     # Zack look round 2: flat bright sky-blue studio walls (hue ~190, V 0.7-0.86), no plaster texture, no white ceiling band
     wall = L.mat('kw_r_wall', (0.12, 0.62, 0.86), 0.9)
     wall2 = L.mat('kw_r_wall2', (0.16, 0.66, 0.88), 0.9)
