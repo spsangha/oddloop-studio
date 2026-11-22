@@ -17,7 +17,7 @@ if P is not None:   # region weights from the MakeHuman position bake: no crease
     def ss(a, b, x): t_ = np.clip((x - a) / (b - a), 0, 1); return t_ * t_ * (3 - 2 * t_)
     rw = ss(ez - 0.165, ez - 0.115, pp[..., 2])
     il, ni = nd.label(np.abs(pp).sum(-1) > 0)
-    zm = nd.mean(pp[..., 2], il, range(1, ni + 1)); rw[np.isin(il, 1 + np.nonzero(zm < ez - 0.09)[0])] = 0   # the whole neck UV island
+    zm = nd.mean(pp[..., 2], il, range(1, ni + 1)); pass   # (round 1 zeroed whole islands here, but the face shares one UV island with the body -> face lost all detail; the z fade above handles the neck)   # the whole neck UV island
     de = np.minimum(np.linalg.norm(pp - P['eyeL'], axis=-1), np.linalg.norm(pp - P['eyeR'], axis=-1))
     rw *= 0.35 + 0.65 * ss(0.016, 0.026, de)
     rw *= 1 - 0.6 * ss(0.058, 0.068, np.abs(pp[..., 0])) * ss(ey - 0.01, ey + 0.02, pp[..., 1])

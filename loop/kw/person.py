@@ -99,10 +99,12 @@ def build_person(name, *, gender=1.0, age=0.5, weight=0.55, muscle=0.5, height=0
     brow_objs = add(f'eyebrows/{brows}/{brows}.mhclo', 'Eyebrows'); add('eyelashes/eyelashes01/eyelashes01.mhclo', 'Eyelashes')
     hair_objs = add(f'hair/{hair}/{hair}.mhclo', 'Hair') if hair else []
     card_objs = list(hair_objs)
-    if beard: hair_objs += add(f'clothes/{beard}/{beard}.mhclo', 'Clothes')   # round 3: CC0 beard/stubble cards, tinted like the hair
+    beard_objs = add(f'clothes/{beard}/{beard}.mhclo', 'Clothes') if beard else []
+    hair_objs += beard_objs   # round 3: CC0 beard/stubble cards, tinted like the hair
     for c in clothes: add(f'clothes/{c}/{c}.mhclo', 'Clothes')
     add('teeth/teeth_base/teeth_base.mhclo', 'Teeth')
     p = Person(name, h.parent, h, [o for o in bpy.data.objects if o not in before])
+    p._kw_hair_value = hair_value
     # expression shape keys
     for nm, lst in EXPR.items():
         for path, w in lst:
@@ -190,14 +192,26 @@ def build_person(name, *, gender=1.0, age=0.5, weight=0.55, muscle=0.5, height=0
                     gt.links.new(nd.outputs['Color'], hs2.inputs['Color']); break
     except Exception as e: print('skin tone skipped', e)
     if _HK.on():
-        try: _HK.skin(p, age=age, gender=gender); _HK.eyes(p); _HK.lashes(p); _HK.lips(p)
+        try: _HK.skin(p, age=age, gender=gender, seed=scan_seed, skin_name=skin); _HK.eyes(p, eyes); _HK.lashes(p); _HK.lips(p)
         except Exception as e: print('scan skin skipped', repr(e))
+        strands = None
         if (style0 in _HK.CURVE_STYLES or style0 in _HK.FALL_STYLES) and os.environ.get('KW_SCAN_HAIR', '1') != '0':
             try:
-                if _HK.strand_hair(p, style0, hair_value, scan_seed, african=race[0] >= 0.5):
+                strands = _HK.strand_hair(p, style0, hair_value, scan_seed, african=race[0] >= 0.5)
+                if strands:
                     for o in card_objs:   # keep the card mesh (wardrobe finds hair by asset), but never render it
                         o.visible_camera = o.visible_shadow = o.visible_diffuse = o.visible_glossy = o.visible_transmission = o.visible_volume_scatter = False
             except Exception as e: print('strand hair skipped', repr(e))
+        if os.environ.get('KW_SCAN_BROWS', '1') != '0':   # round 2: strand brows / beard on the skin surface (follow expressions)
+            for objs, kind in ((brow_objs, 'brow'), (beard_objs, 'stubble' if 'stubble' in str(beard) else 'beard')):
+                if not objs: continue
+                try:
+                    if _HK.card_strands(p, objs, kind, hair_value, scan_seed):
+                        for o in objs: o.visible_camera = o.visible_shadow = o.visible_diffuse = o.visible_glossy = o.visible_transmission = o.visible_volume_scatter = False
+                except Exception as e: print(kind, 'strands skipped', repr(e))
+        if not strands and card_objs:
+            try: _HK.card_hair_fix(p, card_objs, hair_value)
+            except Exception as e: print('card hair fix skipped', repr(e))
     if cloth_tint:
         for o in p.parts:
             for nm, col in cloth_tint.items():
