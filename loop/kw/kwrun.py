@@ -63,7 +63,7 @@ class Runtime:
             ra = Actor(self, a); role = dict(a.role)
             if Wd: p = Wd.person(a.name, a.job, a.seed, **role)
             else:
-                r2 = {k: v for k, v in role.items() if k in ('gender', 'age', 'race', 'build', 'hair', 'tee', 'outfit')}
+                r2 = {k: v for k, v in role.items() if k in ('gender', 'age', 'race', 'build', 'hair', 'tee', 'outfit', 'beard')}
                 p = P.build_person(a.name, **C.cast(r2, a.seed, P.MP))
             ra.p = p; a.p = p; self.actors[a] = ra
             if self.K and hasattr(self.K, 'skin'):
@@ -836,6 +836,41 @@ class Runtime:
         # Zack look: every set lands at frame luma ~0.5-0.65 (room rendered 0.72, hospital 0.43 before; audit 2026-11-22)
         self.S.view_settings.exposure = {'room': -0.5, 'hospital': 0.1}.get(shot.set, 0.0)   # round 2: brighter flat walls -> hospital +0.4 -> +0.1
 
+    BACKDROP = {'room', 'hospital'}          # round 3: sets whose hold shots get Zack's full-frame sky-blue studio gradient
+    BD_KINDS = ('face', 'medium', 'two_shot', 'over_shoulder', 'profile', 'low_hero', 'part')
+    BD_COL = ((0.10, 0.56, 1.0), (0.015, 0.22, 0.62))   # centre, edge (linear, before AgX Punchy); graded target hue ~190, S 0.35-0.5, V 0.7-0.86
+    def backdrop(self, shot, cam, tgt):
+        """Zack look round 3: hold shots in a real set get a camera-only emissive sky-blue gradient card behind the cast
+        (brighter in the centre, no wall/ceiling band). Invisible to light rays, so the set lighting is unchanged."""
+        if not hasattr(self, 'BD'):
+            bpy.ops.mesh.primitive_plane_add(size=1.0); o = bpy.context.active_object; o.name = 'kw_backdrop'
+            for c in list(o.users_collection): c.objects.unlink(o)
+            self.S.collection.objects.link(o)
+            for a in ('visible_diffuse', 'visible_glossy', 'visible_transmission', 'visible_volume_scatter', 'visible_shadow'): setattr(o, a, False)
+            m = bpy.data.materials.new('kw_backdrop'); m.use_nodes = True; nt = m.node_tree; nt.nodes.clear(); Lk = nt.links.new
+            tc = nt.nodes.new('ShaderNodeTexCoord'); mp = nt.nodes.new('ShaderNodeMapping'); mp.inputs['Location'].default_value = (-0.5, -0.42, 0)
+            mp.inputs['Scale'].default_value = (1.0, 1.25, 1); Lk(tc.outputs['UV'], mp.inputs['Vector'])
+            gr = nt.nodes.new('ShaderNodeTexGradient'); gr.gradient_type = 'SPHERICAL'; Lk(mp.outputs[0], gr.inputs['Vector'])
+            cr = nt.nodes.new('ShaderNodeValToRGB'); Lk(gr.outputs['Fac'], cr.inputs['Fac'])
+            cr.color_ramp.elements[0].color = (*self.BD_COL[1], 1); cr.color_ramp.elements[1].color = (*self.BD_COL[0], 1); cr.color_ramp.elements[1].position = 0.75
+            em = nt.nodes.new('ShaderNodeEmission'); em.name = 'em'; Lk(cr.outputs[0], em.inputs['Color'])
+            out = nt.nodes.new('ShaderNodeOutputMaterial'); Lk(em.outputs[0], out.inputs['Surface'])
+            o.data.materials.append(m); self.BD = o; self.BD_EM = em
+        o = self.BD
+        c = shot.cam if isinstance(shot.cam, KW.Cam) else None
+        on = (shot.set in self.BACKDROP and c is not None and c.kind in self.BD_KINDS and isinstance(c.subj, KW.Actor) and c.subj in self.actors
+              and os.environ.get('KW_BACKDROP', '1') == '1')
+        if on:
+            ra = self.actors[c.subj]; up = ra.p.rig.matrix_world.to_3x3() @ V((0, 0, 1))
+            on = abs(up.z) > 0.6          # lying patient: keep the real set
+        if not on: o.hide_render = True; return
+        cam = V(cam); fwd = (V(tgt) - cam).normalized()
+        far = max(((self.bw(self.actors[a].p, 'head') - cam).dot(fwd) for a in shot.cast if a in self.actors), default=1.5)
+        D = far + 0.6; ctr = cam + fwd * D
+        h = 2 * D * math.tan(self.CAM.data.angle / 2) * 2.4
+        o.hide_render = False; o.location = ctr; o.rotation_euler = (-fwd).to_track_quat('Z', 'Y').to_euler(); o.scale = (h, h, 1)
+        self.BD_EM.inputs['Strength'].default_value = 2.0 ** (-self.S.view_settings.exposure)
+
     def rim_light(self, shot, cam):
         """Zack look round 2: one cool-white rim light behind the subject's head, opposite the camera (every person shot)"""
         if not hasattr(self, 'RIM'):
@@ -874,6 +909,7 @@ class Runtime:
         pos, tgt, up, lens, fs, foc = self.cam_eval(shot, u, si)
         self.set_cam(pos, tgt, up, lens, fs, foc)
         self.rim_light(shot, pos)
+        self.backdrop(shot, pos, tgt)
         self.FX.update_screen(shot, u, t)
         bpy.context.view_layer.update()
 
@@ -882,7 +918,7 @@ class Runtime:
         """True if the camera point is inside a visible closed mesh (ray parity, 6 directions)"""
         dg = bpy.context.evaluated_depsgraph_get(); hits = []
         for o in self.S.objects:
-            if o.type != 'MESH' or o.hide_render: continue
+            if o.type != 'MESH' or o.hide_render or o.name == 'kw_backdrop': continue
             if any(c.hide_render for c in o.users_collection if c is not self.S.collection): continue
             if not self._visible(o): continue
             bb = [o.matrix_world @ V(c) for c in o.bound_box]

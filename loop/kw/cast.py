@@ -55,7 +55,19 @@ def cast(role=None, seed=0, mp=None):
         for grp, (n, mx) in FACE_GROUPS.items():
             for t in r.sample(T[grp], min(n, len(T[grp]))):
                 extra.append((f'{grp}/{t}', round(r.uniform(0.15, mx), 2)))
+    # round 3: a distinct face per person (own random stream so every earlier pick stays the same): jaw/brow for men, lips/cheekbones for women, small asymmetry
+    rf = random.Random(f'kw-face-{seed}'); beard = None
+    if g == 'm':
+        extra += [('chin/chin-width-incr', round(rf.uniform(0.25, 0.6), 2)), ('chin/chin-prominent-incr', round(rf.uniform(0.15, 0.5), 2)),
+                  ('eyebrows/eyebrows-trans-forward', round(rf.uniform(0.3, 0.65), 2)), ('mouth/mouth-lowerlip-volume-incr', round(rf.uniform(0.1, 0.4), 2))]
+        if age in ('middle', 'old') and role.get('beard', rf.random() < 0.4): beard = 'wdg_scruffy_beard'
+        elif role.get('beard'): beard = 'wdg_scruffy_beard'
+    else:
+        extra += [('mouth/mouth-lowerlip-volume-incr', round(rf.uniform(0.3, 0.65), 2)), ('mouth/mouth-upperlip-volume-incr', round(rf.uniform(0.25, 0.55), 2)),
+                  ('cheek/l-cheek-bones-incr', round(rf.uniform(0.2, 0.45), 2)), ('cheek/r-cheek-bones-incr', round(rf.uniform(0.2, 0.45), 2))]
+    for t in rf.sample(['asym-jaw-1-l', 'asym-jaw-1-r', 'asym-mouth-1-l', 'asym-mouth-1-r', 'asym-eye-1-l', 'asym-eye-1-r', 'asym-brown-1-l', 'asym-brown-1-r', 'asym-nose-1-l'], 2):
+        extra.append((f'asym/{t}', round(rf.uniform(0.2, 0.4), 2)))
     return dict(gender=1.0 if g == 'm' else 0.0, age=AGE[age], weight=wgt, muscle=mus, height=r.uniform(0.4, 0.6) if age != 'kid' else 0.2,
                 race=rv, skin=skin, eyes=r.choice(['brown', 'brown', 'blue', 'green', 'lightblue']) if skin_r == 'caucasian' else 'darkbrown',
                 hair=hair, brows=f'eyebrow{r.randint(1, 12):03d}', clothes=role.get('outfit', clothes), tee=role.get('tee') or r.choice(TEES),
-                hair_value=hv, extra_targets=tuple(extra))
+                hair_value=hv, extra_targets=tuple(extra), beard=beard)

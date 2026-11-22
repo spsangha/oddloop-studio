@@ -8,6 +8,9 @@ from bl_ext.user_default.mpfb.services.targetservice import TargetService
 UD = os.environ.get('MPFB_UD', os.path.expanduser('~/.config/blender/4.2/extensions/.user/user_default/mpfb/data'))
 SYS = os.path.dirname(os.path.dirname(os.path.abspath(__import__('bl_ext.user_default.mpfb', fromlist=['x']).__file__))) if False else None
 MP = os.path.dirname(os.path.abspath(__import__('bl_ext.user_default.mpfb', fromlist=['x']).__file__)) + '/data'
+# round 3: CC0 MakeHuman community assets kept in the repo (assets/mh, see assets/LICENCES.md); used when not in the system data
+MH = os.environ.get('KW_MH', os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'assets', 'mh'))
+def _res(p): return f'{UD}/{p}' if os.path.exists(f'{UD}/{p}') else f'{MH}/{p}'
 EXPR = {  # friendly name -> list of (target file, weight)
     'puff':     [('cheek/l-cheek-volume-incr', 1.0), ('cheek/r-cheek-volume-incr', 1.0), ('expression/units/caucasian/mouth-compression', 1.0)],
     'wide':     [('expression/units/caucasian/eye-left-opened-up', 1.0), ('expression/units/caucasian/eye-right-opened-up', 1.0),
@@ -59,22 +62,28 @@ class Person:
     def bone_world(self, b, tail=False):
         p = self.pb(b); return self.rig.matrix_world @ (p.tail if tail else p.head)
 
+# round 3: the 6 most real-looking CC0/CC-BY community strand-card styles (assets/mh/hair) replace the system shells; KW_SYS_HAIR=1 keeps the old ones
+HAIR_UP = {'short01': 'elvs_grump_hair', 'short02': 'culturalibre_hair_02', 'short03': 'elvs_grump_hair', 'short04': 'culturalibre_hair_02',
+           'long01': 'elvs_hazel_hair',   # daisy (6.6k alpha cards) tripled a hospital frame (22.8 s vs 7.6 s)
+           'bob01': 'elvs_wavy_bob', 'bob02': 'littleright_bobcut_hair', 'ponytail01': 'elvs_hazel_hair'}
 EYE_SCALE = (('eyes/l-eye-scale-incr', 0.6), ('eyes/r-eye-scale-incr', 0.6))
 
 def build_person(name, *, gender=1.0, age=0.5, weight=0.55, muscle=0.5, height=0.5, race=(0.0, 0.2, 0.8), skin='young_caucasian_male',
-                 eyes='brown', hair='short02', brows='eyebrow001', clothes=('male_casualsuit04', 'shoes01'), cloth_tint=None, extra_targets=(), tee='teal', hair_value=0.45, skin_rough=None):
+                 eyes='brown', hair='short02', brows='eyebrow001', clothes=('male_casualsuit04', 'shoes01'), cloth_tint=None, extra_targets=(), tee='teal', hair_value=0.45, skin_rough=None, beard=None):
     macro = {"gender": gender, "age": age, "muscle": muscle, "weight": weight, "proportions": 0.5, "height": height, "cupsize": 0.5, "firmness": 0.5,
              "race": {"african": race[0], "asian": race[1], "caucasian": race[2]}}
     before = set(bpy.data.objects)
     h = HumanService.create_human(macro_detail_dict=macro)
     h.name = name
+    if os.environ.get('KW_SYS_HAIR') != '1' and hair in HAIR_UP and os.path.exists(os.path.join(MH, 'hair', HAIR_UP[hair])): hair = HAIR_UP[hair]
     extra_targets = tuple(extra_targets) + EYE_SCALE   # Zack look round 2: eyes ~12 % larger
     if extra_targets:  # face/body shape first, baked, so rig + hair + clothes fit the final head
         for path, wgt in extra_targets: TargetService.load_target(h, f'{MP}/targets/{path}.target.gz', weight=wgt)
         TargetService.bake_targets(h)
-    HumanService.set_character_skin(f'{UD}/skins/{skin}/{skin}.mhmat', h, skin_type='ENHANCED_SSS')
+    HumanService.set_character_skin(_res(f'skins/{skin}/{skin}.mhmat'), h, skin_type='ENHANCED_SSS')
     HumanService.add_builtin_rig(h, 'default')
-    def add(p, t, **k): HumanService.add_mhclo_asset(f'{UD}/{p}', h, asset_type=t, **k)
+    def add(p, t, **k):
+        b_ = set(bpy.data.objects); HumanService.add_mhclo_asset(_res(p), h, asset_type=t, **k); return [o for o in bpy.data.objects if o not in b_]
     add('eyes/high-poly/high-poly.mhclo', 'Eyes', material_type='PROCEDURAL_EYES')
     IRIS = {'brown': ((0.16, 0.07, 0.02), (0.05, 0.02, 0.01)), 'darkbrown': ((0.07, 0.035, 0.015), (0.02, 0.01, 0.005)),
             'blue': ((0.18, 0.48, 0.91), (0.11, 0.16, 0.41)), 'green': ((0.2, 0.42, 0.18), (0.08, 0.16, 0.06)), 'lightblue': ((0.35, 0.6, 0.9), (0.15, 0.25, 0.45))}
@@ -84,8 +93,9 @@ def build_person(name, *, gender=1.0, age=0.5, weight=0.55, muscle=0.5, height=0
                 for nd in o.active_material.node_tree.nodes:
                     for nm, col in (('IrisMajorColor', IRIS[eyes][0]), ('IrisMinorColor', IRIS[eyes][1])):
                         if nm in nd.inputs: nd.inputs[nm].default_value = (*col, 1)
-    add(f'eyebrows/{brows}/{brows}.mhclo', 'Eyebrows'); add('eyelashes/eyelashes01/eyelashes01.mhclo', 'Eyelashes')
-    if hair: add(f'hair/{hair}/{hair}.mhclo', 'Hair')
+    brow_objs = add(f'eyebrows/{brows}/{brows}.mhclo', 'Eyebrows'); add('eyelashes/eyelashes01/eyelashes01.mhclo', 'Eyelashes')
+    hair_objs = add(f'hair/{hair}/{hair}.mhclo', 'Hair') if hair else []
+    if beard: hair_objs += add(f'clothes/{beard}/{beard}.mhclo', 'Clothes')   # round 3: CC0 beard/stubble cards, tinted like the hair
     for c in clothes: add(f'clothes/{c}/{c}.mhclo', 'Clothes')
     add('teeth/teeth_base/teeth_base.mhclo', 'Teeth')
     p = Person(name, h.parent, h, [o for o in bpy.data.objects if o not in before])
@@ -116,22 +126,31 @@ def build_person(name, *, gender=1.0, age=0.5, weight=0.55, muscle=0.5, height=0
         nt = mt.node_tree
         if tee and 'casualsuit04' in o.name and 'diffuseTexture' in nt.nodes:
             nt.nodes['diffuseTexture'].image = bpy.data.images.load(os.path.join(TEX, f'tee_{tee}.jpg'))
-        if hair and hair in o.name and 'diffuseTexture' in nt.nodes:
-            tx = nt.nodes['diffuseTexture']; hs = nt.nodes.new('ShaderNodeHueSaturation'); hs.inputs['Value'].default_value = min(hair_value, 1.0); hs.inputs['Saturation'].default_value = 0.08 if hair_value > 1 else 1.1
+        if o in brow_objs and 'diffuseTexture' in nt.nodes and 'kw_dark' not in nt.nodes:   # round 3: darker, visible brows
+            tx = nt.nodes['diffuseTexture']; hs = nt.nodes.new('ShaderNodeHueSaturation'); hs.name = 'kw_dark'; hs.inputs['Value'].default_value = 0.45
+            for l in list(tx.outputs['Color'].links): to = l.to_socket; nt.links.remove(l); nt.links.new(hs.outputs['Color'], to)
+            nt.links.new(tx.outputs['Color'], hs.inputs['Color'])
+        if o in hair_objs and 'diffuseTexture' in nt.nodes:
+            tx = nt.nodes['diffuseTexture']; hs = nt.nodes.new('ShaderNodeHueSaturation'); hs.inputs['Value'].default_value = min(hair_value, 1.0) if hair_value > 1 else 1.0; hs.inputs['Saturation'].default_value = 0.08 if hair_value > 1 else 1.0
             for l in list(tx.outputs['Color'].links):
                 to = l.to_socket; nt.links.remove(l)
                 if hair_value > 1:  # grey/white: blend toward a light grey so dark textures still go grey
                     mx = nt.nodes.new('ShaderNodeMix'); mx.data_type = 'RGBA'; mx.inputs[0].default_value = min(0.9, 0.35 * hair_value)
                     mx.inputs[7].default_value = (0.62, 0.62, 0.63, 1); nt.links.new(hs.outputs['Color'], mx.inputs[6]); nt.links.new(mx.outputs[2], to)
-                else: nt.links.new(hs.outputs['Color'], to)
+                else:   # round 3: natural hair colour from the strand luminance (community textures come pink/blond/grey)
+                    bw = nt.nodes.new('ShaderNodeRGBToBW'); nt.links.new(hs.outputs['Color'], bw.inputs['Color'])
+                    k_ = max(0.0, min(1.0, hair_value)); col = tuple(a_ + (b_ - a_) * k_ for a_, b_ in zip((0.022, 0.016, 0.011), (0.30, 0.19, 0.10)))
+                    mx = nt.nodes.new('ShaderNodeMix'); mx.data_type = 'RGBA'; mx.blend_type = 'MULTIPLY'; mx.inputs[0].default_value = 1.0
+                    bwm = nt.nodes.new('ShaderNodeMath'); bwm.operation = 'MULTIPLY'; bwm.inputs[1].default_value = 2.4; nt.links.new(bw.outputs[0], bwm.inputs[0])
+                    nt.links.new(bwm.outputs[0], mx.inputs[6]); mx.inputs[7].default_value = (*col, 1); nt.links.new(mx.outputs[2], to)
             nt.links.new(tx.outputs['Color'], hs.inputs['Color'])
-            # Zack look round 2: strand detail instead of clay - bump from the strand texture, glossy anisotropic sheen
+            # round 3: dark matte strands (round-2 sheen read as grey shiny clay) - bump from the strand texture, low sheen
             bs = next((n for n in nt.nodes if n.type == 'BSDF_PRINCIPLED'), None)
             if bs is not None:
-                for k, v in (('Roughness', 0.45), ('Anisotropic', 0.6), ('Specular IOR Level', 0.35), ('Coat Weight', 0.0)):
+                for k, v in (('Roughness', 0.62), ('Anisotropic', 0.2), ('Specular IOR Level', 0.22), ('Coat Weight', 0.0), ('Sheen Weight', 0.0)):
                     if k in bs.inputs and not bs.inputs[k].links: bs.inputs[k].default_value = v
                 if not bs.inputs['Normal'].links:
-                    bm = nt.nodes.new('ShaderNodeBump'); bm.inputs['Strength'].default_value = 0.7; bm.inputs['Distance'].default_value = 0.002
+                    bm = nt.nodes.new('ShaderNodeBump'); bm.inputs['Strength'].default_value = 0.4; bm.inputs['Distance'].default_value = 0.002
                     nt.links.new(tx.outputs['Color'], bm.inputs['Height']); nt.links.new(bm.outputs['Normal'], bs.inputs['Normal'])
     # Zack look round 2 (2026-11-22): photo skin with visible pores, less wax/gloss, warmer tone (skin R-B 0.18-0.24).
     # LESSON: the MPFB skin is one group per material slot; set EVERY skin slot (p.body.active_material is the genitals slot)
@@ -146,6 +165,15 @@ def build_person(name, *, gender=1.0, age=0.5, weight=0.55, muscle=0.5, height=0
                     'Pore strength': 0.25 if 'lips' in nm_ else 0.6, 'SSS strength': 0.3, 'SSS radius scale': 0.1}
             for k, v in vals.items():
                 if k in g.inputs: g.inputs[k].default_value = v
+    try:  # round 3: real pore/lip/brow normal detail on every skin (CC0 mindfront NRM, same MakeHuman UV layout) when the skin has none
+        gt = next(g.node_tree for s_ in p.body.material_slots if s_.material for g in s_.material.node_tree.nodes if g.type == 'GROUP' and g.node_tree)
+        if 'NormalMapTexture' not in gt.nodes and 'Bump' in gt.nodes:
+            nrm = os.path.join(MH, 'skins', 'mindfront_skin_male_african_middleage', 'skin_male_african_middleage_NRM.png')
+            if os.path.exists(nrm):
+                ti = gt.nodes.new('ShaderNodeTexImage'); ti.name = 'kw_nrm'; ti.image = bpy.data.images.load(nrm, check_existing=True); ti.image.colorspace_settings.name = 'Non-Color'
+                nm = gt.nodes.new('ShaderNodeNormalMap'); nm.inputs['Strength'].default_value = 0.8
+                gt.links.new(ti.outputs['Color'], nm.inputs['Color']); gt.links.new(nm.outputs['Normal'], gt.nodes['Bump'].inputs['Normal'])
+    except Exception as e: print('skin normal skipped', e)
     try:  # warmer photo skin (measured graded R-B 0.12-0.14 vs Zack 0.18-0.24): saturate the diffuse inside the shared skin group once
         gt = next(g.node_tree for s_ in p.body.material_slots if s_.material for g in s_.material.node_tree.nodes if g.type == 'GROUP' and g.node_tree)
         if 'kw_skin_hs' not in gt.nodes:

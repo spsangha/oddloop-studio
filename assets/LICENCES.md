@@ -1,7 +1,7 @@
 # Asset licences (Kinda Wild 3D kit)
 
 Every 3D asset the kit renders is CC0 (public domain). Nothing here comes from Zack D. Films, and nothing is AI-generated.
-Round 2 of the Zack look match (2026-11-22) added 0 MB of new files to the repo: the photo skins, hair, eyebrows, eyelashes and eyes below are the
+Round 2 of the Zack look match (2026-11-22) added 0 MB (round 3 added the 18 MB `assets/mh` set below) of new files to the repo: the photo skins, hair, eyebrows, eyelashes and eyes below are the
 MakeHuman system assets the render workflow (`.github/workflows/render_kw.yml`) already downloads at render time. They are not committed.
 
 ## Characters (downloaded at render time, not in the repo)
@@ -15,6 +15,21 @@ MakeHuman system assets the render workflow (`.github/workflows/render_kw.yml`) 
 | Body, targets (incl. `eyes/l-eye-scale-incr`, `eyes/r-eye-scale-incr`), rig, skin shader | MPFB 2.0.18 add-on data | https://extensions.blender.org/download/sha256:c075b3e9b94b8e5556a5f03f4653602d02ea306de08126e8f55ed6dee28a2dad/add-on-mpfb-v2.0.18.zip | MPFB code GPL-3.0; bundled MakeHuman data CC0 1.0 |
 
 Skin pores come from the MPFB enhanced skin's procedural pore bump (no extra texture). Skin tones used by the kit: caucasian, african, asian (young/middleage/old), plus age variants: at least 4 tones.
+
+## Round 3: community assets kept in the repo (`assets/mh`, 18 MB; 2048 px hair textures downscaled to 1024)
+
+Licences are taken from each pack's `packs/<pack>.json` metadata (field `license`). CC-BY assets: credit "Hair by Elvaerwyn (MakeHuman Community), CC BY 4.0".
+
+| Asset | Folder | Author | Licence | Asset page | Downloaded from |
+|---|---|---|---|---|---|
+| Short male hair | hair/culturalibre_hair_02 | culturalibre | CC0 | http://www.makehumancommunity.org/node/2892 | https://files.makehumancommunity.org/asset_packs/hair01/hair01_cc0.zip |
+| Long hair | hair/o4saken_long01 | o4saken (packed by punkduck) | CC0 | http://www.makehumancommunity.org/node/1471 | hair01_cc0.zip (above) |
+| Bob cut | hair/littleright_bobcut_hair | littleright | CC0 | http://www.makehumancommunity.org/node/936 | hair01_cc0.zip (above) |
+| Side-swept male hair | hair/elvs_grump_hair | Elvaerwyn | CC-BY 4.0 | http://www.makehumancommunity.org/node/2796 | https://files.makehumancommunity.org/asset_packs/hair02/hair02_ccby.zip |
+| Long straight hair | hair/elvs_hazel_hair | Elvaerwyn | CC-BY 4.0 | http://www.makehumancommunity.org/node/2816 | hair02_ccby.zip (above) |
+| Wavy bob | hair/elvs_wavy_bob | Elvaerwyn | CC-BY 4.0 | http://www.makehumancommunity.org/node/1551 | hair02_ccby.zip (above) |
+| Scruffy beard | clothes/wdg_scruffy_beard | WDG | CC0 | http://www.makehumancommunity.org/node/1769 | https://files.makehumancommunity.org/asset_packs/bodyparts05/bodyparts05_cc0.zip |
+| Skin normal map (pores, lips, brows) used on every skin | skins/mindfront_skin_male_african_middleage/skin_male_african_middleage_NRM.png | Mindfront | CC0 | http://www.makehumancommunity.org/node/526 | https://files.makehumancommunity.org/asset_packs/skins02/skins02_cc0.zip |
 
 ## Sets, props, textures (in the repo)
 

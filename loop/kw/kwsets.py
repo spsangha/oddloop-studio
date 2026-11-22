@@ -134,7 +134,7 @@ def room(S, ref, K):
     gltf_fit(c, 'electric_stove', (XW + 0.34, -0.95, 0), 90, ('z', 0.92))
     gltf_fit(c, 'food_apple_01', (XW + 0.4, 0.5, 0.9), 0, ('z', 0.08))
     gltf_fit(c, 'food_apple_01', (XW + 0.47, 0.6, 0.9), 50, ('z', 0.075))
-    L.box('r_upper', (0.35, 1.6, 0.7), (XW + 0.18, 0.2, 1.85), cm, c, 0.01)
+    if os.environ.get('ROOM_WINDOW') == '1': L.box('r_upper', (0.35, 1.6, 0.7), (XW + 0.18, 0.2, 1.85), cm, c, 0.01)   # round 3: wall unit read as a pale band over the head
     # rug + ceiling lamp
     L.box('r_rug', (1.8, 1.3, 0.01), (0.1, -0.2, 0.005), _tex(K, 'kw_r_rug', 'Fabric030', 2.0, tint=(0.6, 0.25, 0.2), fallback=(0.6, 0.25, 0.2)), c, 0.004)
     if os.environ.get('ROOM_WINDOW') == '1': gltf_fit(c, 'modern_ceiling_lamp_01', (0.0, -0.3, ZC), 0, None)   # round 2: lamp read as a white band over the head

@@ -113,7 +113,7 @@ def _screen(name, kind='map'):
 
 # ------------------------------------------------------------------ worlds
 WORLDS = {  # kind -> (lighting HDR, strength, z-rotation deg, camera-ray background image or colour, camera strength)
-    'car':      ('park_parking_1k.hdr', 1.5, 0.0, 'park_parking_bg.jpg', 1.3),
+    'car':      ('park_parking_1k.hdr', 1.5, 0.0, (0.16, 0.55, 0.92), 1.0),   # round 3: sky-blue behind the car windows (was the parking photo)
     'hospital': ('hospital_room_2_1k.hdr', 0.45, 0.0, None, 0.45),
     'studio':   ('studio_small_08_1k.hdr', 0.6, 0.0, (0.01, 0.035, 0.12), 1.0),
 }
