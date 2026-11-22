@@ -500,7 +500,7 @@ class Runtime:
             p.rot('spine01', (lean * 0.25 + 0.30 * breath + 0.40 * settle, 0.34 * shift, 0.22 * shift))
             if self.body_r4 and not canonical:
                 cue = next((at for at, q in ps.keys if q is qb), 0.)
-                Q.mocap_pose(p, self.mocap, acts, u, qb.base, qb, w if qa is not qb else 1., cue)
+                Q.mocap_pose(p, self.mocap, acts, u, qb.base, qb, w if qa is not qb else 1., cue, a)
                 if any(ac.kind in ('flinch', 'wince') for ac in acts):
                     p.pb('spine02').rotation_euler.x -= math.radians(2.4 * settle)
                     p.pb('spine01').rotation_euler.x -= math.radians(1.8 * settle)

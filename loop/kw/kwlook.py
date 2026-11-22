@@ -99,7 +99,7 @@ def _torso_delta(p, track, elapsed, weight, cap=None):
         pb.rotation_euler = (pb.rotation_euler.to_quaternion() @ rest.inverted() @ delta @ rest).to_euler('XYZ')
 
 
-def mocap_pose(p, library, acts, u, base, pose=None, influence=1.0, cue=0.):
+def mocap_pose(p, library, acts, u, base, pose=None, influence=1.0, cue=0., actor=None):
     """Retarget partial CMU deltas onto MPFB rest axes, before contact IK."""
     if not library or base == 'lie': return
     ingest = False
@@ -120,12 +120,12 @@ def mocap_pose(p, library, acts, u, base, pose=None, influence=1.0, cue=0.):
         ingest = True
     if ingest or pose is None or base not in ('sit', 'stand'): return
     hands = [h for h in (pose.left, pose.right) if h is not None]
-    clutch = any(h.kind == 'touch' and h.owner is None and h.shape == 'claw' for h in hands)
-    examiner = any(h.kind == 'touch' and h.owner is not None for h in hands)
+    clutch = any(h.kind == 'touch' and (h.owner is None or h.owner is actor) and h.shape == 'claw' for h in hands)
+    examiner = any(h.kind == 'touch' and h.owner is not None and h.owner is not actor for h in hands)
     if clutch:
         attack = next((a.at for a in acts if a.kind in ('flinch', 'wince', 'cough')), 0.)
         key, elapsed, amount = 'clutch', (u - max(cue, attack) + .09) / 1.52, .61
-    elif examiner or abs(pose.lean) >= 5:
+    elif examiner or pose.lean >= 5:
         key, elapsed, amount = 'lean', (u - cue) / 1.17, .52
     else: return
     track = library.get(key)

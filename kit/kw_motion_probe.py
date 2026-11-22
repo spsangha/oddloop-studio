@@ -8,6 +8,9 @@ The last two arguments are indices at 8 sampled frames/sec (or KW_PROBE_FPS=24
 for native motion). Keeping batches short
 lets another process render between them. Results are review footage, not episode media.
 Set KW_PROBE_MEDIUM=1 to use identical medium framing if the legacy camera is occluded.
+Set KW_PROBE_CONTACT_ONLY=1 to hold the Round 1 rig and framing constant and
+compare only the second-pass capture overlay. With KW_PROBE_NO_RENDER=1 and
+KW_DEBUG=1, logs still contain the hand IK goal errors for each sampled frame.
 """
 import os
 from math import ceil
@@ -47,14 +50,21 @@ wanted = os.environ.get('KW_PROBE_TAKE', 'both')
 if wanted != 'both': modes = {wanted: modes[wanted]}
 for name in modes: Path(output, name).mkdir(parents=True, exist_ok=True)
 initial = ceil(shot.t * kwkit.FPS - 1e-8)
+all_tracks = rt.mocap
+prior_tracks = {k: v for k, v in all_tracks.items() if k not in ('clutch', 'lean')}
+contact_only = os.environ.get('KW_PROBE_CONTACT_ONLY') == '1'
+no_render = os.environ.get('KW_PROBE_NO_RENDER') == '1'
 for i in range(int(first), int(stop)):
     t0 = time.monotonic()
     f = initial + i * (kwkit.FPS // rate)
     if f / kwkit.FPS >= shot.end: break
     for name, mode in modes.items():
-        rt.body_r4 = rt.camera_r4 = mode
+        rt.body_r4 = rt.camera_r4 = contact_only or mode
+        rt.mocap = all_tracks if mode or not contact_only else prior_tracks
+        if no_render: print(f'probe {name} frame {f}', flush=True)
         rt.S.frame_set(f)
         rt.update(f / kwkit.FPS)
-        rt.S.render.filepath = str(Path(output, name, f'{i:04d}.png'))
-        bpy.ops.render.render(write_still=True)
-    print(f'motion probe pair {i}: {time.monotonic() - t0:.2f}s', flush=True)
+        if not no_render:
+            rt.S.render.filepath = str(Path(output, name, f'{i:04d}.png'))
+            bpy.ops.render.render(write_still=True)
+    print(f'motion probe {i}: {time.monotonic() - t0:.2f}s', flush=True)
