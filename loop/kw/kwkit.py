@@ -104,7 +104,7 @@ HAND_SHAPES = ('relaxed', 'open', 'fist', 'pinch', 'point', 'press2', 'hold', 'c
 HANDS = ('rest', 'lap', 'wheel', 'pinch_nose', 'cover_mouth', 'cover_nose', 'tissue_nose', 'wave', 'point_fwd', 'clipboard', 'write', 'hips',
          'to_mouth', 'phone_ear') + tuple('touch_' + p for p in PARTS) + tuple('clutch_' + p for p in ('chest', 'belly', 'neck', 'head', 'throat', 'forehead', 'eye_l', 'eye_r', 'cheek_l', 'cheek_r', 'ear_l', 'ear_r'))
 ACTS = ('sneeze', 'cough', 'blow_nose', 'swallow', 'eat', 'drink', 'wince', 'nod', 'shake_head', 'gasp', 'breathe_hard', 'look_around', 'flinch', 'yawn', 'sniff', 'scratch')
-PROPS = ('tissue', 'cup', 'apple', 'pill', 'phone', 'pen', 'spoon', 'bottle', 'can', 'earbud', 'swab', 'pepper')
+PROPS = ('tissue', 'cup', 'apple', 'pill', 'phone', 'pen', 'spoon', 'bottle', 'can', 'earbud', 'swab', 'pepper', 'slushie')
 ORGANS = ('airway', 'lungs', 'esophagus', 'stomach', 'heart', 'brain', 'intestines', 'sinus', 'eyes', 'skull', 'vessels', 'kidneys', 'bladder', 'liver')
 MACRO_KINDS = ('windpipe', 'esophagus', 'artery', 'vein', 'intestine', 'stomach', 'bone', 'nerve', 'sinus')
 BANNED_SOUNDS = ('whoosh', 'swoosh', 'woosh', 'swish')

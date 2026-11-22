@@ -262,6 +262,11 @@ class Builder:
             cal = L.sphere('kw_pepper_cal', 0.011, (0, 0, 0.0015), gm, c, 16, 8, (1, 1, 0.35)); cal.parent = o
             st = L.cyl('kw_pepper_stem', 0.0022, 0.022, (0.002, 0, 0.012), gm, c, rot=(0, 14, 0), verts=10); st.parent = o
             return o
+        if pr == 'slushie':  # takeaway slushie: bright blue frozen drink in a clear cup, clear dome lid, red straw (axis z; the hold puts +z DOWN, so lid + straw sit at -z)
+            o = L.cyl('kw_slush', 0.037, 0.11, (0, 0, 0), L.bumpy(L.mat('kw_slush_m', (0.01, 0.16, 0.85), 0.35, coat=0.5), 60.0, 0.15, 2.0, dist=0.0015), c, verts=32)
+            ld = L.sphere('kw_slush_lid', 0.038, (0, 0, -0.056), L.mat('kw_slush_lid_m', (0.9, 0.93, 0.97), 0.1, coat=0.8), c, 24, 12, (1, 1, 0.5)); ld.parent = o
+            sw = L.cyl('kw_slush_straw', 0.0045, 0.13, (0.008, 0, -0.1), L.mat('kw_slush_straw_m', (0.85, 0.05, 0.05), 0.3), c, rot=(0, 10, 0), verts=12); sw.parent = o
+            return o
         mk = {'cup': lambda: L.cyl('kw_cup', 0.04, 0.1, (0, 0, 0), L.mat('kw_cup_m', (0.95, 0.95, 0.92), 0.3, coat=0.6), c),
               'apple': lambda: L.sphere('kw_apple', 0.04, (0, 0, 0), L.mat('kw_apple_m', (0.75, 0.05, 0.04), 0.3, coat=0.5), c, 24, 12, (1, 1, 0.9)),
               'pill': lambda: L.sphere('kw_pill', 0.006, (0, 0, 0), L.mat('kw_pill_m', (0.95, 0.95, 0.97), 0.3), c, 16, 8, (2.2, 1, 1)),

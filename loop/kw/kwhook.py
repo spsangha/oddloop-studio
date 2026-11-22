@@ -133,6 +133,7 @@ def main(argv):
     src = argv[1]; rest = argv[2:]; use_tts = '--tts' in rest; out = None
     if '--sheet' in rest: out = rest[rest.index('--sheet') + 1]
     fdir = next((a for a in rest if os.path.isdir(a)), None)
+    if '--sheet' in rest and not fdir: print('HOOK GATE FAILED (frame folder missing: the render crashed, read the log)'); return 1
     cj = load_cues(src); words = word_times(cj, use_tts, src[:-3] + '.vo.json' if src.endswith('.py') else None)
     items = script_items(cj, words)
     if fdir: items += frame_items(cj, fdir)
