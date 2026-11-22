@@ -397,6 +397,12 @@ def build_car(S, ned, paint=(0.02, 0.1, 0.5)):
         key.data.size = 1.25; key.data.energy = 252; key.data.color = (1.0, 0.93, 0.84)
         rim.data.energy = 103; rim.data.color = (0.65, 0.83, 1.0)
         fill.data.energy = 23; fill.data.color = (0.91, 0.98, 1.0)
+    if Q.enabled('PEOPLE2'):
+        key, rim, fill = car.lights
+        key.location = (.97, -1.47, H + .55)
+        key.rotation_euler = (Vector((0, 0, H - .05)) - key.location).to_track_quat('-Z', 'Y').to_euler()
+        key.data.size, key.data.energy, key.data.color = 1.30, 272, (1., .96, .90)
+        rim.data.energy, fill.data.energy = 66, 16
     car.H, car.BL, car.RF = H, BL, RF
     return car
 
@@ -527,4 +533,8 @@ def build_hospital(S, ned, wall_col=(0.12, 0.60, 0.86)):   # Zack look: bright s
                 _area(c, 'h_fill', (0.2, -1.8, 1.0), 30, 1.5, (1.0, 0.95, 0.9), (0, 0, H - 0.2))]
     if Q.enabled('DRESSING'):
         h.lights[0].data.color = (1.0, 0.94, 0.85); h.lights[0].data.energy = 185
+    if Q.enabled('PEOPLE2'):
+        key, rim, fill = h.lights
+        key.data.size, key.data.energy, key.data.color = 1.18, 218, (1., .96, .91)
+        rim.data.energy, fill.data.energy = 72, 15
     return h

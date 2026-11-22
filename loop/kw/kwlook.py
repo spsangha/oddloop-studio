@@ -65,13 +65,18 @@ def load_mocap():
         print('KW_MOCAP_R4: no captured tracks on disk; using procedural motion')
         return {}
     data = json.loads(path.read_text())
+    names = ['drink', 'eat']
+    contact = path.with_name('cmu_contact_r4.json')
+    if enabled('CONTACT2') and contact.is_file():
+        data.update(json.loads(contact.read_text()))
+        names.extend(('clutch', 'lean'))
     # BVH Y up / +Z front -> kit Z up / -Y front; convert ZYX channel order exactly.
     basis = Quaternion((1, 0, 0), math.pi / 2)
     def qrot(row, j):
         z, y, x = (math.radians(d) for d in row[j:j + 3])
         return Quaternion((0, 0, 1), z) @ Quaternion((0, 1, 0), y) @ Quaternion((1, 0, 0), x)
     out = {}
-    for k in ('drink', 'eat'):
+    for k in names:
         out[k] = []
         for j in (0, 3, 6):
             neutral = qrot(data[k][0], j).inverted()
@@ -79,9 +84,25 @@ def load_mocap():
     return out
 
 
-def mocap_pose(p, library, acts, u, base):
+def _torso_delta(p, track, elapsed, weight, cap=None):
+    for bone, samples in zip(('spine03', 'spine02', 'spine01'), track):
+        f = elapsed * (len(samples) - 1); i = min(len(samples) - 2, int(f))
+        sample = samples[i].slerp(samples[i + 1], f - i)
+        if cap is not None:
+            angle = Quaternion().rotation_difference(sample).angle
+            angle = min(angle, math.tau - angle)
+            if angle > cap: weight_ = weight * cap / angle
+            else: weight_ = weight
+        else: weight_ = weight
+        delta = Quaternion().slerp(sample, weight_)
+        pb = p.rig.pose.bones[bone]; rest = pb.bone.matrix_local.to_quaternion()
+        pb.rotation_euler = (pb.rotation_euler.to_quaternion() @ rest.inverted() @ delta @ rest).to_euler('XYZ')
+
+
+def mocap_pose(p, library, acts, u, base, pose=None, influence=1.0, cue=0.):
     """Retarget partial CMU deltas onto MPFB rest axes, before contact IK."""
     if not library or base == 'lie': return
+    ingest = False
     for a in acts:
         track = library.get(a.kind)
         if not track: continue
@@ -95,14 +116,25 @@ def mocap_pose(p, library, acts, u, base):
         if not 0 < elapsed < 1: continue
         weight = min(1.0, elapsed / 0.13, (1.0 - elapsed) / 0.27)
         weight = weight * weight * (3 - 2 * weight) * (0.57 if base == 'drive' else 0.73)
-        for bone, samples in zip(('spine03', 'spine02', 'spine01'), track):
-            f = elapsed * (len(samples) - 1); i = min(len(samples) - 2, int(f))
-            delta = Quaternion().slerp(samples[i].slerp(samples[i + 1], f - i), weight)
-            pb = p.rig.pose.bones[bone]; rest = pb.bone.matrix_local.to_quaternion()
-            pb.rotation_euler = (pb.rotation_euler.to_quaternion() @ rest.inverted() @ delta @ rest).to_euler('XYZ')
+        _torso_delta(p, track, elapsed, weight)
+        ingest = True
+    if ingest or pose is None or base not in ('sit', 'stand'): return
+    hands = [h for h in (pose.left, pose.right) if h is not None]
+    clutch = any(h.kind == 'touch' and h.owner is None and h.shape == 'claw' for h in hands)
+    examiner = any(h.kind == 'touch' and h.owner is not None for h in hands)
+    if clutch:
+        attack = next((a.at for a in acts if a.kind in ('flinch', 'wince', 'cough')), 0.)
+        key, elapsed, amount = 'clutch', (u - max(cue, attack) + .09) / 1.52, .61
+    elif examiner or abs(pose.lean) >= 5:
+        key, elapsed, amount = 'lean', (u - cue) / 1.17, .52
+    else: return
+    track = library.get(key)
+    if not track or not 0 < elapsed < 1: return
+    weight = min(1., elapsed / .23, (1. - elapsed) / .33)
+    _torso_delta(p, track, elapsed, weight * weight * (3 - 2 * weight) * amount * influence, math.radians(4.5))
 
 
-def scan_shell(name, center, rim, energy, opacity):
+def scan_shell(name, center, rim, energy, opacity, *, contour=False):
     """Clear face-on X-ray shell with a coloured, rather than white, contour."""
     m = bpy.data.materials.new(name); m.use_nodes = True
     nt = m.node_tree; nt.nodes.clear(); link = nt.links.new
@@ -119,6 +151,12 @@ def scan_shell(name, center, rim, energy, opacity):
     alpha.color_ramp.elements[1].position = 0.92
     alpha.color_ramp.elements[1].color = (opacity, opacity, opacity, 1)
     mid = alpha.color_ramp.elements.new(0.58); mid.color = (0.10, 0.10, 0.10, 1)
+    if contour:
+        layer.inputs['Blend'].default_value = .44
+        color.color_ramp.elements[1].position = .973
+        alpha.color_ramp.elements[0].color = (.031, .031, .031, 1)
+        mid.position = .70; mid.color = (.070, .070, .070, 1)
+        alpha.color_ramp.elements[-1].position = .975
     link(layer.outputs['Facing'], alpha.inputs[0])
     tr = nt.nodes.new('ShaderNodeBsdfTransparent'); mx = nt.nodes.new('ShaderNodeMixShader')
     link(alpha.outputs[0], mx.inputs[0]); link(tr.outputs[0], mx.inputs[1])

@@ -41,6 +41,8 @@ See `assets/real/CREDITS.md` (Poly Haven and ambientCG, CC0 1.0). Room and hospi
 
 The data used in this project was obtained from mocap.cs.cmu.edu. The database was created with funding from NSF EIA-0196217.
 
+`assets/motion/cmu_contact_r4.json` adds torso-only trims from [CMU subject 22](http://mocap.cs.cmu.edu/search.php?subjectnumber=22), [22_03 (seated face hold)](https://github.com/una-dinosauria/cmu-mocap/blob/master/data/022/22_03.bvh) and [22_18 (forward lean)](https://github.com/una-dinosauria/cmu-mocap/blob/master/data/022/22_18.bvh), downloaded 2026-11-23 (Hong Kong). The [same CMU commercial-product terms](http://mocap.cs.cmu.edu/) apply. The second look pass adds no external visual assets.
+
 ## Music
 
 See each episode's description credit.

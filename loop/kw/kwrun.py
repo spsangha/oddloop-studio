@@ -282,6 +282,8 @@ class Runtime:
         self.W = W; self.w_grad, self.w_gs, self.w_amb = w_grad, w_gs, w_amb
         self.STUDIO = {'sky': ((0.2, 0.62, 1.0), (0.02, 0.16, 0.6), 0.16, (0.75, 0.85, 1.0), 0.3), 'night': ((0.02, 0.1, 0.32), (0.0, 0.012, 0.07), 0.1, (0.2, 0.4, 0.9), 0.12),
                        'warm': ((1.0, 0.62, 0.1), (0.85, 0.16, 0.05), 0.0, (1.0, 0.85, 0.7), 0.5), 'teal': ((0.05, 0.75, 0.7), (0.0, 0.18, 0.28), 0.12, (0.7, 0.95, 0.95), 0.35)}
+        self.STUDIO['scan2'] = ((.0025, .009, .018), (.0004, .0015, .003), 0., (.37, .57, .82), .11)
+        self.STUDIO['macro2'] = ((.095, .025, .036), (.026, .006, .013), 0., (.75, .85, 1.), .3)
         self.W0 = bpy.data.worlds.new('kw_plain'); self.W0.use_nodes = True
         cam_d = bpy.data.cameras.new('kw_cam'); self.CAM = bpy.data.objects.new('kw_cam', cam_d); S.collection.objects.link(self.CAM); S.camera = self.CAM; cam_d.clip_start = 0.01
         cam_d.sensor_fit = 'AUTO'; cam_d.sensor_width = 36
@@ -296,6 +298,21 @@ class Runtime:
         except Exception as e: print('compositor reset failed', repr(e))
         S.cycles.caustics_refractive = True   # LESSON: MPFB eyes sit behind a refractive cornea; without this the eyes render black
         S.render.resolution_x, S.render.resolution_y = 1080, 1920; S.render.resolution_percentage = int(os.environ.get('PCT', '100')); S.render.fps = FPS
+        self.path_defaults = {k: getattr(S.cycles, k) for k in (
+            'max_bounces', 'diffuse_bounces', 'glossy_bounces', 'adaptive_threshold',
+            'adaptive_min_samples', 'caustics_reflective')}
+        self.render_budget_set = None
+
+    def render_budget(self, kind):
+        if self.render_budget_set == kind or not Q.enabled('PATH2'): return
+        self.render_budget_set = kind
+        opts = self.path_defaults.copy()
+        if kind in ('room', 'hospital'):
+            opts.update(max_bounces=4, diffuse_bounces=1, glossy_bounces=2,
+                        caustics_reflective=False)
+            if self.SAMPLES >= 16:
+                opts.update(adaptive_threshold=.16, adaptive_min_samples=6)
+        for k, v in opts.items(): setattr(self.S.cycles, k, v)
 
     def world(self, kind):
         S = self.S
@@ -482,7 +499,8 @@ class Runtime:
             p.rot('spine02', (lean * 0.35 + 0.47 * breath + 0.75 * settle, 0.60 * shift, 0.75 * shift))
             p.rot('spine01', (lean * 0.25 + 0.30 * breath + 0.40 * settle, 0.34 * shift, 0.22 * shift))
             if self.body_r4 and not canonical:
-                Q.mocap_pose(p, self.mocap, acts, u, qb.base)
+                cue = next((at for at, q in ps.keys if q is qb), 0.)
+                Q.mocap_pose(p, self.mocap, acts, u, qb.base, qb, w if qa is not qb else 1., cue)
                 if any(ac.kind in ('flinch', 'wince') for ac in acts):
                     p.pb('spine02').rotation_euler.x -= math.radians(2.4 * settle)
                     p.pb('spine01').rotation_euler.x -= math.radians(1.8 * settle)
@@ -908,14 +926,24 @@ class Runtime:
         subj = shot.cam.subj if isinstance(shot.cam, KW.Cam) and isinstance(shot.cam.subj, KW.Actor) else (next(iter(shot.cast)) if shot.cast else None)
         lights_on = (not real) and shot.set in ('studio',) or (shot.set in ('car', 'hospital', 'room', 'street') and self.K is None)
         scan = shot.set == 'xray' and Q.enabled('XRAY')
+        scan2 = scan and Q.enabled('SCAN2')
         lights_on = lights_on or scan
         hb = self.bw(self.actors[subj].p, 'head') if subj is not None else V((0, 0, 1.5))
         R = self.actors[subj].p.rig.matrix_world.to_3x3().normalized() if subj is not None else Matrix.Identity(3)
         for o, off, e in self.PL:
             o.hide_render = not lights_on; o.location = hb + R @ off
+            if Q.enabled('PEOPLE2'):
+                stage = not scan
+                if o is self.PL[0][0]:
+                    o.data.size = 1.27 if stage else 1.6
+                    if stage: o.location = hb + R @ V((1.02, -1.44, .57)); e = 236
+                elif o is self.PL[1][0] and stage: e = 76
+                elif o is self.PL[2][0] and stage: e = 19
             o.rotation_euler = (hb - o.location).to_track_quat('-Z', 'Y').to_euler()
-            o.data.energy = e * (0.84 if scan else 1.0)
+            o.data.energy = e * (.49 if scan2 else .84 if scan else 1.)
         w = shot.world or KW.SET_WORLD[shot.set]
+        if scan2 and shot.world is None: w = 'scan2'
+        if shot.set == 'macro' and shot.world is None and Q.enabled('MACRO') and Q.enabled('MACRO2'): w = 'macro2'
         self.world(w)
         # Zack look: every set lands at frame luma ~0.5-0.65 (room rendered 0.72, hospital 0.43 before; audit 2026-11-22)
         self.S.view_settings.exposure = {'room': -0.5, 'hospital': 0.1}.get(shot.set, 0.0)   # round 2: brighter flat walls -> hospital +0.4 -> +0.1
@@ -968,7 +996,11 @@ class Runtime:
         if d.length < 1e-3: d = V((0, 1, 0))
         d.normalize(); side = V((-d.y, d.x, 0))
         self.RIM.hide_render = False; self.RIM.location = hb + d * 1.1 + side * 0.45 + V((0, 0, 0.55))
-        self.RIM.rotation_euler = (hb - self.RIM.location).to_track_quat('-Z', 'Y').to_euler(); self.RIM.data.energy = 70
+        self.RIM.rotation_euler = (hb - self.RIM.location).to_track_quat('-Z', 'Y').to_euler()
+        if shot.set == 'xray' and Q.enabled('XRAY') and Q.enabled('SCAN2'):
+            self.RIM.data.energy = 38
+        else:
+            self.RIM.data.energy = 57 if Q.enabled('PEOPLE2') and shot.set in ('car', 'hospital', 'room', 'street', 'studio') else 70
 
     def prop_lights(self, origin, sc=1.0, on=True, gain=1.0):
         for o, off, e in self.ML:
@@ -980,6 +1012,7 @@ class Runtime:
     # ================================================================== frame update
     def update(self, t):
         ep = self.ep; shot = ep.shot_at(t); u = t - shot.t; si = ep.shots.index(shot)
+        self.render_budget(shot.set)
         self.prop_lights((0, 0, 0), on=False)
         self.visibility(shot)
         for st, obj in self.set_obj.items():

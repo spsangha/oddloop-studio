@@ -166,6 +166,12 @@ def room(S, ref, K):
                 _area(c, 'r_fill', (-0.2, -2.2, 1.1), 40, 1.6, (1.0, 0.95, 0.9), (0, 0, H - 0.2))]
     if Q.enabled('DRESSING'):
         s.lights[0].data.energy = 190; s.lights[1].data.color = (1.0, 0.94, 0.87)
+    if Q.enabled('PEOPLE2'):
+        window, key, rim, fill = s.lights
+        key.location.x = 1.12
+        key.rotation_euler = (V((0, 0, H - .10)) - key.location).to_track_quat('-Z', 'Y').to_euler()
+        key.data.size, key.data.energy, key.data.color = 1.18, 218, (1., .96, .91)
+        window.data.energy, rim.data.energy, fill.data.energy = 146, 71, 21
     s.desk_top = top; s.desk_y = desk_y
     return s
 
@@ -192,6 +198,9 @@ def street(S, ref, K):
         gltf_fit(c, 'shrub_04', (x, y, 0), k * 70, ('z', 0.9 * sc))
     for k in range(10): gltf_fit(c, 'grass_medium_02', (-4.5 + k, 1.6 + 0.3 * (k % 3), 0), k * 37, ('z', 0.25))
     s.lights = [_area(c, 's_sun_key', (2.5, -3.0, 3.6), 900, 2.5, (1.0, 0.92, 0.8), (0, 0, 1.2)), _area(c, 's_fill', (-2.0, -2.5, 1.5), 120, 2.5, (0.8, 0.9, 1.0), (0, 0, 1.2))]
+    if Q.enabled('PEOPLE2'):
+        s.lights[0].data.color = (1., .96, .91)
+        s.lights[1].data.energy = 65
     sun = bpy.data.lights.new('s_sun', 'SUN'); sun.energy = 3.0; sun.angle = math.radians(3); sun.color = (1.0, 0.95, 0.85)
     so = bpy.data.objects.new('s_sun', sun); c.objects.link(so); so.rotation_euler = (math.radians(50), 0, math.radians(35)); s.lights.append(so)
     return s
