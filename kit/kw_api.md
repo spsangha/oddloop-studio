@@ -62,6 +62,18 @@ e.g. `cam=KW.cam.face(mia, push=0.12, side=14, shake=0.4)` — keep `push` 0.06-
 bounce bubbles crackle engine heal inhale pinch pressure puff rip rush sneeze sniff thud (acts and fx add their own).
 Frame-0 transient: thud / pinch / bounce / rip / crackle / sneeze.
 
+## Round 4 picture switches
+
+Enabled by default; set a variable to `0` to isolate or revert that class of changes. Set, camera, act, spot, effect and pose names are unchanged.
+
+- `KW_CABIN_R4`: Layered cabin materials, padded panels, upholstery seams, sky gradient and a more directional car key/rim. Wheel and seat marks are unchanged.
+- `KW_DRESSING_R4`: Dressed kitchen and clinic, with physical set backgrounds on medium/two/over-shoulder shots. Close views retain the Round 3 sky card where applicable. Existing `KW_BACKDROP=0` and `ROOM_WINDOW=1` still work.
+- `KW_ACTING_R4`: Adds irregular breathing and blinks, lateral weight shifts, delayed shoulder and elbow recoil, non-contact finger flex, modest walking arm swing, and steering-wheel hand tracking. Hand contacts still use the authored IK solver.
+- `KW_MOCAP_R4`: Opt out of the two trimmed CMU torso tracks for `drink` and `eat` while retaining the rest of the acting pass. No root, fingers or full limbs come from the capture; all other acts are procedural. See `assets/LICENCES.md`.
+- `KW_CAMERA_R4`: Keeps authored push/orbit endpoints, softens their timing and transforms the old drift/shake into gentler float plus damped responses to explicit hits.
+- `KW_XRAY_R4`: Clearer contour shell, differentiated tissue and skull response, sparse cerebral branches and a physical anatomy key.
+- `KW_MACRO_R4`: Layered macro tissue and vessel finish, plus a slight diagonal framing bias on tube wides. Existing effect anchors and explicit f-stops are preserved.
+
 ## Hook template values that pass the gate (from ep_blownose)
 - shot 1 `KW.cam.face(p, push=0.12, side=14, dist=0.7, shake=0.4)`; shot 2 at 1.0 s `KW.cam.xray(p, organ, view='34', push=0.55, orbit=30, dist=0.62)`
   (a small push fails 9a: x-ray frames at 1 s and 2 s look the same); shot 3 at 2.2 s `KW.cam.macro(m, view='wide', push=0.3, hits=[0.15])`.

@@ -6,6 +6,7 @@ bones, so they follow every pose.  Paths (for fx.flow) are lists of (bone, bone-
 import bpy, math, random
 from mathutils import Vector as V, Matrix
 import kwlib as L
+import kwlook as Q
 
 XRAY_BODY = ((0.15, 0.75, 1.0), 2.2, 0.03, 0.42)     # ep_sneeze glass-body look
 PATHS = ('air_out_nose', 'air_out_mouth', 'air_in', 'nose_to_sinus', 'sinus_to_eye', 'food_down', 'blood_heart', 'brain_blood')
@@ -13,6 +14,8 @@ COLORS = {'green': (0.55, 1.0, 0.05), 'red': (1.0, 0.08, 0.03), 'blue': (0.1, 0.
           'white': (0.9, 0.95, 1.0), 'orange': (1.0, 0.42, 0.02)}
 
 def organ_mat(name, col, es=0.7, rough=0.25, sss=0.3, coat=0.5, bump=None):
+    rich = Q.enabled('XRAY')
+    if rich: es *= 0.24; coat = min(coat, 0.37); rough = max(0.30, rough)
     m = L.mat(name, col, rough, emit=col, es=es, sss=sss, coat=coat)
     if bump: L.bumpy(m, *bump)
     return m
@@ -28,7 +31,9 @@ class Body:
         self.anchor = {}        # organ -> (bone, local point)
         self.paths = {}
         self.points = {}        # named rest-pose points (world == rest)
-        self.xmat, self.xem = L.glow(f'kw_xray_body_{p.name}', *XRAY_BODY)
+        self.rich = Q.enabled('XRAY')
+        self.xmat, self.xem = (Q.scan_shell(f'kw_xray_body_{p.name}', (0.04, 0.23, 0.53), (0.19, 0.85, 1.0), 1.55, 0.74)
+                               if self.rich else L.glow(f'kw_xray_body_{p.name}', *XRAY_BODY))
         self.orig = [s.material for s in p.body.material_slots]
         self._build()
 
@@ -115,14 +120,34 @@ class Body:
         # --- brain + skull + orbits + eyes + sinus
         bc = head + U * 0.085 + V((0, 0.005, 0))
         bm = self.reg_mat('brain', organ_mat('kw_brain', (1.0, 0.55, 0.65), 0.8, 0.35, 0.4, 0.3))
+        if self.rich:
+            # Use normalized lobe coordinates: anatomy retains its detail when actors are different sizes.
+            tc = bm.node_tree.nodes.new('ShaderNodeTexCoord').outputs['Generated']
+            Q.texture(bm, (0.31, 0.065, 0.082), (0.93, 0.49, 0.47), 10.5, detail=2, stretch=(1.02, 1.37, 0.85),
+                      rough=(0.30, 0.48), bump=(0.45, 0.0045), source=tc)
         for sx in (1, -1):
             o = L.sphere(f'x_brain{sx}', 1, bc + V((sx * 0.033, 0, 0)), bm, None, 40, 20, (0.034, 0.08, 0.06))
             tx = bpy.data.textures.new(f'kw_gyri{sx}', 'VORONOI'); tx.noise_scale = 0.015; dm = o.modifiers.new('d', 'DISPLACE'); dm.texture = tx; dm.strength = 0.006; dm.texture_coords = 'GLOBAL'
             ss = o.modifiers.new('s', 'SUBSURF'); ss.levels = 0; ss.render_levels = 1
             o.modifiers.move(1, 0); self.add('brain', o, 'head')
         self.set_anchor('brain', 'head', bc); P['brain'] = bc
-        sk_m, sk_em = L.glow('kw_skull', (0.95, 0.95, 1.0), 2.4, 0.04, 0.3); self.reg_mat('skull', sk_m)
+        sk_m, sk_em = (Q.scan_shell('kw_skull_layer', (0.60, 0.68, 0.78), (0.87, 0.96, 1.0), 0.76, 0.48)
+                       if self.rich else L.glow('kw_skull', (0.95, 0.95, 1.0), 2.4, 0.04, 0.3))
+        self.reg_mat('skull', sk_m)
         o = L.sphere('x_cranium', 1, bc + V((0, 0.0, -0.005)), sk_m, None, 40, 20, (0.078, 0.1, 0.085)); self.add('skull', o, 'head')
+        if self.rich:
+            # Small branching arterial silhouettes anchored inside the existing head shell.
+            for sx in (-1, 1):
+                seed = bc + V((sx * 0.036, -0.004, -0.043))
+                mid_v = bc + V((sx * 0.054, -0.009, -0.017))
+                crown = bc + V((sx * 0.056, -0.020, 0.028))
+                for k, path in enumerate((
+                    [seed, mid_v, crown],
+                    [mid_v, bc + V((sx * 0.058, -0.03, 0.004)), bc + V((sx * 0.044, -0.056, 0.029))],
+                    [mid_v.lerp(crown, 0.56), bc + V((sx * 0.062, 0.018, 0.018)), bc + V((sx * 0.043, 0.048, 0.041))],
+                )):
+                    self.add('vessels', L.tube(f'x_cerebral_{sx}_{k}', path, 0.0023 if k == 0 else 0.0015, vm,
+                                              res=3, radii=(1.05, 0.83, 0.40)), 'head')
         rim = self.reg_mat('skull', organ_mat('kw_orbit', (1.0, 0.97, 0.9), 1.4, 0.3, 0.0, 0.3))
         ey_m = self.reg_mat('eyes', organ_mat('kw_xeye', (0.95, 0.97, 1.0), 0.9, 0.2, 0.2, 0.8))
         ir_m = organ_mat('kw_xiris', (0.1, 0.5, 1.0), 2.0)
@@ -239,6 +264,7 @@ class Macro:
 
     def _tube(self):
         M0 = self.M0; R, wc, bc, per, ic = TUBE_KINDS[self.kind]
+        rich = Q.enabled('MACRO')
         wall = L.mat(f'kw_m_wall{self.m.idx}', wc, 0.16, sss=0.4, coat=0.7); nt = wall.node_tree; pb = nt.nodes['Principled BSDF']
         tc = nt.nodes.new('ShaderNodeTexCoord'); sx = nt.nodes.new('ShaderNodeSeparateXYZ'); nt.links.new(tc.outputs['Object'], sx.inputs[0])
         cr = nt.nodes.new('ShaderNodeValToRGB'); cr.color_ramp.elements[0].position = 0.25; cr.color_ramp.elements[0].color = (*wc, 1); cr.color_ramp.elements[1].position = 0.8; cr.color_ramp.elements[1].color = (*bc, 1)
@@ -251,11 +277,26 @@ class Macro:
         nz = nt.nodes.new('ShaderNodeTexNoise'); nz.inputs['Scale'].default_value = 22; nz.inputs['Detail'].default_value = 5; bp = nt.nodes.new('ShaderNodeBump'); bp.inputs['Strength'].default_value = 0.35; bp.inputs['Distance'].default_value = 0.03
         nt.links.new(tc.outputs['Object'], nz.inputs['Vector']); nt.links.new(nz.outputs['Fac'], bp.inputs['Height']); nt.links.new(bp.outputs['Normal'], pb.inputs['Normal'])
         inner = L.mat(f'kw_m_inner{self.m.idx}', ic, 0.25, coat=0.5)
+        if rich:
+            pb.inputs['Coat Weight'].default_value = 0.34
+            pb.inputs['Coat Roughness'].default_value = 0.22
+            pb.inputs['Subsurface Weight'].default_value = 0.22
+            bp.inputs['Distance'].default_value = 0.012
+            layer = nt.nodes.new('ShaderNodeMixRGB'); layer.blend_type = 'MULTIPLY'; layer.inputs[0].default_value = 0.57
+            nr = nt.nodes.new('ShaderNodeValToRGB'); nr.color_ramp.elements[0].position = 0.24
+            nr.color_ramp.elements[0].color = (0.28, 0.30, 0.33, 1); nr.color_ramp.elements[1].position = 0.69
+            nt.links.new(nz.outputs['Fac'], nr.inputs['Fac']); nt.links.new(nr.outputs[0], layer.inputs[2])
+            nt.links.new(cr.outputs[0], layer.inputs[1]); nt.links.new(layer.outputs[0], pb.inputs['Base Color'])
+            rr = nt.nodes.new('ShaderNodeMapRange'); rr.inputs['To Min'].default_value = 0.24; rr.inputs['To Max'].default_value = 0.42
+            nt.links.new(nz.outputs['Fac'], rr.inputs['Value']); nt.links.new(rr.outputs[0], pb.inputs['Roughness'])
+            Q.texture(inner, tuple(j * 0.46 for j in ic), tuple(j * 1.35 for j in ic), 16, stretch=(0.35, 1.4, 1.4),
+                      rough=(0.20, 0.36), bump=(0.20, 0.007))
         me = bpy.data.meshes.new('m_tube'); vs = []; fs = []; NA, NL = 96, 160
         for j in range(NL + 1):
             x = -1.6 + 3.2 * j / NL
             for i in range(NA):
                 a = 2 * math.pi * i / NA; rr = R + (0.016 * max(0.0, math.cos(2 * math.pi * (x - 0.09) / per)) ** 2 if per else 0.006 * math.sin(a * 5 + x * 7))
+                if rich: rr += 0.006 * math.sin(a * 3 + x * 4) + 0.004 * math.sin(a * 7 - x * 9)
                 vs.append((x, rr * math.sin(a), rr * math.cos(a)))
         for j in range(NL):
             for i in range(NA): fs.append((j * NA + i, j * NA + (i + 1) % NA, (j + 1) * NA + (i + 1) % NA, (j + 1) * NA + i))
@@ -270,12 +311,25 @@ class Macro:
         # surroundings: muscle, vessels, fat (ep_sneeze look)
         rnd = self.rnd
         mus = L.bumpy(L.mat(f'kw_m_musc{self.m.idx}', (0.62, 0.05, 0.06), 0.2, sss=0.2, coat=0.6), 60.0, 0.6, 2.0, 0.05, stretch=(0.03, 1, 1))
+        if rich:
+            Q.texture(mus, (0.21, 0.019, 0.028), (0.72, 0.17, 0.15), 7, stretch=(0.12, 4.5, 4.5),
+                      rough=(0.33, 0.49), bump=(0.33, 0.026))
         for k, (y, z, r) in enumerate(((0.75, 0.45, 0.42), (0.85, -0.5, 0.5), (0.2, -0.95, 0.36))):
             self.objs.append(L.cyl(f'kw_m_mus{k}', r, 5.0, M0 + V((0, y + R - 0.35, z)), mus, self.coll, (0, 90, 0), 48))
         vm = L.mat('kw_m_vein', (0.03, 0.12, 0.75), 0.15, coat=0.8); am = L.mat('kw_m_art', (0.85, 0.03, 0.04), 0.15, coat=0.8)
         L.tube('kw_m_v', [M0 + V((-2.4, -0.2, R + 0.27)), M0 + V((-0.8, -0.12, R + 0.21)), M0 + V((0.8, -0.2, R + 0.25)), M0 + V((2.4, -0.1, R + 0.31))], 0.075, vm, self.coll, 8)
         L.tube('kw_m_a', [M0 + V((-2.4, -0.25, -R - 0.25)), M0 + V((-0.7, -0.3, -R - 0.2)), M0 + V((0.9, -0.22, -R - 0.25)), M0 + V((2.4, -0.3, -R - 0.21))], 0.065, am, self.coll, 8)
         fat = L.bumpy(L.mat('kw_m_fat', (1.0, 0.78, 0.2), 0.25, sss=0.5, coat=0.5), 8.0, 0.4)
+        if rich:
+            Q.texture(fat, (0.52, 0.24, 0.037), (0.93, 0.65, 0.18), 13, rough=(0.37, 0.50), bump=(0.27, 0.012))
+            fascia = Q.texture(L.mat('kw_m_fascia', (0.75, 0.36, 0.25), 0.36, sss=0.18),
+                              (0.34, 0.085, 0.054), (0.85, 0.47, 0.32), 22, stretch=(0.13, 1.5, 1.5),
+                              rough=(0.29, 0.48), bump=(0.35, 0.026))
+            for k in range(4):
+                z, y = (R + 0.33 + k * 0.087), (0.20 + k * 0.071)
+                L.tube(f'kw_m_fascial_band{k}', [M0 + V((-2.5, y + 0.04, z + 0.14)), M0 + V((-0.5, y, z)),
+                       M0 + V((0.75, y + 0.04, z - 0.04)), M0 + V((2.5, y + 0.12, z - 0.11))],
+                       0.036, fascia, self.coll, 3, radii=(0.45, 1.0, 0.75, 0.65))
         for i in range(16):
             L.sphere(f'kw_m_fat{i}', rnd.uniform(0.1, 0.2), M0 + V((rnd.uniform(-2.0, 2.0), rnd.uniform(0.15, 0.6), rnd.choice((-1, 1)) * rnd.uniform(R + 0.4, R + 0.8))), fat, self.coll, 20, 10, (1.2, 1.0, 0.8))
         self.block_pt = M0 + V((0.25, 0, 0))
@@ -288,6 +342,9 @@ class Macro:
         cr.color_ramp.elements[0].position = 0.05; cr.color_ramp.elements[0].color = (0.38, 0.16, 0.1, 1); cr.color_ramp.elements[1].position = 0.22; cr.color_ramp.elements[1].color = (0.82, 0.66, 0.48, 1)
         nt.links.new(vo.outputs['Distance'], cr.inputs['Fac']); nt.links.new(cr.outputs['Color'], pb.inputs['Base Color'])
         bp = nt.nodes.new('ShaderNodeBump'); bp.inputs['Strength'].default_value = 0.6; bp.inputs['Distance'].default_value = 0.03; nt.links.new(vo.outputs['Distance'], bp.inputs['Height']); nt.links.new(bp.outputs['Normal'], pb.inputs['Normal'])
+        if Q.enabled('MACRO'):
+            Q.texture(bm, (0.43, 0.25, 0.16), (0.80, 0.67, 0.51), 28, stretch=(0.70, 1, 1.5),
+                      rough=(0.34, 0.58), bump=(0.32, 0.011))
         me = bpy.data.meshes.new('m_plate'); vs = []; fs = []; NX, NZ = 120, 80
         for j in range(NZ + 1):
             z = -1.2 + 2.4 * j / NZ

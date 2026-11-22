@@ -14,6 +14,7 @@ import bpy, os, math, sys
 from mathutils import Vector, Matrix
 HERE = os.path.dirname(os.path.abspath(__file__)); sys.path.insert(0, HERE)
 import kw_realism as R
+import kwlook as Q
 
 A = os.environ.get('KW_ASSETS', os.path.normpath(os.path.join(HERE, '..', '..', 'assets', 'real')))
 def ap(*p): return os.path.join(A, *p)
@@ -132,6 +133,15 @@ def _world(kind):
         L(e2.outputs['Color'], bg2.inputs['Color'])
     elif cam is None: L(env.outputs['Color'], bg2.inputs['Color'])
     else: bg2.inputs['Color'].default_value = (*cam, 1)
+    if kind == 'car' and Q.enabled('CABIN'):
+        # A pale horizon and a richer zenith, both cyan. HDR illumination stays independent.
+        sep = nt.nodes.new('ShaderNodeSeparateXYZ'); L(tc.outputs['Generated'], sep.inputs[0])
+        ramp = nt.nodes.new('ShaderNodeValToRGB')
+        ramp.color_ramp.elements[0].position = 0.0
+        ramp.color_ramp.elements[0].color = (0.35, 0.74, 0.96, 1)
+        ramp.color_ramp.elements[1].position = 0.53
+        ramp.color_ramp.elements[1].color = (0.07, 0.41, 0.85, 1)
+        L(sep.outputs['Z'], ramp.inputs[0]); L(ramp.outputs[0], bg2.inputs['Color'])
     lp = nt.nodes.new('ShaderNodeLightPath'); mx = nt.nodes.new('ShaderNodeMixShader'); out = nt.nodes.new('ShaderNodeOutputWorld')
     L(lp.outputs['Is Camera Ray'], mx.inputs[0]); L(bg.outputs[0], mx.inputs[1]); L(bg2.outputs[0], mx.inputs[2]); L(mx.outputs[0], out.inputs['Surface'])
     return w
@@ -205,6 +215,19 @@ def build_car(S, ned, paint=(0.02, 0.1, 0.5)):
     black = mat('kw_black', (0.012, 0.012, 0.014), 0.45); chrome = mat('kw_chrome', (0.9, 0.9, 0.92), 0.08, 1.0)
     glass = _glass('kw_glass'); mirror = mat('kw_mirror', (0.95, 0.95, 0.95), 0.0, 1.0)
     leather = mat('kw_wheel_leather', (0.02, 0.02, 0.022), 0.5)
+    look = Q.enabled('CABIN')
+    if look:
+        seat_m = tex('kw_seat_tailored', 'Fabric030', 11, tint=(0.43, 0.23, 0.13), nor=1.2)
+        bol_m = Q.texture(mat('kw_cabin_leather', (0.12, 0.047, 0.025), 0.42, coat=0.13),
+                          (0.09, 0.031, 0.014), (0.28, 0.115, 0.049), 125, rough=(0.39, 0.56), bump=(0.26, 0.0015))
+        trim_m = tex('kw_cabin_trim', 'Plastic012A', 9, tint=(0.16, 0.21, 0.27), nor=0.85)
+        dash_m = tex('kw_cabin_dash', 'Plastic012A', 8, tint=(0.06, 0.08, 0.105), nor=0.9)
+        head_m = tex('kw_cabin_liner', 'Fabric036', 10, tint=(0.33, 0.36, 0.40), nor=0.65)
+        leather = Q.texture(leather, (0.010, 0.014, 0.022), (0.043, 0.052, 0.066), 138, rough=(0.38, 0.58), bump=(0.28, 0.0011))
+        thread = mat('kw_contrast_thread', (0.26, 0.125, 0.07), 0.83)
+        piping = mat('kw_seat_piping', (0.045, 0.016, 0.010), 0.45)
+        satin = mat('kw_satin_alloy', (0.28, 0.38, 0.45), 0.30, 0.70)
+        ember = mat('kw_cabin_amber', (0.53, 0.15, 0.018), 0.52, emit=(0.65, 0.18, 0.02), es=0.42)
     # ---------- seats
     for sx, nm in ((0.0, 'drv'), (0.75, 'pas')):
         B.box(f'seat_{nm}_base', (0.5, 0.54, 0.13), (sx, 0.04, P - 0.13), seat_m, 0.04, (4, 0, 0), 3)
@@ -215,6 +238,7 @@ def build_car(S, ned, paint=(0.02, 0.1, 0.5)):
         B.box(f'seat_{nm}_head', (0.27, 0.1, 0.19), (sx, 0.45, H + 0.0), bol_m, 0.045, (-8, 0, 0), 3)
         for px in (-0.07, 0.07): B.cyl(f'seat_{nm}_post', 0.007, 0.12, (sx + px, 0.44, H - 0.14), chrome, (-10, 0, 0), 12)
         B.box(f'seat_{nm}_rail', (0.4, 0.6, 0.06), (sx, 0.05, P - 0.24), black, 0.01)
+        if look: Q.cabin_seat(B, sx, nm, P, H, piping, thread)
     # back bench
     B.box('rear_base', (W - 0.12, 0.5, 0.14), (XC, 1.05, P - 0.11), seat_m, 0.04, (4, 0, 0), 3)
     B.box('rear_back', (W - 0.12, 0.14, 0.6), (XC, 1.36, P + 0.25), seat_m, 0.04, (-16, 0, 0), 3)
@@ -244,6 +268,7 @@ def build_car(S, ned, paint=(0.02, 0.1, 0.5)):
         B.box(f'pocket_{side}', (0.05, 0.6, 0.1), (x + sgn * 0.04, -0.35, 0.18), dash_m, 0.015)
         B.box(f'handle_{side}', (0.02, 0.1, 0.02), (x + sgn * 0.045, -0.32, P + 0.3), chrome, 0.006)
         B.box(f'seal_{side}', (0.02, 2.55, 0.015), (x + sgn * 0.035, 0.3, BL + 0.025), black, 0.004)
+        if look: Q.cabin_door(B, side, x, sgn, P, BL, dash_m, bol_m, satin, ember, thread)
         # door mirror outside, ahead of the A pillar base
         B.box(f'mirror_arm_{side}', (0.12, 0.05, 0.04), (x - sgn * 0.08, YF + 0.12, BL + 0.05), black, 0.01)
         mh = B.box(f'mirror_house_{side}', (0.08, 0.13, 0.11), (x - sgn * 0.17, YF + 0.14, BL + 0.08), paint_m, 0.03, (0, 0, -sgn * 8), 3)
@@ -258,6 +283,9 @@ def build_car(S, ned, paint=(0.02, 0.1, 0.5)):
     B.box('dash_top', (W + 0.1, 0.55, 0.1), (XC, YF + 0.22, BL - 0.0), dash_m, 0.04, (-6, 0, 0), 3)
     B.box('dash_face', (W, 0.12, 0.34), (XC, YF + 0.47, BL - 0.2), dash_m, 0.04, (12, 0, 0), 3)
     B.box('dash_trim', (W - 0.05, 0.03, 0.035), (XC, YF + 0.535, BL - 0.1), trim_m, 0.008, (12, 0, 0))
+    if look:
+        B.box('kw_dash_inlay', (W - 0.10, 0.018, 0.010), (XC, YF + 0.556, BL - 0.106), satin, 0.004, (12, 0, 0))
+        B.box('kw_dash_ambient', (W - 0.11, 0.012, 0.004), (XC, YF + 0.565, BL - 0.118), ember, 0.002, (12, 0, 0))
     B.box('glovebox', (0.48, 0.03, 0.17), (0.78, YF + 0.53, BL - 0.27), dash_m, 0.01, (12, 0, 0))
     B.box('binnacle', (0.42, 0.24, 0.1), (0.0, YF + 0.33, BL + 0.07), dash_m, 0.04, (8, 0, 0), 3)
     clu = B.box('cluster', (0.36, 0.01, 0.12), (0.0, YF + 0.44, BL + 0.04), _screen('kw_cluster', 'map'), 0.0, (100, 0, 0))
@@ -292,6 +320,11 @@ def build_car(S, ned, paint=(0.02, 0.1, 0.5)):
     B.box('rvm_glass', (0.22, 0.003, 0.055), (XC, -0.497, RF - 0.1), mirror, 0.0, (0, 0, -8))
     # sun visors
     for vx in (0.0, 0.75): B.box('visor', (0.36, 0.17, 0.025), (vx, -0.38, RF - 0.03), head_m, 0.01, (8, 0, 0), 3)
+    if look:
+        B.box('kw_overhead_console', (0.22, 0.20, 0.032), (XC, -0.23, RF - 0.029), dash_m, 0.011)
+        lamp = mat('kw_cabin_dome_diffuser', (0.45, 0.52, 0.52), 0.35)
+        for inc in (-0.073, 0.073):
+            B.box('kw_overhead_diffuser', (0.042, 0.059, 0.004), (XC + inc, -0.24, RF - 0.047), lamp, 0.006)
     # ---------- exterior: hood, fenders, wipers, cowl
     hood_z0 = BL - 0.05
     B.box('cowl', (W + 0.2, 0.14, 0.04), (XC, YF - 0.05, hood_z0), black, 0.012)
@@ -359,6 +392,11 @@ def build_car(S, ned, paint=(0.02, 0.1, 0.5)):
     car.lights = [_area(c, 'car_key', (0.55, -1.5, H + 0.45), 230, 1.6, (1.0, 0.93, 0.85), (0, 0, H - 0.05)),
                   _area(c, 'car_rim', (-1.1, 0.35, H + 0.25), 70, 0.9, (0.65, 0.8, 1.0), (0, 0, H - 0.05)),
                   _area(c, 'car_fill', (1.0, -0.2, H - 0.1), 40, 1.0, (1.0, 0.9, 0.8), (0, 0, H - 0.1))]
+    if look:
+        key, rim, fill = car.lights
+        key.data.size = 1.25; key.data.energy = 252; key.data.color = (1.0, 0.93, 0.84)
+        rim.data.energy = 103; rim.data.color = (0.65, 0.83, 1.0)
+        fill.data.energy = 23; fill.data.color = (0.91, 0.98, 1.0)
     car.H, car.BL, car.RF = H, BL, RF
     return car
 
@@ -462,10 +500,31 @@ def build_hospital(S, ned, wall_col=(0.12, 0.60, 0.86)):   # Zack look: bright s
     B.box('h_shelf', (0.6, 0.18, 0.025), (-1.35, YW - 0.09, 1.55), white, 0.005)
     for k, colr in enumerate(((0.1, 0.35, 0.8), (0.75, 0.2, 0.55), (0.9, 0.85, 0.85))):
         B.box('h_glovebox', (0.15, 0.09, 0.08), (-1.55 + k * 0.17, YW - 0.1, 1.605), mat(f'kw_h_gb{k}', colr, 0.6), 0.004)
-    B.box('h_frame', (0.55, 0.025, 0.7), (-0.05, YW - 0.015, 1.75), mat('kw_h_framewood', (0.5, 0.36, 0.22), 0.5), 0.008)
+    frame = B.box('h_frame', (0.55, 0.025, 0.7), (-0.05, YW - 0.015, 1.75), mat('kw_h_framewood', (0.5, 0.36, 0.22), 0.5), 0.008)
     B.box('h_frame_img', (0.48, 0.005, 0.62), (-0.05, YW - 0.03, 1.75), mat('kw_h_chart', (0.75, 0.82, 0.86), 0.7), 0.0)
+    if Q.enabled('DRESSING'):
+        # Coherent clinical headwall: satin extrusion, instrument sockets and a folded lower sheet.
+        fascia = mat('kw_h_headwall', (0.53, 0.70, 0.73), 0.42)
+        socket = mat('kw_h_socket', (0.095, 0.20, 0.24), 0.50)
+        ring = mat('kw_h_medical_blue', (0.05, 0.32, 0.56), 0.35, 0.16)
+        B.box('h_headwall', (1.77, 0.048, 0.13), (-0.58, YW - 0.027, 1.12), fascia, 0.012)
+        B.box('h_headwall_shadow_line', (1.74, 0.011, 0.012), (-0.58, YW - 0.053, 1.08), socket, 0.005)
+        for x_ in (-1.29, -1.17, 0.03, 0.16):
+            B.cyl('h_service_ring', 0.025, 0.012, (x_, YW - 0.058, 1.131), ring, (90, 0, 0), 16)
+            B.cyl('h_service_port', 0.014, 0.013, (x_, YW - 0.065, 1.131), socket, (90, 0, 0), 12)
+        blanket = tex('kw_h_blanket', 'Fabric036', 9, tint=(0.25, 0.57, 0.63), nor=1.1)
+        B.box('h_bed_blanket_fold', (0.43, by1 - by0 + 0.018, 0.023), (-0.36, byc, top + 0.014), blanket, 0.008)
+        B.box('h_bed_blanket_drop', (0.43, 0.018, 0.11), (-0.36, by0 - 0.014, top - 0.036), blanket, 0.008, (-6, 0, 0))
+        frame.data.materials[0] = ring
+        # Mark the chart as a designed prop, not a blank block. Lines are intentionally non-readable.
+        for k, x_ in enumerate((-0.192, -0.03, 0.124)):
+            B.box('h_chart_bar', (0.062, 0.002, 0.07 + k * 0.034), (x_, YW - 0.034, 1.74), ring, 0)
+        for z in (1.55, 1.576, 1.887):
+            B.box('h_chart_rule', (0.36, 0.002, 0.004), (-0.045, YW - 0.034, z), ring, 0)
     # lights: warm key front-right, cool rim back-left, ceiling bounce
     h.lights = [_area(c, 'h_key', (1.25, -1.45, 2.25), 160, 1.3, (1.0, 0.86, 0.72), (0, 0, H - 0.1)),
                 _area(c, 'h_rim', (-1.2, 1.1, 2.1), 110, 0.8, (0.55, 0.75, 1.0), (0, 0, H - 0.1)),
                 _area(c, 'h_fill', (0.2, -1.8, 1.0), 30, 1.5, (1.0, 0.95, 0.9), (0, 0, H - 0.2))]
+    if Q.enabled('DRESSING'):
+        h.lights[0].data.color = (1.0, 0.94, 0.85); h.lights[0].data.energy = 185
     return h
