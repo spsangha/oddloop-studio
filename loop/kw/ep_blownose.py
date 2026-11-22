@@ -11,9 +11,9 @@ ep = KW.Episode('ep_blownose', injury="cracked the bone", voice_lines=[
     "She was at work, so she pressed a tissue to her face and blew as hard as she could.",
     "The blast forced air up into the hollow sinus right beside her left eye.",
     "That pressure snapped the paper-thin inner wall of her eye socket.",
-    "Air rushed through the crack and puffed her eyelid swollen shut.",
+    "Air rushed through the crack and puffed up the skin around her eye.",
     "A hospital scan showed the broken bone and tiny air pockets around her eye.",
-    "Three weeks later, the trapped air was gone, without any surgery.",
+    "Three weeks later, the swelling was gone, without any surgery.",
 ], music='sneaky_snitch', gap=0.4)
 
 # ---- cast ---------------------------------------------------------------------------------------------------

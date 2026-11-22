@@ -7,18 +7,18 @@
   "She was at work, so she pressed a tissue to her face and blew as hard as she could.",
   "The blast forced air up into the hollow sinus right beside her left eye.",
   "That pressure snapped the paper-thin inner wall of her eye socket.",
-  "Air rushed through the crack and puffed her eyelid swollen shut.",
+  "Air rushed through the crack and puffed up the skin around her eye.",
   "A hospital scan showed the broken bone and tiny air pockets around her eye.",
-  "Three weeks later, the trapped air was gone, without any surgery."
+  "Three weeks later, the swelling was gone, without any surgery."
  ],
  "durations": [
   2.981,
   4.249,
   3.617,
   3.085,
-  2.858,
+  2.97,
   4.031,
-  3.63
+  3.456
  ],
  "words": [
   [
@@ -178,7 +178,7 @@
   [
    [
     0.0,
-    0.049,
+    0.05,
     "The"
    ],
    [
@@ -193,7 +193,7 @@
    ],
    [
     0.828,
-    1.016,
+    1.017,
     "air"
    ],
    [
@@ -307,58 +307,68 @@
   [
    [
     0.0,
-    0.187,
+    0.181,
     "Air"
    ],
    [
-    0.199,
-    0.494,
+    0.193,
+    0.488,
     "rushed"
    ],
    [
-    0.505,
-    0.67,
+    0.499,
+    0.653,
     "through"
    ],
    [
-    0.682,
-    0.777,
+    0.665,
+    0.759,
     "the"
    ],
    [
-    0.788,
-    1.166,
+    0.771,
+    1.148,
     "crack"
    ],
    [
-    1.178,
-    1.284,
+    1.16,
+    1.266,
     "and"
    ],
    [
-    1.295,
-    1.555,
+    1.278,
+    1.573,
     "puffed"
    ],
    [
-    1.567,
-    1.708,
+    1.584,
+    1.714,
+    "up"
+   ],
+   [
+    1.726,
+    1.808,
+    "the"
+   ],
+   [
+    1.82,
+    2.103,
+    "skin"
+   ],
+   [
+    2.115,
+    2.433,
+    "around"
+   ],
+   [
+    2.445,
+    2.587,
     "her"
    ],
    [
-    1.72,
-    2.027,
-    "eyelid"
-   ],
-   [
-    2.038,
-    2.439,
-    "swollen"
-   ],
-   [
-    2.451,
-    2.828,
-    "shut."
+    2.598,
+    2.94,
+    "eye."
    ]
   ],
   [
@@ -436,57 +446,52 @@
   [
    [
     0.0,
-    0.203,
+    0.207,
     "Three"
    ],
    [
-    0.215,
-    0.51,
+    0.219,
+    0.513,
     "weeks"
    ],
    [
-    0.522,
-    0.876,
+    0.525,
+    0.879,
     "later,"
    ],
    [
-    1.064,
-    1.17,
+    1.068,
+    1.174,
     "the"
    ],
    [
-    1.182,
-    1.56,
-    "trapped"
+    1.186,
+    1.587,
+    "swelling"
    ],
    [
-    1.571,
-    1.76,
-    "air"
-   ],
-   [
-    1.772,
-    1.925,
+    1.598,
+    1.752,
     "was"
    ],
    [
-    1.937,
-    2.279,
+    1.763,
+    2.105,
     "gone,"
    ],
    [
-    2.479,
-    2.845,
+    2.294,
+    2.66,
     "without"
    ],
    [
-    2.857,
-    3.022,
+    2.671,
+    2.837,
     "any"
    ],
    [
-    3.034,
-    3.6,
+    2.848,
+    3.426,
     "surgery."
    ]
   ]
