@@ -19,7 +19,7 @@ TEES = ['teal', 'white', 'red', 'navy', 'mustard', 'grey', 'maroon', 'olive', 'o
 BUILD = {'slim': (0.3, 0.4), 'avg': (0.5, 0.5), 'heavy': (0.85, 0.45), 'muscular': (0.5, 0.85)}
 
 
-def _scan(): return os.environ.get('KW_HEADS', '') == 'scan'
+def _scan(): return os.environ.get('KW_HEADS', 'scan') == 'scan'   # default ON since 2026-11-23 (keep in step with heads_kw.DEFAULT)
 
 
 def _targets(mp):

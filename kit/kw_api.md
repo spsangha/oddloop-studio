@@ -16,7 +16,7 @@ import kwkit as KW
 `mia = ep.person('Mia', job, seed, gender='f'|'m', age='young'|'middle'|'old', race='caucasian'|'african'|'asian', hair=..., tee='red', tan=0.3, clipboard=True, mask=True, gloves=True)`
 - jobs: doctor nurse surgeon police paramedic firefighter patient chef 'construction worker' business pilot scientist civilian
 - seed: any string; same seed = same face. `mia.part('neck_l', (0, -0.05, 0.03))` = point on her (their-left, forward, up m).
-- Scan heads (branch heads-scan, default off): env `KW_HEADS=scan` gives every person a light-stage scan face shape (ICT-FaceKit, picked by seed), scan skin detail,
+- Scan heads (DEFAULT ON since 2026-11-23; env `KW_HEADS=legacy` restores the old heads; defaults live in heads_kw.DEFAULT and cast._scan): scan mode gives every person a light-stage scan face shape (ICT-FaceKit, picked by seed), scan skin detail,
   strand hair, brows and beard, scan iris; same API, expressions, x-ray and seeds. `KW_SCAN_HAIR=0` keeps card hair, `KW_SCAN_BROWS=0` card brows/beard;
   `KW_SCAN_LONGHAIR=1` strand long/bob hair (about +90% frame time); knobs `KW_HEADS_GAIN` (1.4) `KW_SCAN_SSS` (0; >0 costs ~+50%) `KW_SCAN_COL` `KW_SCAN_BUMP`. Credit Lee Perry-Smith (assets/LICENCES.md). Code: loop/kw/heads_kw.py.
 - PARTS: nose mouth chin forehead head_top eye_l eye_r cheek_l cheek_r ear_l ear_r neck_l neck_r throat chest chest_l chest_r belly shoulder_l shoulder_r wrist_l wrist_r back knee_l knee_r

@@ -3,14 +3,15 @@
   `seed` picks stable PCA coefficients, so every cast member gets a distinct, scan-plausible face.
 - skin: Lee Perry-Smith head scan (CC BY 3.0, Infinite Realities) displacement / specular / colour baked to MakeHuman UVs
   (assets/heads/scan_*.jpg): real pores, lip lines, creases, oily T-zone and red zones layered on the MakeHuman photo skins.
-Default off (env KW_HEADS unset) -> the kit renders exactly as before."""
+Default ON since 2026-11-23 (DEFAULT below); env KW_HEADS=legacy -> the kit renders the old heads."""
 import os, random, zlib
 import numpy as np
 HD = os.environ.get('KW_HEADS_DIR', os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'assets', 'heads'))
 _D = None
 
 
-def on(): return os.environ.get('KW_HEADS', '') == 'scan'
+DEFAULT = 'scan'   # approved by the lead 2026-11-23 after round 2; set to 'legacy' (or env KW_HEADS=legacy) to go back
+def on(): return os.environ.get('KW_HEADS', DEFAULT) == 'scan'
 
 
 def _deltas():
