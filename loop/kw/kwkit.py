@@ -596,14 +596,14 @@ class Episode:
         """script/timeline guard rails.  Raises SystemExit with every problem listed (strict) or returns the list."""
         E = []; W = []
         words = sum(len(re.findall(r"[A-Za-z0-9']+(?:-[A-Za-z0-9']+)*", l)) for l in self.lines_text)
-        if not 80 <= words <= 92: E.append(f'script has {words} words; must be 80-92')
-        if not 5 <= len(self.lines_text) <= 7: E.append(f'script has {len(self.lines_text)} sentences; must be 5-7 (one per voice line)')
+        if not 68 <= words <= 92: E.append(f'script has {words} words; must be 68-92 (Zack: 69-92)')
+        if not 3 <= len(self.lines_text) <= 7: E.append(f'script has {len(self.lines_text)} sentences; must be 3-7 (Zack: 3-6; one per voice line)')
         for i, l in enumerate(self.lines_text):
             if len(re.findall(r'[.!?](\s|$)', l)) != 1 or l[-1:] not in '.!?': E.append(f'voice line {i + 1} must be exactly one sentence ending in . ! or ?: {l!r}')
         for i in range(len(self.vo) - 1):
             if self.vo[i][0] + self.vo_dur[i] > self.vo[i + 1][0] - 0.1: E.append(f'voice line {i + 1} runs into line {i + 2} (start {self.vo[i + 1][0]} too early)')
         n = len(self.shots)
-        if not 12 <= n <= 19: E.append(f'{n} shots; need 12-19 for a ~30 s Short (Zack cuts every 1.5-2.5 s)')
+        if not 10 <= n <= 19: E.append(f'{n} shots; need 10-19 for a 22-36 s Short (Zack cuts every 1.5-2.5 s)')
         if self.shots and self.shots[0].t != 0: E.append('first shot must start at 0.0')
         names = [s.name for s in self.shots]
         if len(set(names)) != len(names): E.append('shot names must be unique')
@@ -653,7 +653,7 @@ class Episode:
             if not (isinstance(last.cam, Cam) and last.cam.kind == 'loop'): E.append('last shot must use cam=KW.cam.loop() so the Short loops')
             if last.set != first.set: E.append(f'last shot set {last.set!r} must match the first shot set {first.set!r} (loop)')
             if set(a.name for a in last.cast) != set(a.name for a in first.cast): W.append('last shot cast differs from the first shot (loop will jump)')
-        if not 26 <= self.duration <= 36: E.append(f'duration {self.duration:.1f} s; must be 26-36 s (hook spec: add words or gap=0.4)')
+        if not 22 <= self.duration <= 36: E.append(f'duration {self.duration:.1f} s; must be 22-36 s (Zack: 24-30 s; add words or gap=0.4)')
         for name, ok, why in self.hook_gate():
             if not ok: E.append(f'HOOK {name}: {why}')
         for e in E: print('CHECK ERROR:', e)
@@ -673,7 +673,7 @@ class Episode:
                   'give KW.Episode(..., injury="<words of sentence 1 naming the injury>")' if not inj else f'{self.injury!r} ends at word {None if at is None else at + len(inj)}'))
         bad = [f for f in HOOK_FILLER if f in s1.lower()]
         R.append(('no filler in sentence 1', not bad, f'remove {bad} (context such as "while driving" goes in sentence 2)'))
-        R.append(('sentence 1 is 8-13 words', 8 <= len(toks) <= 13, f'{len(toks)} words'))
+        R.append(('sentence 1 is 8-24 words', 8 <= len(toks) <= 24, f'{len(toks)} words (Zack opens with a 20+ word run-on; time its shots with ep.word(0, ...))'))
         W = self.words(); n03 = sum(1 for a, b, w in W if a < 3.0)
         R.append(('8-11 words spoken in 0-3 s', 8 <= n03 <= 11, f'{n03} words start before 3.0 s (sentence 1 must end by about 3 s; start sentence 2 after 3.0 s)'))
         st = [s.t for s in self.shots]

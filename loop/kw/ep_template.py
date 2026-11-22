@@ -1,8 +1,8 @@
 """Kinda Wild Films - EPISODE TEMPLATE.  Copy to ep_<slug>.py, fill every <<...>>, delete nothing structural.
 Case: <<one line: who, what happened, outcome>>.  Sources (2, opened):  <<url 1>>  <<url 2>>
 Rules (ep.check enforces them; python3 kwkit.py --check ep_<slug>.py):
-  * 5-7 sentences, 80-92 words, third person past tense, no filler opening ("Imagine", "Did you know", "This is").
-  * Sentence 1 = 8-13 words and NAMES THE INJURY within 12 words; `injury=` is that exact phrase from sentence 1.
+  * 3-6 sentences (7 max), 68-92 words (Zack: 69-92 words, 3-6 sentences), third person past tense, no filler opening ("Imagine", "Did you know", "This is").
+  * Sentence 1 = one run-on of 18-24 words with a comma (8-13 still passes), shots timed with ep.word(0, 'word'), and NAMES THE INJURY within 12 words; `injury=` is that exact phrase from sentence 1.
   * Shots: first shot <= 1.0 s, an inside-body shot (set='xray' or 'macro') at 1.0 s, a third shot by 2.2-2.4 s,
     no shot longer than 2.2 s, the last shot uses KW.cam.loop() so the Short loops back to frame 0.
   * A physical sound on frame 0 (thud, pinch, puff, pop ...). NEVER a whoosh / swoosh / riser (owner ban).

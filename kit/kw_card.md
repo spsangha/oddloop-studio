@@ -35,7 +35,7 @@ gh run download <id> -n kindawild -D /home/user/workspace/kindawild/<NN>_<slug> 
 13 HAND-OVER: give the owner the mp4 + ONE code block with the whole Facebook/Instagram caption (≤2,200 chars, 4-6 hashtags as the last line).
 
 ## Rules ep.check enforces (so you know why it fails)
-5-7 sentences, 80-92 words, plain words · sentence 1 = 8-13 words, names the injury within 12 words (`injury=`), no
+3-6 sentences (7 max), 68-92 words, plain words (SCRIPT MATCH v2, 2026-11-23: same shape as Zack: 69-92 words, 3-6 sentences) · sentence 1 = ONE run-on of 18-24 words with a comma, action and injury in the first clause, time its shots on words with `ep.word(0, "word")` (8-13 words still passes) · names the injury within 12 words (`injury=`), no
 "imagine / did you know / one day" · line 1 at 0.0 s, 8-11 words in 0-3 s · shot 1 ≤ 1.0 s, x-ray/macro at 1.0 s, third
 shot by 2.2-2.4 s · every shot ≤ 2.2 s · physical sound on frame 0 · last shot `KW.cam.loop()`, cut ≤ 200 ms after the last word.
 
