@@ -63,12 +63,12 @@ def grade(im):
     """Zack D. look: punchy contrast, rich saturation, warm skin, cyan-leaning blues."""
     a = np.asarray(im).astype(np.float32) / 255.0
     lum = a @ np.array([0.299, 0.587, 0.114], np.float32)
-    a = lum[..., None] + (a - lum[..., None]) * 1.18                     # saturation
+    # Zack look (audit 2026-11-22, storyboards): mean luma 0.47-0.65, saturation 0.30-0.43, skin R-B 0.18-0.24 -> brighter, less saturated, less orange
+    a = lum[..., None] + (a - lum[..., None]) * 0.95                     # saturation
     a = np.clip(a, 0, 1)
     a = 0.5 + (a - 0.5) * 1.06; a = np.clip(a, 0, 1)                     # contrast
-    a = a ** np.array([0.98, 1.0, 1.03], np.float32)                       # slight warm overall
-    mid = 4 * lum * (1 - lum)                                              # warm midtones (skin), cool/cyan highlights in blues
-    a[..., 0] += 0.025 * mid; a[..., 2] -= 0.02 * mid
+    mid = 4 * lum * (1 - lum)
+    a[..., 0] -= 0.012 * mid; a[..., 2] += 0.012 * mid                    # pull skin toward neutral-warm
     blue = np.clip((a[..., 2] - a[..., 0]) * 2.0, 0, 1)
     a[..., 1] += 0.06 * blue; a[..., 0] -= 0.03 * blue
     sh = np.clip(1 - lum * 3, 0, 1); a -= 0.04 * sh[..., None]             # deeper shadows
@@ -76,6 +76,28 @@ def grade(im):
     r = np.sqrt(((xx + 0.5) / w - 0.5) ** 2 / 0.25 + ((yy + 0.5) / h - 0.5) ** 2 / 0.25)
     a *= (1 - 0.15 * np.clip((r - 0.55) / 0.6, 0, 1) ** 2)[..., None]
     return Image.fromarray((np.clip(a, 0, 1) * 255).astype(np.uint8))
+
+def whip_cuts(cj, fps, max_n=2):
+    """Zack look: a picture-only motion-blur whip on scene changes (location to location, never into x-ray/macro), at most 2 per Short.
+    NO sound is added. cj['shots'] = [[t, name, set], ...] (set optional; falls back to the name prefix)."""
+    sh = cj.get('shots') or []; out = []
+    skip = ('xray', 'macro', 'graphic')
+    for k in range(1, len(sh)):
+        a = sh[k - 1][2] if len(sh[k - 1]) > 2 else sh[k - 1][1].split('_')[0]
+        b = sh[k][2] if len(sh[k]) > 2 else sh[k][1].split('_')[0]
+        if a != b and a not in skip and b not in skip and k < len(sh) - 1: out.append(int(round(sh[k][0] * fps)))
+    return out[:max_n]
+
+def whip(im, i, cuts, half=3, px=180):
+    """horizontal motion blur ramping up to the cut frame and down after it (half frames each side, ~0.25 s total)"""
+    for c in cuts:
+        d = abs(i - c) if i < c else abs(i - c + 1)
+        if d < half:
+            k = int(px * (1 - d / half)) | 1
+            a = np.asarray(im).astype(np.float32); cs = np.cumsum(np.pad(a, ((0, 0), (k // 2 + 1, k // 2), (0, 0)), mode='edge'), axis=1)
+            a = (cs[:, k:] - cs[:, :-k]) / k
+            return Image.fromarray(np.clip(a[:, :im.width], 0, 255).astype(np.uint8))
+    return im.copy()
 
 def caption(im, t, caps, y=0.78):
     for a, b, txt in caps:
@@ -114,11 +136,11 @@ if __name__ == '__main__':
     if len(miss) > 3: sys.exit(f'missing {len(miss)} frames, e.g. {miss[:10]}')
     p = subprocess.Popen(['ffmpeg', '-v', 'error', '-y', '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-s', f'{W}x{H}', '-r', str(fps), '-i', '-',
                           '-c:v', 'libx264', '-preset', 'slow', '-crf', '16', '-pix_fmt', 'yuv420p', out + '.v.mp4'], stdin=subprocess.PIPE)
-    last = None
+    cuts = whip_cuts(cj, fps); last = None
     for i in range(n):
         src = idx.get(i) or last
         base = grade(Image.open(src).convert('RGB').resize((W, H), Image.LANCZOS)) if src != last else base; last = src
-        p.stdin.write(caption(base.copy(), i / fps, caps, cj.get('cap_y', 0.78)).tobytes())
+        p.stdin.write(caption(whip(base, i, cuts), i / fps, caps, cj.get('cap_y', 0.78)).tobytes())
     p.stdin.close(); assert p.wait() == 0
     audio(cj, lines, music, out + '.a.wav')
     subprocess.run(['ffmpeg', '-v', 'error', '-y', '-i', out + '.v.mp4', '-i', out + '.a.wav', '-map', '0:v', '-map', '1:a', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '256k',

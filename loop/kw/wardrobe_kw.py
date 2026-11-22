@@ -1069,6 +1069,14 @@ def dress(p, job, seed):
             path=_TEX/f"tee_{tex}.jpg"
             if n is not None and path.is_file() and _asset(main)=="male_casualsuit04":
                 n.image=bpy.data.images.load(str(path),check_existing=True)
+        if main and options.get("brand",True):   # Zack look: the channel name printed on the main character's tee
+            try:
+                f=_Fit(p,main); sz=f.s; z=f.neck.z-.17*sz
+                ink=_mat("tee chest print","1E2328" if tex in ("white","skyblue","mustard","grey","orange") else "F2F4F5",.6)
+                f.text("kinda wild tee print","KINDA WILD",.022*sz,f.on(0.0,z,.012*sz),"spine01",ink)
+                p._kw_wardrobe_owned=f._made
+            except Exception as e:
+                print("tee print skipped",repr(e))
         return p
     f=_Fit(p,main)
     if job in _MEDICAL:

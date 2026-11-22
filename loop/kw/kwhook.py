@@ -21,7 +21,8 @@ TRANSIENT = {'thud', 'pinch', 'bounce', 'rip', 'sneeze', 'crackle', 'pop', 'coug
 FILLER = ('so today', 'did you know', 'have you ever', 'this is the story', 'meet ', 'while he was', 'while she was', 'one day')
 SHEET_FRAMES = (0, 4, 12, 24, 36, 48, 60, 72)
 GATE = dict(onset_max=0.06, onset_hard=0.12, hook_words=12, words_0_3=(8, 11), cap_y=(0.76, 0.80), end_tail=0.2,
-            first_shot_max=1.1, inside_by=1.2, cuts_0_3=2, lum0=(65, 210), mae_1s=35, mae_f12=10, loop_mae=55)
+            first_shot_max=1.1, inside_by=1.2, cuts_0_3=2, lum0=(65, 210), mae_1s=35, mae_f12=10, loop_mae=55,
+            luma=(0.32, 0.70), sat=(0.19, 0.53), bg_hue=(180, 215), bg_sat=0.30)
 
 
 def load_cues(src):
@@ -64,9 +65,9 @@ def script_items(cj, words):
     cy = cj.get('cap_y', 0.78)
     res.append(('5 caption on frame 0, 20-24 % up from the bottom', bool(cj.get('cap_lead0')) and vo[0][0] < 0.3 and GATE['cap_y'][0] <= cy <= GATE['cap_y'][1],
                 f"cap_lead0={cj.get('cap_lead0', False)} cap_y={cy} ({(1 - cy) * 100:.0f} % up)"))
-    shots = cj['shots']; starts = [a for a, n in shots]
+    shots = cj['shots']; starts = [x[0] for x in shots]
     first_len = starts[1] if len(starts) > 1 else cj['duration']; cuts = sum(1 for a in starts[1:] if a < 3.0)
-    inside = hk.get('inside', []); ins = [a for a, n in shots if n in inside or n.startswith(('xray', 'macro'))]
+    inside = hk.get('inside', []); ins = [x[0] for x in shots if x[1] in inside or x[1].startswith(('xray', 'macro'))]
     ok = cuts >= GATE['cuts_0_3'] and first_len <= GATE['first_shot_max'] + 1e-6 and bool(ins) and min(ins) <= GATE['inside_by']
     res.append(('7+8 >= 2 cuts in 0-3 s, first shot <= 1.1 s, inside the body by 1.2 s', ok,
                 f"cuts before 3 s: {cuts}; first shot {first_len:.2f}s; first inside-body shot at {min(ins) if ins else None}"))
@@ -107,6 +108,23 @@ def frame_items(cj, fdir):
     m1, m2 = mae(0, 24), mae(24, 48)
     res.append(('9a pixel change 0-1 s and 1-2 s (MAE >= 35)', m1 >= GATE['mae_1s'] and m2 >= GATE['mae_1s'], f'{m1:.1f} / {m2:.1f}'))
     ml = mae(last, 0); res.append(('10b loop: last frame matches frame 0 (MAE <= 55)', ml <= GATE['loop_mae'], f'{ml:.1f}'))
+    res += look_items(cj, fp(0))
+    return res
+
+
+def look_items(cj, f0):
+    """Zack D. Films look (match_checklist.md '3D look and motion'), measured on graded frame 0 like the final video."""
+    import numpy as np, post_kw
+    from matplotlib.colors import rgb_to_hsv
+    a = np.asarray(post_kw.grade(_img(f0).resize((270, 480)))).astype('float32') / 255; h = rgb_to_hsv(a)
+    L = float((a @ np.array([0.299, 0.587, 0.114], 'float32')).mean()); S = float(h[..., 1].mean())
+    bg = np.concatenate([h[48:288, :48].reshape(-1, 3), h[48:288, -48:].reshape(-1, 3)])   # left/right 18 % strips, 10-60 % height
+    tH = float(np.median(bg[:, 0]) * 360); tS = float(np.median(bg[:, 1]))
+    res = [('11a look: graded f0 mean luma 0.32-0.70 (Zack per-frame 5-95 %, median 0.54)', GATE['luma'][0] <= L <= GATE['luma'][1], f'{L:.2f}'),
+           ('11b look: graded f0 mean saturation 0.19-0.53 (Zack per-frame 5-95 %, median 0.35)', GATE['sat'][0] <= S <= GATE['sat'][1], f'{S:.2f}')]
+    st = cj['shots'][0][2] if len(cj['shots'][0]) > 2 else cj['shots'][0][1].split('_')[0]
+    ok = GATE['bg_hue'][0] <= tH <= GATE['bg_hue'][1] and tS >= GATE['bg_sat']
+    res.append((f'11c (advisory) background side strips sky-blue: hue 180-215 deg, sat >= 0.30 (set {st}; Zack ~55 % of frames)', None, ('OK ' if ok else 'NOT blue ') + f'hue {tH:.0f} sat {tS:.2f}'))
     return res
 
 
@@ -123,7 +141,7 @@ def sheet(cj, words, fdir, out):
         base = post_kw.grade(_img(p).resize((post_kw.W, post_kw.H)))
         fimg = post_kw.caption(base, i / cj['fps'], caps, cj.get('cap_y', 0.78)).resize((tw, th))
         x, y = (k % cols) * tw, (k // cols) * (th + 40); im.paste(fimg, (x, y + 40))
-        name = next((s for a, s in reversed(cj['shots']) if i / cj['fps'] >= a), cj['shots'][0][1])
+        name = next((x[1] for x in reversed(cj['shots']) if i / cj['fps'] >= x[0]), cj['shots'][0][1])
         d.text((x + 8, y + 6), f"{'END ' if k == len(fr) - 1 else ''}f{i:04d} {i / cj['fps']:.2f}s {name}", font=f, fill=(255, 230, 90))
     im.save(out); return out
 

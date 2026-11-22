@@ -673,7 +673,7 @@ class Runtime:
 
     def cam_eval_kind(self, shot, c, un, si, live=True, at_t=0.0):
         o = c.o; t = at_t; u = un * shot.length
-        lens = o.get('lens'); fstop = o.get('fstop'); push = o.get('push', 0.0); orbit = o.get('orbit', 0.0); side = o.get('side', None)
+        lens = o.get('lens'); fstop = o.get('fstop'); push = o.get('push', 0.08 if c.kind in ('face', 'medium', 'wide', 'two_shot', 'over_shoulder', 'profile', 'part') else 0.0); orbit = o.get('orbit', 0.0); side = o.get('side', None)   # push default: Zack look slow push-in
         height = o.get('height', 0.0); dist = o.get('dist'); follow = o.get('follow')
         mv = un      # linear progress (continuous for the loop extrapolation)
         def anc(actor, key=None):
@@ -828,6 +828,8 @@ class Runtime:
             o.rotation_euler = (hb - o.location).to_track_quat('-Z', 'Y').to_euler(); o.data.energy = e
         w = shot.world or KW.SET_WORLD[shot.set]
         self.world(w)
+        # Zack look: every set lands at frame luma ~0.5-0.65 (room rendered 0.72, hospital 0.43 before; audit 2026-11-22)
+        self.S.view_settings.exposure = {'room': -0.5, 'hospital': 0.4}.get(shot.set, 0.0)
 
     def prop_lights(self, origin, sc=1.0, on=True, gain=1.0):
         for o, off, e in self.ML:

@@ -587,7 +587,7 @@ class Episode:
         return [list(c) for c in out]
     def cues(self):
         return dict(duration=self.duration, fps=FPS, vo=[list(v) for v in self.vo], voice=self.voice, rate=self.rate, cues=self.cues_list(),
-                    shots=[[s.t, s.name] for s in self.shots], music_gain=self.music_gain,
+                    shots=[[s.t, s.name, s.set] for s in self.shots], music_gain=self.music_gain,
                     vo_trim=True, cap_lead0=True, cap_y=CAP_Y,
                     hook=dict(injury=self.injury or '', inside=[s.name for s in self.shots if s.set in ('xray', 'macro')], loop=self.shots[-1].name if self.shots else None))
 

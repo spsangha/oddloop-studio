@@ -78,8 +78,8 @@ def room(S, ref, K):
     c = L.coll('kw_room'); s = Set(); s.coll = c
     P = ref.bone_world('spine05'); H = ref.bone_world('head').z; seat = P.z - 0.075
     YW, XW, XR, ZC = 1.45, -2.2, 2.2, 2.65      # back wall (behind the desk chair), left/right walls, ceiling
-    wall = _tex(K, 'kw_r_wall', 'white_plaster_02', 0.9, tint=(1.0, 0.86, 0.66), nor=0.5, fallback=(0.85, 0.75, 0.6))
-    wall2 = _tex(K, 'kw_r_wall2', 'white_plaster_02', 0.9, tint=(0.55, 0.78, 0.86), nor=0.5, fallback=(0.5, 0.7, 0.8))
+    wall = _tex(K, 'kw_r_wall', 'white_plaster_02', 0.9, tint=(0.10, 0.42, 0.85), nor=0.5, fallback=(0.10, 0.42, 0.85))   # Zack look: saturated sky-blue wall behind warm skin (audit 2026-11-22)
+    wall2 = _tex(K, 'kw_r_wall2', 'white_plaster_02', 0.9, tint=(0.16, 0.52, 0.86), nor=0.5, fallback=(0.16, 0.52, 0.86))   # Zack look: cyan side walls
     floor = wood('kw_r_floor', (0.45, 0.27, 0.14), 1.0)
     white = L.mat('kw_r_white', (0.85, 0.85, 0.82), 0.35)
     L.box('r_floor', (8, 8, 0.05), (0, 0, -0.025), floor, c, 0)
