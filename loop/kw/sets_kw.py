@@ -185,6 +185,10 @@ def skin(p, tan=TAN, amount=0.3, pores=0.3, rough=0.44):
             if n.type == 'BSDF_PRINCIPLED': n.subsurface_method = 'RANDOM_WALK_SKIN'
 def flush(p, v):
     """v 0..1: skin goes red (holding the sneeze). Changes two group input values only."""
+    try:   # KW_HEADS=scan skin reads its own per-person flush value (heads_kw)
+        import heads_kw as _HK
+        if _HK.on(): _HK.flush(p, v)
+    except Exception as e: print('scan flush skipped', repr(e))
     g = _skin_group(p)
     if not g: return
     v = max(0.0, min(1.0, v)); tan = g.get('kw_tan', TAN); amt = g.get('kw_amt', 0.3)

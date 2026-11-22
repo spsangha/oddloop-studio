@@ -327,6 +327,11 @@ def _nurse_hair(p):
             o = _P.HumanService.add_mhclo_asset(str(asset), p.body, asset_type="Hair")
             p.parts.append(o)
             _move_masks(p)
+            for s_ in [x for x in p.parts if x.name.endswith("_hair_strands")]:   # KW_HEADS=scan: the loose strand hair goes too
+                p.parts.remove(s_); bpy.data.objects.remove(s_)
+            if _P._HK.on():
+                try: _P._HK.card_hair_fix(p, [o], getattr(p, "_kw_hair_value", 0.3))
+                except Exception as e: print("card hair fix skipped", repr(e))
             break
 
 

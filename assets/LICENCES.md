@@ -46,3 +46,16 @@ The data used in this project was obtained from mocap.cs.cmu.edu. The database w
 ## Music
 
 See each episode's description credit.
+
+## Scan heads (`assets/heads`, 2.1 MB; used only with `KW_HEADS=scan`, built by `kit/heads/*.py`)
+
+Licence pages read and files downloaded 2026-11-22. No photos of identifiable people from the web, no research-only models (FaceScape, FLAME, Basel), no AI generation.
+
+| What | Files | Source | Licence | Notes |
+|---|---|---|---|---|
+| Face shape: 40 identity PCA modes of the ICT Face Model Light (built from USC ICT Light Stage scans), resampled to MakeHuman vertex deltas | `ict_mh_deltas.npz` | ICT-FaceKit, USC Institute for Creative Technologies, https://github.com/ICT-VGL/ICT-FaceKit (`FaceXModel/identity000-039.obj`, `generic_neutral_mesh.obj`) | MIT (Copyright (c) 2020 USC Institute for Creative Technologies; https://github.com/ICT-VGL/ICT-FaceKit/blob/master/LICENSE) | Statistical modes, not any one person's face. Keep this notice with the derived file. |
+| Skin detail: scan displacement (pores, lip lines, creases), specular (oily/matte zones) and colour (red zones) baked into MakeHuman UVs, high-passed | `scan_height.jpg`, `scan_spec.jpg`, `scan_red.jpg`, `scan_col.jpg` (round 2: high-passed colour mottling from `Map-COL.jpg`, applied multiplicatively), `scan_mask.jpg` (own region mask: forehead / eye surround / beard zone) | "Infinite, 3D Head Scan" by Lee Perry-Smith (Infinite Realities, his own head), copy in three.js: https://github.com/mrdoob/three.js/tree/dev/examples/models/gltf/LeePerrySmith (`LeePerrySmith.glb`, `Map-COL.jpg`, `Map-SPEC.jpg`, `Infinite-Level_02_Disp_NoSmoothUV-4096.jpg`, `LeePerrySmith_License.txt`) | CC BY 3.0 Unported. Credit: "Infinite, 3D Head Scan by Lee Perry-Smith, CC BY 3.0, based on a work at www.triplegangers.com" | Only fine detail is used, on top of the CC0 MakeHuman photo skins; the scan's face shape and identity are not used. Put the credit in the description of any episode rendered with `KW_HEADS=scan`. |
+| Strand hair, strand eyebrows, lashes and beard | (procedural, no files) | `loop/kw/heads_kw.py` | own code | grown on the MakeHuman `scalp` group / where the CC0 MakeHuman brow and beard cards are opaque |
+| Iris colour (scan mode) | none added; read at render time from the MPFB install, `mpfb/data/eyes/materials/*_eye.png` | MakeHuman / MPFB2 system assets, Copyright (C) 2020 Data Collection AB, per the header of each `eyes/materials/*.mhmat` | CC0 (header: "This asset was explicitly released as CC0 in september 2020") | same CC0 asset pack the kit already uses for bodies, skins and clothes |
+
+Checked 2026-11-22 and NOT usable (nothing downloaded): 3D Scan Store free head sample (https://www.3dscanstore.com/blog/Free-3D-Head-Model, terms https://www.3dscanstore.com/terms-and-conditions-licensing: personal use only, no commercial use of free downloads); Digital Reality Lab "Marcus" head (CC BY 4.0 only via a Sketchfab download that needs a login, which this project does not use; their own site licence forbids redistribution); Digital Emily 2 / Wikihuman (non-commercial); ICT-FaceKit full-model albedo textures (separate USC licence, not MIT). Result: no licensed real albedo exists here for darker or East Asian skin or for women, so all skins stay the CC0 MakeHuman photo skins with Lee Perry-Smith's colour detail on top.

@@ -5,6 +5,7 @@ import bpy, os, math
 from mathutils import Vector, Euler
 from bl_ext.user_default.mpfb.services.humanservice import HumanService
 from bl_ext.user_default.mpfb.services.targetservice import TargetService
+import heads_kw as _HK
 UD = os.environ.get('MPFB_UD', os.path.expanduser('~/.config/blender/4.2/extensions/.user/user_default/mpfb/data'))
 SYS = os.path.dirname(os.path.dirname(os.path.abspath(__import__('bl_ext.user_default.mpfb', fromlist=['x']).__file__))) if False else None
 MP = os.path.dirname(os.path.abspath(__import__('bl_ext.user_default.mpfb', fromlist=['x']).__file__)) + '/data'
@@ -69,17 +70,19 @@ HAIR_UP = {'short01': 'elvs_grump_hair', 'short02': 'culturalibre_hair_02', 'sho
 EYE_SCALE = (('eyes/l-eye-scale-incr', 0.6), ('eyes/r-eye-scale-incr', 0.6))
 
 def build_person(name, *, gender=1.0, age=0.5, weight=0.55, muscle=0.5, height=0.5, race=(0.0, 0.2, 0.8), skin='young_caucasian_male',
-                 eyes='brown', hair='short02', brows='eyebrow001', clothes=('male_casualsuit04', 'shoes01'), cloth_tint=None, extra_targets=(), tee='teal', hair_value=0.45, skin_rough=None, beard=None):
+                 eyes='brown', hair='short02', brows='eyebrow001', clothes=('male_casualsuit04', 'shoes01'), cloth_tint=None, extra_targets=(), tee='teal', hair_value=0.45, skin_rough=None, beard=None, scan_seed=None):
     macro = {"gender": gender, "age": age, "muscle": muscle, "weight": weight, "proportions": 0.5, "height": height, "cupsize": 0.5, "firmness": 0.5,
              "race": {"african": race[0], "asian": race[1], "caucasian": race[2]}}
     before = set(bpy.data.objects)
     h = HumanService.create_human(macro_detail_dict=macro)
     h.name = name
+    style0 = hair
     if os.environ.get('KW_SYS_HAIR') != '1' and hair in HAIR_UP and os.path.exists(os.path.join(MH, 'hair', HAIR_UP[hair])): hair = HAIR_UP[hair]
     extra_targets = tuple(extra_targets) + EYE_SCALE   # Zack look round 2: eyes ~12 % larger
     if extra_targets:  # face/body shape first, baked, so rig + hair + clothes fit the final head
         for path, wgt in extra_targets: TargetService.load_target(h, f'{MP}/targets/{path}.target.gz', weight=wgt)
         TargetService.bake_targets(h)
+    if scan_seed is not None and _HK.on(): _HK.apply_shape(h, scan_seed)   # KW_HEADS=scan: light-stage scan identity (heads_kw.py)
     HumanService.set_character_skin(_res(f'skins/{skin}/{skin}.mhmat'), h, skin_type='ENHANCED_SSS')
     HumanService.add_builtin_rig(h, 'default')
     def add(p, t, **k):
@@ -95,10 +98,13 @@ def build_person(name, *, gender=1.0, age=0.5, weight=0.55, muscle=0.5, height=0
                         if nm in nd.inputs: nd.inputs[nm].default_value = (*col, 1)
     brow_objs = add(f'eyebrows/{brows}/{brows}.mhclo', 'Eyebrows'); add('eyelashes/eyelashes01/eyelashes01.mhclo', 'Eyelashes')
     hair_objs = add(f'hair/{hair}/{hair}.mhclo', 'Hair') if hair else []
-    if beard: hair_objs += add(f'clothes/{beard}/{beard}.mhclo', 'Clothes')   # round 3: CC0 beard/stubble cards, tinted like the hair
+    card_objs = list(hair_objs)
+    beard_objs = add(f'clothes/{beard}/{beard}.mhclo', 'Clothes') if beard else []
+    hair_objs += beard_objs   # round 3: CC0 beard/stubble cards, tinted like the hair
     for c in clothes: add(f'clothes/{c}/{c}.mhclo', 'Clothes')
     add('teeth/teeth_base/teeth_base.mhclo', 'Teeth')
     p = Person(name, h.parent, h, [o for o in bpy.data.objects if o not in before])
+    p._kw_hair_value = hair_value
     # expression shape keys
     for nm, lst in EXPR.items():
         for path, w in lst:
@@ -185,6 +191,27 @@ def build_person(name, *, gender=1.0, age=0.5, weight=0.55, muscle=0.5, height=0
                         to = l.to_socket; gt.links.remove(l); gt.links.new(hs2.outputs['Color'], to)
                     gt.links.new(nd.outputs['Color'], hs2.inputs['Color']); break
     except Exception as e: print('skin tone skipped', e)
+    if _HK.on():
+        try: _HK.skin(p, age=age, gender=gender, seed=scan_seed, skin_name=skin); _HK.eyes(p, eyes); _HK.lashes(p); _HK.lips(p)
+        except Exception as e: print('scan skin skipped', repr(e))
+        strands = None
+        if (style0 in _HK.CURVE_STYLES or style0 in _HK.FALL_STYLES) and os.environ.get('KW_SCAN_HAIR', '1') != '0':
+            try:
+                strands = _HK.strand_hair(p, style0, hair_value, scan_seed, african=race[0] >= 0.5)
+                if strands:
+                    for o in card_objs:   # keep the card mesh (wardrobe finds hair by asset), but never render it
+                        o.visible_camera = o.visible_shadow = o.visible_diffuse = o.visible_glossy = o.visible_transmission = o.visible_volume_scatter = False
+            except Exception as e: print('strand hair skipped', repr(e))
+        if os.environ.get('KW_SCAN_BROWS', '1') != '0':   # round 2: strand brows / beard on the skin surface (follow expressions)
+            for objs, kind in ((brow_objs, 'brow'), (beard_objs, 'stubble' if 'stubble' in str(beard) else 'beard')):
+                if not objs: continue
+                try:
+                    if _HK.card_strands(p, objs, kind, hair_value, scan_seed):
+                        for o in objs: o.visible_camera = o.visible_shadow = o.visible_diffuse = o.visible_glossy = o.visible_transmission = o.visible_volume_scatter = False
+                except Exception as e: print(kind, 'strands skipped', repr(e))
+        if not strands and card_objs:
+            try: _HK.card_hair_fix(p, card_objs, hair_value)
+            except Exception as e: print('card hair fix skipped', repr(e))
     if cloth_tint:
         for o in p.parts:
             for nm, col in cloth_tint.items():
