@@ -479,7 +479,7 @@ class Shot:
     def length(self): return self.end - self.t
 
 # ===================================================================================== the episode
-CAP_Y = 0.69            # caption centre, fraction from the top (hook gate: 28-34 % up from the bottom)
+CAP_Y = 0.78            # caption centre, fraction from the top; Zack D. Films measured 0.78 (match audit 2026-11-22)
 MAX_HOLD = 2.2          # longest shot (hook spec mid-video rule)
 HOOK_FILLER = ('so today', 'did you know', 'have you ever', 'this is the story', 'meet ', 'while he was', 'while she was', 'one day', 'once upon')
 HOOK_TRANSIENTS = {'thud', 'pinch', 'bounce', 'rip', 'sneeze', 'crackle'}

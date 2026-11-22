@@ -20,7 +20,7 @@ HERE = os.path.dirname(os.path.abspath(__file__)); sys.path.insert(0, HERE)
 TRANSIENT = {'thud', 'pinch', 'bounce', 'rip', 'sneeze', 'crackle', 'pop', 'cough', 'gulp', 'beep', 'step', 'squelch', 'heartbeat'}
 FILLER = ('so today', 'did you know', 'have you ever', 'this is the story', 'meet ', 'while he was', 'while she was', 'one day')
 SHEET_FRAMES = (0, 4, 12, 24, 36, 48, 60, 72)
-GATE = dict(onset_max=0.06, onset_hard=0.12, hook_words=12, words_0_3=(8, 11), cap_y=(0.66, 0.72), end_tail=0.2,
+GATE = dict(onset_max=0.06, onset_hard=0.12, hook_words=12, words_0_3=(8, 11), cap_y=(0.76, 0.80), end_tail=0.2,
             first_shot_max=1.1, inside_by=1.2, cuts_0_3=2, lum0=(65, 210), mae_1s=35, mae_f12=10, loop_mae=55)
 
 
@@ -62,7 +62,7 @@ def script_items(cj, words):
     n03 = sum(1 for a, b, w in words if a < 3.0)
     res.append(('6c 8-11 words spoken in 0-3 s', GATE['words_0_3'][0] <= n03 <= GATE['words_0_3'][1], f'{n03} words start before 3.0 s'))
     cy = cj.get('cap_y', 0.78)
-    res.append(('5 caption on frame 0, 28-34 % up from the bottom', bool(cj.get('cap_lead0')) and vo[0][0] < 0.3 and GATE['cap_y'][0] <= cy <= GATE['cap_y'][1],
+    res.append(('5 caption on frame 0, 20-24 % up from the bottom', bool(cj.get('cap_lead0')) and vo[0][0] < 0.3 and GATE['cap_y'][0] <= cy <= GATE['cap_y'][1],
                 f"cap_lead0={cj.get('cap_lead0', False)} cap_y={cy} ({(1 - cy) * 100:.0f} % up)"))
     shots = cj['shots']; starts = [a for a, n in shots]
     first_len = starts[1] if len(starts) > 1 else cj['duration']; cuts = sum(1 for a in starts[1:] if a < 3.0)

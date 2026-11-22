@@ -43,12 +43,12 @@ def tts(cj):
     return lines, words
 
 def groups(words, lead0=False):
-    """1-4 word caption groups; break after punctuation or long words. lead0: the first caption is already on frame 0."""
+    """1-3 word caption groups (Zack D. Films averages ~2.4 words per caption); break after punctuation or long words. lead0: the first caption is already on frame 0."""
     out, cur = [], []
     for i, (a, b, w) in enumerate(words):
         cur.append((a, b, w))
         nxt_gap = words[i + 1][0] - b if i + 1 < len(words) else 9
-        if len(cur) == 4 or w[-1:] in ',.?!' or len(''.join(x[2] for x in cur)) > 15 or nxt_gap > 0.25:
+        if len(cur) == 3 or w[-1:] in ',.?!' or len(''.join(x[2] for x in cur)) > 12 or nxt_gap > 0.25:
             out.append(cur); cur = []
     if cur: out.append(cur)
     res = []
@@ -82,7 +82,7 @@ def caption(im, t, caps, y=0.78):
         if a <= t < b:
             f = ImageFont.truetype(FONT, 70); d = ImageDraw.Draw(im)
             while d.textlength(txt, font=f) > W * 0.84: f = ImageFont.truetype(FONT, f.size - 3)
-            pos = (W // 2, int(H * y))         # cues 'cap_y' (fraction from the top); hook gate wants 0.66-0.72 (28-34% up from the bottom)
+            pos = (W // 2, int(H * y))         # cues 'cap_y' (fraction from the top); hook gate wants 0.76-0.80 (Zack: 0.78)
             sh = Image.new('L', im.size, 0); ImageDraw.Draw(sh).text((pos[0] + 3, pos[1] + 5), txt, font=f, fill=200, anchor='mm', stroke_width=4, stroke_fill=200)
             sh = sh.filter(ImageFilter.GaussianBlur(7)); im.paste((0, 0, 0), (0, 0), sh)
             d.text(pos, txt, font=f, fill=(255, 255, 255), stroke_width=3, stroke_fill=(0, 0, 0), anchor='mm')
