@@ -9,6 +9,9 @@ import bpy
 from mathutils import Quaternion, Vector as V
 import kwlib as L
 
+# Local negative-Z end of the slushie straw in kwfx, after its ten-degree tilt.
+SLUSH_STRAW_TIP = (-0.00329, 0.0, -0.16401)
+
 
 def enabled(component):
     return os.environ.get(f'KW_{component}_R4', '1') != '0'

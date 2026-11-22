@@ -583,7 +583,16 @@ class Runtime:
             if h.at in ('mouth', 'nose', 'ear'):
                 part = {'mouth': 'mouth', 'nose': 'nose', 'ear': 'ear_l' if side == 'L' else 'ear_r'}[h.at]
                 pt, nr = self.part_world(ra, part); D = pt + nr * 0.07 - Up * 0.05 + out * 0.03
-                return D, 'palm', 'hold', orient(-out, -nr + Up * 0.3), sh + out * 0.4 - Up * 0.6
+                wrist = orient(-out, -nr + Up * 0.3)
+                if self.body_r4 and h.at == 'mouth' and h.prop == 'slushie':
+                    # Match the prop's exact wrist-to-cup transform in kwfx. Solve from the
+                    # straw tip (the contact) rather than placing the cup at head height.
+                    info = ra.hand[side]
+                    f = (wrist @ info['fdir']).normalized()
+                    n = (wrist @ info['pnorm']).normalized()
+                    tip_x, tip_y, tip_z = Q.SLUSH_STRAW_TIP
+                    D = pt + nr * 0.008 - f * tip_x - n * (0.025 + tip_y) - f.cross(n) * tip_z
+                return D, 'palm', 'hold', wrist, sh + out * 0.4 - Up * 0.6
             if h.at == 'out':
                 D = sh + Fp * 0.5 - Up * 0.15 + out * 0.05; return D, 'palm', 'hold', orient(Up, Fp), pole
             D = self.bw(p, 'spine02') + Fp * 0.3 - Up * 0.12 + out * 0.08
