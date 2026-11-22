@@ -194,7 +194,7 @@ def build_person(name, *, gender=1.0, age=0.5, weight=0.55, muscle=0.5, height=0
         except Exception as e: print('scan skin skipped', repr(e))
         if (style0 in _HK.CURVE_STYLES or style0 in _HK.FALL_STYLES) and os.environ.get('KW_SCAN_HAIR', '1') != '0':
             try:
-                if _HK.strand_hair(p, style0, hair_value, scan_seed):
+                if _HK.strand_hair(p, style0, hair_value, scan_seed, african=race[0] >= 0.5):
                     for o in card_objs:   # keep the card mesh (wardrobe finds hair by asset), but never render it
                         o.visible_camera = o.visible_shadow = o.visible_diffuse = o.visible_glossy = o.visible_transmission = o.visible_volume_scatter = False
             except Exception as e: print('strand hair skipped', repr(e))

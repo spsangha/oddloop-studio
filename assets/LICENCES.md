@@ -38,3 +38,13 @@ See `assets/real/CREDITS.md` (Poly Haven and ambientCG, CC0 1.0). Room and hospi
 ## Music
 
 See each episode's description credit.
+
+## Scan heads (`assets/heads`, 1.8 MB; used only with `KW_HEADS=scan`, built by `kit/heads/*.py`)
+
+Licence pages read and files downloaded 2026-11-22. No photos of identifiable people from the web, no research-only models (FaceScape, FLAME, Basel), no AI generation.
+
+| What | Files | Source | Licence | Notes |
+|---|---|---|---|---|
+| Face shape: 40 identity PCA modes of the ICT Face Model Light (built from USC ICT Light Stage scans), resampled to MakeHuman vertex deltas | `ict_mh_deltas.npz` | ICT-FaceKit, USC Institute for Creative Technologies, https://github.com/ICT-VGL/ICT-FaceKit (`FaceXModel/identity000-039.obj`, `generic_neutral_mesh.obj`) | MIT (Copyright (c) 2020 USC Institute for Creative Technologies; https://github.com/ICT-VGL/ICT-FaceKit/blob/master/LICENSE) | Statistical modes, not any one person's face. Keep this notice with the derived file. |
+| Skin detail: scan displacement (pores, lip lines, creases), specular (oily/matte zones) and colour (red zones) baked into MakeHuman UVs, high-passed | `scan_height.jpg`, `scan_spec.jpg`, `scan_red.jpg` | "Infinite, 3D Head Scan" by Lee Perry-Smith (Infinite Realities, his own head), copy in three.js: https://github.com/mrdoob/three.js/tree/dev/examples/models/gltf/LeePerrySmith (`LeePerrySmith.glb`, `Map-COL.jpg`, `Map-SPEC.jpg`, `Infinite-Level_02_Disp_NoSmoothUV-4096.jpg`, `LeePerrySmith_License.txt`) | CC BY 3.0 Unported. Credit: "Infinite, 3D Head Scan by Lee Perry-Smith, CC BY 3.0, based on a work at www.triplegangers.com" | Only fine detail is used, on top of the CC0 MakeHuman photo skins; the scan's face shape and identity are not used. Put the credit in the description of any episode rendered with `KW_HEADS=scan`. |
+| Strand hair | (procedural, no files) | `loop/kw/heads_kw.py` | own code | grown on the MakeHuman `scalp` group |

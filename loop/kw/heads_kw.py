@@ -142,6 +142,7 @@ CURVE_STYLES = {   # style -> (strands, length top m, length sides m, flatness 0
     'short02': (44000, 0.030, 0.010, 0.70, (0.0, 0.8, 0.0), 0.0),      # short back
     'short03': (42000, 0.055, 0.016, 0.55, (0.15, 0.25, 0.4), 0.15),   # longer, messy
     'short04': (40000, 0.012, 0.007, 0.80, (0.0, 0.6, 0.0), 0.0),      # buzz
+    'coil':    (52000, 0.016, 0.009, 0.25, (0.0, 0.0, 0.2), 0.6),      # tight short coils (African short styles)
     'afro01':  (34000, 0.040, 0.022, 0.05, (0.0, 0.0, 0.3), 1.0),      # short coils
 }
 FALL_STYLES = {    # style -> (strands, end height above the lowest scalp point m (negative = below), curl)
@@ -174,12 +175,13 @@ def _hair_mat(name, hv, seed):
     return m
 
 
-def strand_hair(p, style, hv, seed):
+def strand_hair(p, style, hv, seed, african=False):
     """grow curves on the scalp, bone-parent them to the head; returns the object (also appended to p.parts) or None"""
     import bpy
     from mathutils import Vector
     from mathutils.bvhtree import BVHTree
     if style not in CURVE_STYLES and style not in FALL_STYLES: return None
+    if african and style.startswith('short'): style = 'coil'
     fall = style in FALL_STYLES
     n, l_top, l_side, flat, comb, curl = CURVE_STYLES[style] if not fall else (FALL_STYLES[style][0], 0, 0, 0.5, (0.6, 0.6, 0.0), FALL_STYLES[style][2])
     n = int(n * float(os.environ.get('KW_HAIR_DENSITY', 1.0)))
