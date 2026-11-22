@@ -54,7 +54,7 @@ e.g. `cam=KW.cam.face(mia, push=0.12, side=14, shake=0.4)` — keep `push` 0.06-
 - x-ray: `flow(person, path, color, count, speed, stop)` paths: air_out_nose air_out_mouth air_in nose_to_sinus sinus_to_eye food_down blood_heart brain_blood;
   `pressure(person, organ, dur, swell)` `glow(person, organ, color)` `seal(person)` `swell_air(person, 'eye_l', shrink_at=)` `crack_line(person, 'eye_l')`
 - macro: `tear(at)` `crack(at)` `leak(at, rate, kind='bubbles'|'blood'|'fluid')` `particles(kind)` `block(obj)` `heal(at, dur)`
-- graphics: `label('20x', pos=(0.5,0.74), color='yellow')` (1-3 words) `gauge(to=0.97, label='20x')` `arrow(...)` `bracket(...)`
+- graphics: `label('20x', pos=(0.5,0.74), color='yellow')` (1-3 words) `gauge(to=0.97, low='NORMAL\nBLOW', high='')` (dial text: low = green label, high = red full-scale label, '' hides it; default prints NORMAL SNEEZE / 20x) `arrow(...)` `bracket(...)`
   `calendar(weeks=3)` `scan('head'|'neck'|'chest'|'belly', heal=False)` `skin_block(press_at=)` `crackle(near=anchor, times=[...])`
 - e.g. `fx=[KW.fx.crack(at=0.15), KW.fx.leak(at=0.45, rate=0.8)]`
 

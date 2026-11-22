@@ -19,7 +19,7 @@ ep = KW.Episode('ep_blownose', injury="cracked the bone", voice_lines=[
 # ---- cast ---------------------------------------------------------------------------------------------------
 mia = ep.person('Mia', 'business', 'blownose-mia', gender='f', age='young', race='caucasian', hair='long01')
 doc = ep.person('Dr Hale', 'doctor', 'blownose-doc', gender='m', age='middle', race='african', hair='short02', clipboard=True)
-bone = ep.macro('bone')                       # the thin eye-socket wall, seen from inside the eye socket
+bone = ep.macro('sinus')                      # soft-tissue sinus lining (LESSON: the bone macro set read pale/weak)
 
 L = ep.line; E = ep.line_end
 blow = lambda at=0.0, hard=1.3, **k: KW.pose('sit', at='desk', left='tissue_nose', right='tissue_nose', face='strain', act=KW.act.blow_nose(at=at, dur=1.6, hard=hard), flush=0.7, **k)
@@ -31,7 +31,7 @@ ep.shot(0.0, 'room_face', set='room', cast={mia: blow(at=0.0)}, cam=KW.cam.face(
 ep.shot(1.0, 'xray_front', set='xray', xray=mia, organs=['airway', 'sinus', 'skull', 'eyes'], cast={mia: xr(face='strain')},
         fx=[KW.fx.flow(mia, 'nose_to_sinus', at=0.0, color='green', count=60, speed=1.6), KW.fx.pressure(mia, 'sinus', at=0.1, dur=1.0, swell=0.6)],
         cam=KW.cam.xray(mia, 'sinus', view='34', push=0.55, orbit=30, dist=0.62))
-ep.shot(2.2, 'macro_crack', set='macro', macro=bone, fx=[KW.fx.crack(at=0.15), KW.fx.leak(at=0.45, rate=0.8)],
+ep.shot(2.2, 'macro_crack', set='macro', macro=bone, fx=[KW.fx.tear(at=0.15), KW.fx.leak(at=0.45, rate=0.8)],
         cam=KW.cam.macro(bone, view='wide', push=0.3, hits=[0.15]))
 # ---- 2: context - at work, blowing as hard as she can --------------------------------------------------------------
 ep.shot(3.0, 'room_medium', set='room', cast={mia: blow(at=0.1)}, cam=KW.cam.medium(mia, side=28, height=0.12, push=0.1, shake=0.5))
@@ -45,11 +45,11 @@ ep.shot(L(2) + 0.1, 'xray_profile', set='xray', xray=mia, organs=['airway', 'sin
         cam=KW.cam.xray(mia, 'sinus', view='profile', push=0.12))
 ep.shot(L(2) + 2.0, 'xray_sinus', set='xray', xray=mia, organs=['airway', 'sinus', 'skull', 'eyes'], cast={mia: xr(face='strain')},
         fx=[KW.fx.flow(mia, 'nose_to_sinus', at=0.0, color='green', count=60, stop=0.97, heat=0.6),
-            KW.fx.pressure(mia, 'sinus', at=0.1, dur=1.4, swell=0.5), KW.fx.gauge(to=0.97, at=0.2, dur=1.3, pos=(0.74, 0.3))],
+            KW.fx.pressure(mia, 'sinus', at=0.1, dur=1.4, swell=0.5), KW.fx.gauge(to=0.97, at=0.2, dur=1.3, pos=(0.74, 0.3), low='NORMAL\nBLOW', high='')],
         cam=KW.cam.xray(mia, 'sinus', view='front', push=0.15, dist=0.5))
 # ---- 4: the paper-thin wall snaps (re-hook) -------------------------------------------------------------------------
 ep.shot(L(3) - 0.1, 'macro_strain', set='macro', macro=bone,
-        fx=[KW.fx.crack(at=0.7), KW.fx.label('THIN WALL', at=0.1, pos=(0.5, 0.74), color='yellow')],
+        fx=[KW.fx.tear(at=0.7), KW.fx.label('THIN WALL', at=0.1, pos=(0.5, 0.74), color='yellow')],
         cam=KW.cam.macro(bone, view='wide', hits=[0.7]))
 ep.shot(L(3) + 1.6, 'xray_crack', set='xray', xray=mia, organs=['sinus', 'skull', 'eyes'], cast={mia: xr(face='pain')},
         fx=[KW.fx.crack_line(mia, 'eye_l', at=0.1), KW.fx.glow(mia, 'sinus', at=0.0, dur=0.8, color='red')],

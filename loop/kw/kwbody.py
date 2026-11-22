@@ -336,6 +336,7 @@ class Macro:
         for i in range(46):
             o = L.ico(f'kw_m_jet{i}', 1, M0, jm, self.coll, 2); a = rnd.uniform(-0.5, 0.5); b = rnd.uniform(-0.4, 0.4)
             self.jets.append((o, V((math.sin(a), -math.cos(a) * math.cos(b), math.sin(b))) * rnd.uniform(1.5, 3.6), rnd.uniform(0.012, 0.03), rnd.random() * 0.5))
+            o.visible_shadow = False      # LESSON: glowing debris cast grey-brown blotches on the wall that read as dirt
         fl = bpy.data.lights.new('kw_m_flash', 'POINT'); fl.color = (1, 0.12, 0.08); fl.energy = 0; self.flash = bpy.data.objects.new('kw_m_flash', fl); self.coll.objects.link(self.flash); self.flash.location = self.HOLE + V((0, -0.4, 0))
         # stream particles inside the lumen + blockage objects
         self.stream = [(L.ico(f'kw_m_p{i}', 1, M0, None, self.coll, 2), rnd.random(), rnd.uniform(-1, 1), rnd.uniform(-1, 1), rnd.uniform(0.6, 1.4)) for i in range(70)]

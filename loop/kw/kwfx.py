@@ -125,11 +125,17 @@ class Builder:
             if mon.screen.data.materials[0] is not mon._orig_mat: mon.screen.data.materials[0] = mon._orig_mat
         if mon._ui_objs[0].data.body != title: mon._ui_objs[0].data.body = title
 
+    @staticmethod
+    def _gauge_text(o):
+        """dial printing from fx.gauge(low=, high=, title=); the kit defaults keep the old 'NORMAL SNEEZE' / '20x' dial"""
+        low = o.get('low'); high = o.get('high')
+        return dict(low='NORMAL\nSNEEZE' if low in (None, 'NORMAL') else low, high='20x' if high is None else high, title=o.get('title') or 'PRESSURE')
+
     def _build_fx(self, s, f, c):
         G = self.G; o = f.o; k = f.kind; rt = self.rt
         if k == 'gauge' and o.get('place') != 'station':
             if not G: return None
-            g = G.Gauge(V((0, 0, 0)), c, radius=0.06)
+            g = G.Gauge(V((0, 0, 0)), c, radius=0.06, **self._gauge_text(o))
             lab = G.Label3D(o['label'], V((0, 0, 0)), c, size=0.06, color=LABEL_COL['red']) if o.get('label') else None
             if o.get('title'):
                 pass
@@ -226,14 +232,16 @@ class Builder:
             me = bpy.data.meshes.new('kw_tissue'); vs = []; fs = []; N = 22; rnd = random.Random(3)
             for j in range(N + 1):
                 for i in range(N + 1):
-                    # 12 x 10 cm, cupped around the nose and mouth (y = into the face), top edge under the eyes
-                    x = -0.06 + 0.12 * i / N; z = -0.07 + 0.10 * j / N; r2 = x * x + (z + 0.015) ** 2
-                    y = 7.0 * x * x + 2.0 * (z + 0.015) ** 2 + 0.003 * math.sin(x * 140 + z * 60) + 0.002 * math.sin(z * 170 - x * 50) + rnd.uniform(-0.001, 0.001)
+                    # 15 x 11 cm (fingertips tuck behind its side edges), cupped around the nose and mouth (y = into the face), top edge under the eyes
+                    x = -0.075 + 0.15 * i / N; z = -0.075 + 0.11 * j / N; r2 = x * x + (z + 0.015) ** 2
+                    y = 4.5 * x * x + 2.0 * (z + 0.015) ** 2 + 0.0018 * math.exp(-((x * 0.8 - z * 0.6 + 0.012) / 0.006) ** 2) + rnd.uniform(-0.0002, 0.0002)   # smooth paper + one faint diagonal crease (LESSON: sin ripples read as egg-crate)
+                    z += -0.008 * (x / 0.075) ** 2 * (j / N) + 0.004 * (x / 0.075) ** 2 * (1 - j / N)   # soft paper: top edge droops at the sides, bottom flares
+                    y += 0.0025 * math.sin(x * 21 + 1.3) * ((z + 0.015) / 0.06) ** 2                    # gentle low-frequency flutter at the free edges
                     vs.append((x, y - 0.012, z))
             for j in range(N):
                 for i in range(N): fs.append((j * (N + 1) + i, j * (N + 1) + i + 1, (j + 1) * (N + 1) + i + 1, (j + 1) * (N + 1) + i))
             me.from_pydata(vs, [], fs); o = bpy.data.objects.new('kw_tissue', me); c.objects.link(o); L.smooth(o)
-            o.data.materials.append(L.bumpy(L.mat('kw_tissue_m', (0.84, 0.85, 0.86), 0.9, sss=0.2), 180.0, 0.25, dist=0.001))
+            o.data.materials.append(L.bumpy(L.mat('kw_tissue_m', (0.86, 0.87, 0.88), 0.85, sss=0.25), 14.0, 0.06, 2.0, dist=0.001))
             so = o.modifiers.new('s', 'SOLIDIFY'); so.thickness = 0.0015; ss = o.modifiers.new('ss', 'SUBSURF'); ss.levels = 1; ss.render_levels = 1
             return o
         mk = {'cup': lambda: L.cyl('kw_cup', 0.04, 0.1, (0, 0, 0), L.mat('kw_cup_m', (0.95, 0.95, 0.92), 0.3, coat=0.6), c),
@@ -383,7 +391,7 @@ class Builder:
             if pr == 'tissue':
                 pt, nr = rt.part_world(ra, 'nose'); A = rt.anchors_light(ra); Mh = rt.wmat(ra.p, 'head'); up = (Mh.to_3x3() @ V((0, 1, 0))).normalized()
                 yv = -nr; zv = (up - yv * up.dot(yv)).normalized(); xv = yv.cross(zv)
-                M = Matrix((xv, yv, zv)).transposed().to_4x4(); M.translation = pt + nr * 0.006 - zv * 0.018
+                M = Matrix((xv, yv, zv)).transposed().to_4x4(); M.translation = pt + nr * 0.02 - zv * 0.018   # paper sits in front of the fingers (hides them)
                 ob.matrix_world = M
             else:
                 Mw = rt.wmat(ra.p, f'wrist.{side}'); info = ra.hand[side]; palm = Mw @ info[shape]['palm']; n = (Mw.to_3x3() @ info['pnorm']).normalized()

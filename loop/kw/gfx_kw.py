@@ -507,7 +507,7 @@ class Gauge:
     def _angle(value):
         return (222 - 230 * value) * pi / 180
 
-    def __init__(self, origin, coll, radius=.12):
+    def __init__(self, origin, coll, radius=.12, low="NORMAL\nSNEEZE", high="20x", title="PRESSURE"):
         self.root = _root("KW Pressure Gauge", coll, origin)
         self.radius = float(radius)
         r = self.radius
@@ -542,16 +542,17 @@ class Gauge:
                 [(r * .565 * cos(p), -.133 * r, r * .565 * sin(p)),
                  (-.345 * r, -.133 * r, -.43 * r)],
                 .010 * r, coll, self.root, dark_green)
-        _type("KW Gauge | NORMAL SNEEZE", "NORMAL\nSNEEZE", .189 * r, coll, self.root,
+        _type("KW Gauge | low label", low, .189 * r, coll, self.root,
               dark_green, (-.054 * r, -.144 * r, -.48 * r), depth=0, bevel=0, space=.83)
         p = self._angle(1)
         _stroke("KW Gauge | high-pressure index",
                 [(r * .570 * cos(p), -.133 * r, r * .570 * sin(p)),
                  (.606 * r, -.133 * r, -.169 * r)],
                 .0077 * r, coll, self.root, red_ink)
-        _type("KW Gauge | full-scale label", "20x", .28 * r, coll, self.root, red_ink,
-              (.542 * r, -.143 * r, -.262 * r), depth=0, bevel=0)
-        _type("KW Gauge | title", "PRESSURE", .200 * r, coll, self.root, ink,
+        if high:
+            _type("KW Gauge | full-scale label", high, .28 * r, coll, self.root, red_ink,
+                  (.542 * r, -.143 * r, -.262 * r), depth=0, bevel=0)
+        _type("KW Gauge | title", title, .200 * r, coll, self.root, ink,
               (0, -.144 * r, .327 * r), depth=0, bevel=0)
         self._needle = _root("KW Gauge | needle pivot", coll, (0, -.155 * r, 0), self.root)
         poly = [(-.244 * r, 0, -.034 * r), (.43 * r, 0, -.023 * r),

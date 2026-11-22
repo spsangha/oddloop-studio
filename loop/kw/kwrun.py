@@ -561,8 +561,8 @@ class Runtime:
                 pole2 = sh + out * 0.4 - Up * 0.65 + Fp * (0.1 if own else -0.15)
                 return D, tip, shape, orient(-nr, upd), pole2
             if shape == 'cup' and h.prop == 'tissue':      # palm on the side of the cupped tissue, fingers up the cheek
-                D = pt + out * 0.04 + nr * 0.03 - Up * 0.06      # palms over the front of the tissue, fingers angled in toward the nose
-                return D, 'palm', 'cup', orient(-nr * 0.75 - out * 0.55, Up * 0.6 - out * 0.8), sh + out * 0.4 - Up * 0.6 + Fp * 0.05
+                D = pt + out * 0.115 - nr * 0.01 - Up * 0.035      # hands at the tissue's side edges: back of hand + thumb show, fingers point in toward the nose BEHIND the paper
+                return D, 'palm', 'hold', orient(nr * 0.6 + out * 0.8, nr * 0.8 - out * 0.6 + Up * 0.2), sh + out * 0.4 - Up * 0.6 + Fp * 0.05   # 'hold' = curled grip (LESSON: 'cup' splayed the fingers like claws)
             if shape == 'cup':
                 D = pt + nr * 0.03 + out * 0.03 - Up * 0.005
                 return D, 'palm', 'cup', orient(-nr * 0.6 - out * 0.8, Up), sh + out * 0.35 - Up * 0.6 + Fp * 0.1
@@ -781,7 +781,7 @@ class Runtime:
             f = c.subj if isinstance(c.subj, KW.FX) else next((x for x in shot.fx if x.is_prop()), None)
             org, kindp = self.FX.station(f)
             lens = lens or {'calendar': 45, 'scan': 42, 'skin_block': 40, 'gauge': 44}.get(kindp, 42)
-            off = {'calendar': V((0.1 - 0.06 * mv, -1.05 + 0.1 * mv + push * 0.4 * mv, 0.0)), 'scan': V((-0.22 + 0.12 * mv, -1.15 + 0.3 * mv + push * 0.3 * mv, 0.06)),
+            off = {'calendar': V((0.0, -1.22 + 0.1 * mv + push * 0.4 * mv, 0.0)), 'scan': V((-0.22 + 0.12 * mv, -1.15 + 0.3 * mv + push * 0.3 * mv, 0.06)),
                    'skin_block': V((0.55 - 0.1 * mv, -1.0 + 0.12 * mv, 0.55 - 0.05 * mv)), 'gauge': V((0.1, -0.55 + 0.1 * mv, 0.04))}.get(kindp, V((0, -1, 0)))
             tgt = org + (V((0, 0, 0.02)) if kindp == 'skin_block' else V((0, 0, 0)))
             pos = org + off + self._shake(t, o, u) * 3
