@@ -244,6 +244,24 @@ class Builder:
             o.data.materials.append(L.bumpy(L.mat('kw_tissue_m', (0.86, 0.87, 0.88), 0.85, sss=0.25), 14.0, 0.06, 2.0, dist=0.001))
             so = o.modifiers.new('s', 'SOLIDIFY'); so.thickness = 0.0015; ss = o.modifiers.new('ss', 'SUBSURF'); ss.levels = 1; ss.render_levels = 1
             return o
+        if pr == 'pepper':   # Carolina Reaper: lumpy, wrinkled, tapering red pod with a curled tail + green stem (long axis = z, stem up)
+            me = bpy.data.meshes.new('kw_pepper'); vs = []; fs = []; NU, NV = 28, 24; rnd = random.Random(7)
+            for j in range(NV + 1):
+                v = j / NV; z = -0.075 * v; cx = 0.012 * math.sin(v * 2.2) + 0.010 * max(0.0, v - 0.75) / 0.25 * (v ** 3)   # bends, tail flicks sideways
+                rr = 0.017 * (math.sin(math.pi * min(1.0, 0.18 + v * 0.9)) ** 0.7) * (1 - 0.9 * v ** 3) + 0.0012
+                for i in range(NU):
+                    a = 2 * math.pi * i / NU
+                    w = 1 + 0.13 * math.sin(4 * a + 6 * v) + 0.06 * math.sin(9 * a - 11 * v) + 0.05 * math.sin(17 * v + 3 * a)   # wrinkles
+                    vs.append((cx + rr * w * math.cos(a), rr * w * math.sin(a) * 0.92, z))
+            for j in range(NV):
+                for i in range(NU): fs.append((j * NU + i, j * NU + (i + 1) % NU, (j + 1) * NU + (i + 1) % NU, (j + 1) * NU + i))
+            me.from_pydata(vs, [], fs); o = bpy.data.objects.new('kw_pepper', me); c.objects.link(o); L.smooth(o)
+            o.data.materials.append(L.mat('kw_pepper_m', (0.50, 0.012, 0.006), 0.28, coat=0.6))
+            ss = o.modifiers.new('ss', 'SUBSURF'); ss.levels = 1; ss.render_levels = 2
+            gm = L.mat('kw_pepper_stem', (0.18, 0.42, 0.08), 0.5)
+            cal = L.sphere('kw_pepper_cal', 0.011, (0, 0, 0.0015), gm, c, 16, 8, (1, 1, 0.35)); cal.parent = o
+            st = L.cyl('kw_pepper_stem', 0.0022, 0.022, (0.002, 0, 0.012), gm, c, rot=(0, 14, 0), verts=10); st.parent = o
+            return o
         mk = {'cup': lambda: L.cyl('kw_cup', 0.04, 0.1, (0, 0, 0), L.mat('kw_cup_m', (0.95, 0.95, 0.92), 0.3, coat=0.6), c),
               'apple': lambda: L.sphere('kw_apple', 0.04, (0, 0, 0), L.mat('kw_apple_m', (0.75, 0.05, 0.04), 0.3, coat=0.5), c, 24, 12, (1, 1, 0.9)),
               'pill': lambda: L.sphere('kw_pill', 0.006, (0, 0, 0), L.mat('kw_pill_m', (0.95, 0.95, 0.97), 0.3), c, 16, 8, (2.2, 1, 1)),
