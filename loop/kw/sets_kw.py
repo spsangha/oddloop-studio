@@ -400,18 +400,18 @@ def _belt(S, ned, c, m, BL, XL):
 
 # ------------------------------------------------------------------ hospital
 class Hos: pass
-def build_hospital(S, ned, wall_col=(0.09, 0.40, 0.72)):   # Zack look: bright sky-blue walls (was dark teal 0.013, 0.147, 0.262)
+def build_hospital(S, ned, wall_col=(0.12, 0.60, 0.86)):   # Zack look: bright sky-blue walls (was dark teal 0.013, 0.147, 0.262)
     c = _coll(S, 'kw_hospital'); B = _B(c); h = Hos(); h.coll = c
     bpy.context.view_layer.update()
     P = ned.bone_world('spine05').z; H = ned.bone_world('head').z
     YW, XW, ZC = 1.55, -1.85, 2.75          # back wall, left wall, ceiling
-    wall_m = tex('kw_h_wall', 'white_plaster_02', 0.9, tint=tuple(v / 0.75 for v in wall_col), nor=0.6)
-    low_m = tex('kw_h_wall_low', 'white_plaster_02', 0.9, tint=(0.03, 0.17, 0.32), nor=0.6)
+    wall_m = mat('kw_h_wall', wall_col, 0.9)   # Zack look round 2: flat sky-blue, no plaster texture
+    low_m = mat('kw_h_wall_low', (0.06, 0.40, 0.66), 0.9)
     floor_m = tex('kw_h_floor', 'Tiles043', 1 / 1.2, tint=(0.82, 0.85, 0.86), nor=0.7)
     sheet_m = tex('kw_h_sheet', 'Fabric036', 3.0, tint=(0.92, 0.93, 0.94), nor=0.8)
     mattress_m = mat('kw_h_mattress', (0.03, 0.12, 0.18), 0.45, coat=0.3)
     steel = mat('kw_h_steel', (0.75, 0.76, 0.78), 0.25, 1.0); white = mat('kw_h_white', (0.8, 0.8, 0.78), 0.4)
-    ceil_m = mat('kw_h_ceiling', (0.8, 0.8, 0.78), 0.9)
+    ceil_m = mat('kw_h_ceiling', (0.30, 0.72, 0.90), 0.9)   # Zack look round 2: no white ceiling band
     curt_m = tex('kw_h_curtain', 'Fabric036', 2.0, tint=(0.62, 0.82, 0.8), nor=1.0)
     # room shell
     B.box('h_floor', (8, 8, 0.05), (0, 0, -0.025), floor_m, 0.0)

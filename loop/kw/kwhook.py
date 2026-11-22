@@ -125,6 +125,13 @@ def look_items(cj, f0):
     st = cj['shots'][0][2] if len(cj['shots'][0]) > 2 else cj['shots'][0][1].split('_')[0]
     ok = GATE['bg_hue'][0] <= tH <= GATE['bg_hue'][1] and tS >= GATE['bg_sat']
     res.append((f'11c (advisory) background side strips sky-blue: hue 180-215 deg, sat >= 0.30 (set {st}; Zack ~55 % of frames)', None, ('OK ' if ok else 'NOT blue ') + f'hue {tH:.0f} sat {tS:.2f}'))
+    # 11d skin warmth (round 2): skin-like pixels in the upper-centre face zone (above the tee), Zack graded R-B 0.18-0.24
+    fz = a[72:240, 68:202].reshape(-1, 3); fh = h[72:240, 68:202].reshape(-1, 3)
+    sk = (fz[:, 0] > fz[:, 1]) & (fz[:, 1] > fz[:, 2]) & (fh[:, 0] < 0.11) & (fh[:, 1] > 0.2) & (fh[:, 1] < 0.6) & (fh[:, 2] > 0.3)
+    if sk.sum() > 200:
+        rb = float(np.median(fz[sk, 0] - fz[sk, 2]))
+        res.append(('11d (advisory) skin warmth R-B 0.14-0.28 in the face zone (Zack 0.18-0.24; set light shifts it)', None, ('OK ' if 0.14 <= rb <= 0.28 else 'OFF ') + f'{rb:.2f} ({int(sk.sum())} px)'))
+    else: res.append(('11d (advisory) skin warmth R-B in the face zone', None, 'no face in zone'))
     return res
 
 

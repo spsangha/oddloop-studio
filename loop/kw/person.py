@@ -59,6 +59,8 @@ class Person:
     def bone_world(self, b, tail=False):
         p = self.pb(b); return self.rig.matrix_world @ (p.tail if tail else p.head)
 
+EYE_SCALE = (('eyes/l-eye-scale-incr', 0.6), ('eyes/r-eye-scale-incr', 0.6))
+
 def build_person(name, *, gender=1.0, age=0.5, weight=0.55, muscle=0.5, height=0.5, race=(0.0, 0.2, 0.8), skin='young_caucasian_male',
                  eyes='brown', hair='short02', brows='eyebrow001', clothes=('male_casualsuit04', 'shoes01'), cloth_tint=None, extra_targets=(), tee='teal', hair_value=0.45, skin_rough=None):
     macro = {"gender": gender, "age": age, "muscle": muscle, "weight": weight, "proportions": 0.5, "height": height, "cupsize": 0.5, "firmness": 0.5,
@@ -66,6 +68,7 @@ def build_person(name, *, gender=1.0, age=0.5, weight=0.55, muscle=0.5, height=0
     before = set(bpy.data.objects)
     h = HumanService.create_human(macro_detail_dict=macro)
     h.name = name
+    extra_targets = tuple(extra_targets) + EYE_SCALE   # Zack look round 2: eyes ~12 % larger
     if extra_targets:  # face/body shape first, baked, so rig + hair + clothes fit the final head
         for path, wgt in extra_targets: TargetService.load_target(h, f'{MP}/targets/{path}.target.gz', weight=wgt)
         TargetService.bake_targets(h)
@@ -122,19 +125,38 @@ def build_person(name, *, gender=1.0, age=0.5, weight=0.55, muscle=0.5, height=0
                     mx.inputs[7].default_value = (0.62, 0.62, 0.63, 1); nt.links.new(hs.outputs['Color'], mx.inputs[6]); nt.links.new(mx.outputs[2], to)
                 else: nt.links.new(hs.outputs['Color'], to)
             nt.links.new(tx.outputs['Color'], hs.inputs['Color'])
-    # Zack D. look: smooth, slightly glossy, soft-glowing skin (less pores, more SSS)
-    try:  # warmer, healthier skin tone (Zack's characters are tanned, never pale)
-        snt = p.body.active_material.node_tree
-        for nd in list(snt.nodes):
-            if nd.type == 'TEX_IMAGE' and 'diffuse' in nd.name.lower():
-                hs2 = snt.nodes.new('ShaderNodeHueSaturation'); hs2.inputs['Hue'].default_value = 0.49; hs2.inputs['Saturation'].default_value = 1.35; hs2.inputs['Value'].default_value = 0.9
-                for l in list(nd.outputs['Color'].links):
-                    to = l.to_socket; snt.links.remove(l); snt.links.new(hs2.outputs['Color'], to)
-                snt.links.new(nd.outputs['Color'], hs2.inputs['Color']); break
-    except Exception as e: print('skin warm skipped', e)
-    g = p.body.active_material.node_tree.nodes[0]
-    for k, v in dict(Roughness=skin_rough or 0.36, Clearcoat=0.22, **{'Clearcoat Roughness': 0.25, 'Pore strength': 0.05, 'SSS strength': 0.5, 'SSS radius scale': 0.14}).items():
-        if k in g.inputs: g.inputs[k].default_value = v
+            # Zack look round 2: strand detail instead of clay - bump from the strand texture, glossy anisotropic sheen
+            bs = next((n for n in nt.nodes if n.type == 'BSDF_PRINCIPLED'), None)
+            if bs is not None:
+                for k, v in (('Roughness', 0.45), ('Anisotropic', 0.6), ('Specular IOR Level', 0.35), ('Coat Weight', 0.0)):
+                    if k in bs.inputs and not bs.inputs[k].links: bs.inputs[k].default_value = v
+                if not bs.inputs['Normal'].links:
+                    bm = nt.nodes.new('ShaderNodeBump'); bm.inputs['Strength'].default_value = 0.7; bm.inputs['Distance'].default_value = 0.002
+                    nt.links.new(tx.outputs['Color'], bm.inputs['Height']); nt.links.new(bm.outputs['Normal'], bs.inputs['Normal'])
+    # Zack look round 2 (2026-11-22): photo skin with visible pores, less wax/gloss, warmer tone (skin R-B 0.18-0.24).
+    # LESSON: the MPFB skin is one group per material slot; set EVERY skin slot (p.body.active_material is the genitals slot)
+    for s_ in p.body.material_slots:
+        m_ = s_.material
+        if not m_ or not m_.node_tree: continue
+        for g in m_.node_tree.nodes:
+            if g.type != 'GROUP' or 'Pore strength' not in g.inputs: continue
+            nm_ = m_.name.lower()
+            if 'nail' in nm_: continue
+            vals = {'Roughness': 0.33 if 'lips' in nm_ else (skin_rough or 0.44), 'Clearcoat': 0.04, 'Clearcoat Roughness': 0.4,
+                    'Pore strength': 0.25 if 'lips' in nm_ else 0.6, 'SSS strength': 0.3, 'SSS radius scale': 0.1}
+            for k, v in vals.items():
+                if k in g.inputs: g.inputs[k].default_value = v
+    try:  # warmer photo skin (measured graded R-B 0.12-0.14 vs Zack 0.18-0.24): saturate the diffuse inside the shared skin group once
+        gt = next(g.node_tree for s_ in p.body.material_slots if s_.material for g in s_.material.node_tree.nodes if g.type == 'GROUP' and g.node_tree)
+        if 'kw_skin_hs' not in gt.nodes:
+            for nd in list(gt.nodes):
+                if nd.type == 'TEX_IMAGE' and nd.image and 'diffuse' in (nd.image.name + nd.name).lower():
+                    hs2 = gt.nodes.new('ShaderNodeHueSaturation'); hs2.name = 'kw_skin_hs'
+                    hs2.inputs['Hue'].default_value = 0.5; hs2.inputs['Saturation'].default_value = 1.35; hs2.inputs['Value'].default_value = 0.92
+                    for l in list(nd.outputs['Color'].links):
+                        to = l.to_socket; gt.links.remove(l); gt.links.new(hs2.outputs['Color'], to)
+                    gt.links.new(nd.outputs['Color'], hs2.inputs['Color']); break
+    except Exception as e: print('skin tone skipped', e)
     if cloth_tint:
         for o in p.parts:
             for nm, col in cloth_tint.items():

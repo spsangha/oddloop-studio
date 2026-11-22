@@ -78,27 +78,30 @@ def room(S, ref, K):
     c = L.coll('kw_room'); s = Set(); s.coll = c
     P = ref.bone_world('spine05'); H = ref.bone_world('head').z; seat = P.z - 0.075
     YW, XW, XR, ZC = 1.45, -2.2, 2.2, 2.65      # back wall (behind the desk chair), left/right walls, ceiling
-    wall = _tex(K, 'kw_r_wall', 'white_plaster_02', 0.9, tint=(0.10, 0.42, 0.85), nor=0.5, fallback=(0.10, 0.42, 0.85))   # Zack look: saturated sky-blue wall behind warm skin (audit 2026-11-22)
-    wall2 = _tex(K, 'kw_r_wall2', 'white_plaster_02', 0.9, tint=(0.16, 0.52, 0.86), nor=0.5, fallback=(0.16, 0.52, 0.86))   # Zack look: cyan side walls
+    # Zack look round 2: flat bright sky-blue studio walls (hue ~190, V 0.7-0.86), no plaster texture, no white ceiling band
+    wall = L.mat('kw_r_wall', (0.12, 0.62, 0.86), 0.9)
+    wall2 = L.mat('kw_r_wall2', (0.16, 0.66, 0.88), 0.9)
     floor = wood('kw_r_floor', (0.45, 0.27, 0.14), 1.0)
     white = L.mat('kw_r_white', (0.85, 0.85, 0.82), 0.35)
     L.box('r_floor', (8, 8, 0.05), (0, 0, -0.025), floor, c, 0)
-    L.box('r_ceiling', (8, 8, 0.05), (0, 0, ZC + 0.025), L.mat('kw_r_ceil', (0.9, 0.9, 0.88), 0.9), c, 0)
+    L.box('r_ceiling', (8, 8, 0.05), (0, 0, ZC + 0.025), L.mat('kw_r_ceil', (0.08, 0.36, 0.58), 0.95), c, 0)
     L.box('r_wall_back', (8, 0.1, ZC), (0, YW + 0.05, ZC / 2), wall, c, 0)
     L.box('r_wall_left', (0.1, 8, ZC), (XW - 0.05, 0, ZC / 2), wall2, c, 0)
     L.box('r_wall_right', (0.1, 8, ZC), (XR + 0.05, 0, ZC / 2), wall2, c, 0)
     L.box('r_wall_front', (8, 0.1, ZC), (0, -4.0, ZC / 2), wall, c, 0)
     L.box('r_skirt', (8, 0.02, 0.09), (0, YW - 0.005, 0.045), white, c, 0.004)
-    # window in the back wall (left of the person) with daylight behind
-    wx, wz, ww, wh = -1.05, 1.55, 1.1, 1.15
-    fr = L.mat('kw_r_frame', (0.95, 0.95, 0.93), 0.3)
-    L.box('r_win_sky', (ww + 0.3, 0.02, wh + 0.3), (wx, YW + 0.2, wz), sky_window_mat('kw_r_sky'), c, 0)
-    for nm, sz, lc in (('r_win_t', (ww + 0.1, 0.12, 0.06), (wx, YW, wz + wh / 2)), ('r_win_b', (ww + 0.2, 0.2, 0.06), (wx, YW - 0.04, wz - wh / 2)),
-                       ('r_win_l', (0.06, 0.12, wh), (wx - ww / 2, YW, wz)), ('r_win_r', (0.06, 0.12, wh), (wx + ww / 2, YW, wz)), ('r_win_m', (0.04, 0.08, wh), (wx, YW, wz))):
-        L.box(nm, sz, lc, fr, c, 0.008)
-    # cut the wall: hide the wall behind the window with a boolean
-    cut = L.box('r_win_cut', (ww, 0.4, wh), (wx, YW + 0.05, wz), None, c, 0); cut.hide_render = True; cut.display_type = 'WIRE'
-    bw = bpy.data.objects['r_wall_back']; bo = bw.modifiers.new('win', 'BOOLEAN'); bo.object = cut; bo.operation = 'DIFFERENCE'; bo.solver = 'EXACT'
+    # Zack look round 2: plain flat backdrop, no window (it read as a white band behind the head); ROOM_WINDOW=1 brings it back
+    wx, wz, ww, wh = -1.05, 1.55, 1.1, 1.15   # window spot (also the key light position)
+    if os.environ.get('ROOM_WINDOW') == '1':
+        # window in the back wall (left of the person) with daylight behind
+        fr = L.mat('kw_r_frame', (0.95, 0.95, 0.93), 0.3)
+        L.box('r_win_sky', (ww + 0.3, 0.02, wh + 0.3), (wx, YW + 0.2, wz), sky_window_mat('kw_r_sky'), c, 0)
+        for nm, sz, lc in (('r_win_t', (ww + 0.1, 0.12, 0.06), (wx, YW, wz + wh / 2)), ('r_win_b', (ww + 0.2, 0.2, 0.06), (wx, YW - 0.04, wz - wh / 2)),
+                           ('r_win_l', (0.06, 0.12, wh), (wx - ww / 2, YW, wz)), ('r_win_r', (0.06, 0.12, wh), (wx + ww / 2, YW, wz)), ('r_win_m', (0.04, 0.08, wh), (wx, YW, wz))):
+            L.box(nm, sz, lc, fr, c, 0.008)
+        # cut the wall: hide the wall behind the window with a boolean
+        cut = L.box('r_win_cut', (ww, 0.4, wh), (wx, YW + 0.05, wz), None, c, 0); cut.hide_render = True; cut.display_type = 'WIRE'
+        bw = bpy.data.objects['r_wall_back']; bo = bw.modifiers.new('win', 'BOOLEAN'); bo.object = cut; bo.operation = 'DIFFERENCE'; bo.solver = 'EXACT'
     # desk in front of the person, chair under them
     desk_y = -0.55
     gltf_fit(c, 'WoodenTable_01', (0.0, desk_y, 0.0), 0, ('z', seat + 0.27))
@@ -125,7 +128,7 @@ def room(S, ref, K):
     gltf_fit(c, 'potted_plant_02', (1.75, YW - 0.35, 0), 30, ('z', 1.05))
     gltf_fit(c, 'wall_clock', (0.15, YW - 0.02, 2.05), 0, None)
     # kitchen corner on the left wall: counter + stove + apple
-    cm = L.mat('kw_r_cab', (0.92, 0.9, 0.86), 0.4); ctop = L.mat('kw_r_ctop', (0.2, 0.22, 0.24), 0.25, coat=0.4)
+    cm = L.mat('kw_r_cab', (0.20, 0.64, 0.88), 0.45); ctop = L.mat('kw_r_ctop', (0.2, 0.22, 0.24), 0.25, coat=0.4)   # round 2: sky-blue kitchen units, not a white band behind the head
     L.box('r_cab', (0.62, 1.6, 0.86), (XW + 0.31, 0.2, 0.43), cm, c, 0.01)
     L.box('r_ctop', (0.66, 1.64, 0.04), (XW + 0.33, 0.2, 0.88), ctop, c, 0.006)
     gltf_fit(c, 'electric_stove', (XW + 0.34, -0.95, 0), 90, ('z', 0.92))
@@ -134,7 +137,7 @@ def room(S, ref, K):
     L.box('r_upper', (0.35, 1.6, 0.7), (XW + 0.18, 0.2, 1.85), cm, c, 0.01)
     # rug + ceiling lamp
     L.box('r_rug', (1.8, 1.3, 0.01), (0.1, -0.2, 0.005), _tex(K, 'kw_r_rug', 'Fabric030', 2.0, tint=(0.6, 0.25, 0.2), fallback=(0.6, 0.25, 0.2)), c, 0.004)
-    gltf_fit(c, 'modern_ceiling_lamp_01', (0.0, -0.3, ZC), 0, None)
+    if os.environ.get('ROOM_WINDOW') == '1': gltf_fit(c, 'modern_ceiling_lamp_01', (0.0, -0.3, ZC), 0, None)   # round 2: lamp read as a white band over the head
     s.lights = [_area(c, 'r_window_light', (wx, YW - 0.1, wz), 260, 1.2, (1.0, 0.93, 0.82), (0.2, -0.6, H - 0.2), 1.2),
                 _area(c, 'r_key', (0.95, -1.55, 2.1), 170, 1.3, (1.0, 0.88, 0.74), (0, 0, H - 0.1)),
                 _area(c, 'r_rim', (-1.2, 1.0, 2.0), 120, 0.8, (0.6, 0.8, 1.0), (0, 0, H - 0.1)),

@@ -470,6 +470,11 @@ class Runtime:
             p.rot('neck02', (nod * 0.35 + st['neck'], turn * 0.35, tilt * 0.3)); p.rot('head', (nod * 0.65, turn * 0.65, tilt * 0.7))
             p.rot('spine03', (lean * 0.4, 0, 0)); p.rot('spine02', (lean * 0.35, 0, 0)); p.rot('spine01', (lean * 0.25, 0, 0))
             if not canonical: self.face_values(ra, qa, qb, w, st, u, t, shot)
+            if not canonical and qb.blink:   # Zack look round 2: small eye-darts (saccades) on every hold, deterministic per person
+                ph = hash(ra.a.name) % 13; k_ = int((t + ph * 0.37) / 0.9)
+                ex = ((k_ * 7919 + ph) % 9 - 4) * 0.9; ey = ((k_ * 104729 + ph) % 5 - 2) * 0.8
+                for eb in ('eye.L', 'eye.R'):
+                    if eb in p.rig.pose.bones: p.rot(eb, (ey, 0, ex))
             self._cur.append((ra, qa, qb, w))
         bpy.context.view_layer.update()
         self.solve_hands(shot, u, t)
@@ -723,7 +728,7 @@ class Runtime:
                     lens = lens or 50; d = dist or 0.36; sd0 = o.get('side', 0.0)
                     nrm = Matrix.Rotation(math.radians(sd0 + orbit * mv), 3, U) @ nr
                     pos = pt + nrm * d * (1 - push * mv) + U * height; pos += self._shake(t, o, u)
-                    return pos, pt, V((0, 0, 1)) if abs(nrm.z) < 0.9 else U, lens, fstop or 5.6, pt
+                    return pos, pt, V((0, 0, 1)) if abs(nrm.z) < 0.9 else U, lens, fstop or 2.8, pt   # Zack look round 2: shallow part DOF
                 # plunge: from a face close-up into the opening; stops 1.5 cm outside the skin
                 lens = lens or 38; d0 = dist or 0.55; k = clamp(mv) ** 2.2
                 start = pt + nr * d0 + U * 0.03
@@ -737,7 +742,7 @@ class Runtime:
                 base_f = V((0, 0, 1)); Uax = V((0, 0, 1))
             dirv = Matrix.Rotation(ang, 3, V((0, 0, 1))) @ base_f
             pos = A + dirv * dd + V((0, 0, 1)) * height + self._shake(t, o, u)
-            return pos, tgt, up, lens, fstop or (5.6 if kind == 'face' else 4.0), A
+            return pos, tgt, up, lens, fstop or (2.0 if kind == 'face' else 4.0), A   # Zack look round 2: f/2 face DOF
         if kind in ('two_shot', 'over_shoulder'):
             ra, C0 = anc(c.subj); rb, C1 = anc(o['other'])
             Aa, Ab = C0['face'], C1['face']
@@ -829,7 +834,20 @@ class Runtime:
         w = shot.world or KW.SET_WORLD[shot.set]
         self.world(w)
         # Zack look: every set lands at frame luma ~0.5-0.65 (room rendered 0.72, hospital 0.43 before; audit 2026-11-22)
-        self.S.view_settings.exposure = {'room': -0.5, 'hospital': 0.4}.get(shot.set, 0.0)
+        self.S.view_settings.exposure = {'room': -0.5, 'hospital': 0.1}.get(shot.set, 0.0)   # round 2: brighter flat walls -> hospital +0.4 -> +0.1
+
+    def rim_light(self, shot, cam):
+        """Zack look round 2: one cool-white rim light behind the subject's head, opposite the camera (every person shot)"""
+        if not hasattr(self, 'RIM'):
+            Ld = bpy.data.lights.new('kw_rim_back', 'AREA'); Ld.size = 0.7; Ld.color = (0.85, 0.93, 1.0)
+            self.RIM = bpy.data.objects.new('kw_rim_back', Ld); self.S.collection.objects.link(self.RIM)
+        subj = shot.cam.subj if isinstance(shot.cam, KW.Cam) and isinstance(shot.cam.subj, KW.Actor) else (next(iter(shot.cast)) if shot.cast else None)
+        if subj is None or subj not in self.actors: self.RIM.hide_render = True; return
+        hb = self.bw(self.actors[subj].p, 'head'); d = hb - V(cam); d.z = 0
+        if d.length < 1e-3: d = V((0, 1, 0))
+        d.normalize(); side = V((-d.y, d.x, 0))
+        self.RIM.hide_render = False; self.RIM.location = hb + d * 1.1 + side * 0.45 + V((0, 0, 0.55))
+        self.RIM.rotation_euler = (hb - self.RIM.location).to_track_quat('-Z', 'Y').to_euler(); self.RIM.data.energy = 70
 
     def prop_lights(self, origin, sc=1.0, on=True, gain=1.0):
         for o, off, e in self.ML:
@@ -855,6 +873,7 @@ class Runtime:
         self.FX.update(shot, u, t)
         pos, tgt, up, lens, fs, foc = self.cam_eval(shot, u, si)
         self.set_cam(pos, tgt, up, lens, fs, foc)
+        self.rim_light(shot, pos)
         self.FX.update_screen(shot, u, t)
         bpy.context.view_layer.update()
 
