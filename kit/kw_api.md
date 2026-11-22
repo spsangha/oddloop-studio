@@ -62,6 +62,23 @@ e.g. `cam=KW.cam.face(mia, push=0.12, side=14, shake=0.4)` — keep `push` 0.06-
 bounce bubbles crackle engine heal inhale pinch pressure puff rip rush sneeze sniff thud (acts and fx add their own).
 Frame-0 transient: thud / pinch / bounce / rip / crackle / sneeze.
 
+## Round 4 picture switches
+
+Enabled by default; set a variable to `0` to isolate or revert that class of changes. Set, camera, act, spot, effect and pose names are unchanged.
+
+- `KW_CABIN_R4`: Layered cabin materials, padded panels, upholstery seams, sky gradient and a more directional car key/rim. Wheel and seat marks are unchanged.
+- `KW_DRESSING_R4`: Dressed kitchen and clinic, with physical set backgrounds on medium/two/over-shoulder shots. Close views retain the Round 3 sky card where applicable. Existing `KW_BACKDROP=0` and `ROOM_WINDOW=1` still work.
+- `KW_ACTING_R4`: Adds irregular breathing and blinks, lateral weight shifts, delayed shoulder and elbow recoil, non-contact finger flex, modest walking arm swing, and steering-wheel hand tracking. Hand contacts still use the authored IK solver; the slushie hold solves to its straw tip rather than the cup body.
+- `KW_MOCAP_R4`: Opt out of all trimmed CMU torso tracks while retaining the rest of the acting pass. No root, fingers or full limbs come from the capture. See `assets/LICENCES.md`.
+- `KW_CAMERA_R4`: Softens push/orbit timing, replaces jitter with gentler drift and damped impacts, and shortens a wide room dolly only when its camera would cross a set wall.
+- `KW_XRAY_R4`: Clearer contour shell, differentiated tissue and skull response, sparse cerebral branches and a physical anatomy key.
+- `KW_MACRO_R4`: Layered macro tissue and vessel finish, plus a slight diagonal framing bias on tube wides. Existing effect anchors and explicit f-stops are preserved.
+- `KW_SCAN2_R4`: Near-black default X-ray environment (an explicit `world=` still wins), narrower cyan body edge, folded cortex, and contextual cervical/thorax bones. Requires `KW_XRAY_R4`; public organs, anchors and FX are unchanged.
+- `KW_MACRO2_R4`: Tube-based macros gain additional tissue depths, branching capillaries and fine outer-wall fibres outside the animated cut. Default macro framing gets a grid-free dark tissue gradient; an explicit `world=` still wins. Requires `KW_MACRO_R4`.
+- `KW_PEOPLE2_R4`: More off-axis, lower-fill people lighting and a restrained existing rim. No additional frontal catchlight and no material changes to heads.
+- `KW_PATH2_R4`: Shorter diffuse/glossy paths and adaptive sampling for room and hospital shots. Keeps refractive caustics enabled for eyes.
+- `KW_CONTACT2_R4`: Add bounded torso-only capture for seated/standing clutch and authored lean/examiner touch. `=0` retains the earlier drink/eat tracks and restores procedural clutch/lean. Existing contact IK remains in charge.
+
 ## Hook template values that pass the gate (from ep_blownose)
 - shot 1 `KW.cam.face(p, push=0.12, side=14, dist=0.7, shake=0.4)`; shot 2 at 1.0 s `KW.cam.xray(p, organ, view='34', push=0.55, orbit=30, dist=0.62)`
   (a small push fails 9a: x-ray frames at 1 s and 2 s look the same); shot 3 at 2.2 s `KW.cam.macro(m, view='wide', push=0.3, hits=[0.15])`.

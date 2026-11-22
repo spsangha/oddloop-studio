@@ -4,6 +4,7 @@ from mathutils import Vector, Matrix, Euler, Quaternion
 from mathutils.bvhtree import BVHTree
 import kwkit as KW
 import kwlib as L
+import kwlook as Q
 import person as P
 FPS = KW.FPS
 ease, ramp, bump, clamp = KW.ease, KW.ramp, KW.bump, KW.clamp
@@ -38,10 +39,13 @@ class Actor:
     """runtime state of one person"""
     def __init__(self, rt, a):
         self.a, self.rt = a, rt; self.p = None; self.parts = {}; self.hand = {}; self.props = {}
+        self.phase = Q.phase_seed(a.name)
 
 class Runtime:
     def __init__(self, ep):
         self.ep = ep; self.t0 = time.time()
+        self.body_r4 = Q.enabled('ACTING'); self.camera_r4 = Q.enabled('CAMERA')
+        self.mocap = Q.load_mocap() if self.body_r4 else {}
 
     # ================================================================== build
     def build(self):
@@ -278,6 +282,8 @@ class Runtime:
         self.W = W; self.w_grad, self.w_gs, self.w_amb = w_grad, w_gs, w_amb
         self.STUDIO = {'sky': ((0.2, 0.62, 1.0), (0.02, 0.16, 0.6), 0.16, (0.75, 0.85, 1.0), 0.3), 'night': ((0.02, 0.1, 0.32), (0.0, 0.012, 0.07), 0.1, (0.2, 0.4, 0.9), 0.12),
                        'warm': ((1.0, 0.62, 0.1), (0.85, 0.16, 0.05), 0.0, (1.0, 0.85, 0.7), 0.5), 'teal': ((0.05, 0.75, 0.7), (0.0, 0.18, 0.28), 0.12, (0.7, 0.95, 0.95), 0.35)}
+        self.STUDIO['scan2'] = ((.0025, .009, .018), (.0004, .0015, .003), 0., (.37, .57, .82), .11)
+        self.STUDIO['macro2'] = ((.095, .025, .036), (.026, .006, .013), 0., (.75, .85, 1.), .3)
         self.W0 = bpy.data.worlds.new('kw_plain'); self.W0.use_nodes = True
         cam_d = bpy.data.cameras.new('kw_cam'); self.CAM = bpy.data.objects.new('kw_cam', cam_d); S.collection.objects.link(self.CAM); S.camera = self.CAM; cam_d.clip_start = 0.01
         cam_d.sensor_fit = 'AUTO'; cam_d.sensor_width = 36
@@ -292,6 +298,21 @@ class Runtime:
         except Exception as e: print('compositor reset failed', repr(e))
         S.cycles.caustics_refractive = True   # LESSON: MPFB eyes sit behind a refractive cornea; without this the eyes render black
         S.render.resolution_x, S.render.resolution_y = 1080, 1920; S.render.resolution_percentage = int(os.environ.get('PCT', '100')); S.render.fps = FPS
+        self.path_defaults = {k: getattr(S.cycles, k) for k in (
+            'max_bounces', 'diffuse_bounces', 'glossy_bounces', 'adaptive_threshold',
+            'adaptive_min_samples', 'caustics_reflective')}
+        self.render_budget_set = None
+
+    def render_budget(self, kind):
+        if self.render_budget_set == kind or not Q.enabled('PATH2'): return
+        self.render_budget_set = kind
+        opts = self.path_defaults.copy()
+        if kind in ('room', 'hospital'):
+            opts.update(max_bounces=4, diffuse_bounces=1, glossy_bounces=2,
+                        caustics_reflective=False)
+            if self.SAMPLES >= 16:
+                opts.update(adaptive_threshold=.16, adaptive_min_samples=6)
+        for k, v in opts.items(): setattr(self.S.cycles, k, v)
 
     def world(self, kind):
         S = self.S
@@ -389,7 +410,7 @@ class Runtime:
                 st['tilt'] += 5 * math.sin((u - at) * 9) * ramp(u, at, at + 0.2)
         return st
 
-    def face_values(self, ra, qa, qb, w, acts_st, u, t, shot):
+    def face_values(self, ra, qa, qb, w, acts_st, u, t, shot, acts=()):
         want = {}
         def add(expr, v):
             if v <= 0: return
@@ -405,9 +426,13 @@ class Runtime:
         for e, v in acts_st['face'].items(): exprs[e] = max(exprs.get(e, 0), v)
         # blinks (deterministic per person); not while eyes squeezed
         if qb.blink and exprs.get('blink', 0) < 0.5:
-            ph = (hash(ra.a.name) % 97) / 97.0 * 3.1
-            c = (t + ph) % 3.3
-            exprs['blink'] = max(exprs.get('blink', 0), bump(c, 0.1, 0.055))
+            if self.body_r4:
+                if exprs.get('squint', 0) < 0.75:
+                    exprs['blink'] = max(exprs.get('blink', 0), Q.auto_blink(t, ra.phase, acts, u))
+            else:
+                ph = (hash(ra.a.name) % 97) / 97.0 * 3.1
+                c = (t + ph) % 3.3
+                exprs['blink'] = max(exprs.get('blink', 0), bump(c, 0.1, 0.055))
         sw = {}
         for k, v in qa.swell.items(): sw[k] = sw.get(k, 0) + v * (1 - w)
         for k, v in qb.swell.items(): sw[k] = sw.get(k, 0) + v * w
@@ -455,6 +480,8 @@ class Runtime:
             if qb.base == 'walk' and not canonical: M = M @ Matrix.Translation(V((0, 0, 0.012 * abs(math.sin(t * 2 * math.pi * 0.95)))))
             p.rig.rotation_mode = 'QUATERNION'; p.rig.matrix_world = M
             st = self.act_state(a, acts, u, t) if not canonical else self.act_state(a, [], u, t)
+            ra.beat = Q.body_beat(t, u, ra.phase, acts, qb.base) if self.body_r4 and not canonical else (0.0, 0.0, 0.0)
+            breath, shift, settle = ra.beat
             hd = tuple(qa.head[i] + (qb.head[i] - qa.head[i]) * w for i in range(3))
             nod, turn, tilt = hd[0] + st['nod'], hd[1] + st['turn'], hd[2] + st['tilt']
             look = qb.look if qb.look is not None else qa.look
@@ -468,8 +495,29 @@ class Runtime:
             if st['shake']: nod += st['shake'] * 2.0 * math.sin(t * 47); tilt += st['shake'] * 1.5 * math.sin(t * 39)
             lean = qa.lean + (qb.lean - qa.lean) * w + st['lean']
             p.rot('neck02', (nod * 0.35 + st['neck'], turn * 0.35, tilt * 0.3)); p.rot('head', (nod * 0.65, turn * 0.65, tilt * 0.7))
-            p.rot('spine03', (lean * 0.4, 0, 0)); p.rot('spine02', (lean * 0.35, 0, 0)); p.rot('spine01', (lean * 0.25, 0, 0))
-            if not canonical: self.face_values(ra, qa, qb, w, st, u, t, shot)
+            p.rot('spine03', (lean * 0.4 + 0.24 * breath, 0.35 * shift, 0.52 * shift))
+            p.rot('spine02', (lean * 0.35 + 0.47 * breath + 0.75 * settle, 0.60 * shift, 0.75 * shift))
+            p.rot('spine01', (lean * 0.25 + 0.30 * breath + 0.40 * settle, 0.34 * shift, 0.22 * shift))
+            if self.body_r4 and not canonical:
+                cue = next((at for at, q in ps.keys if q is qb), 0.)
+                Q.mocap_pose(p, self.mocap, acts, u, qb.base, qb, w if qa is not qb else 1., cue, a)
+                if any(ac.kind in ('flinch', 'wince') for ac in acts):
+                    p.pb('spine02').rotation_euler.x -= math.radians(2.4 * settle)
+                    p.pb('spine01').rotation_euler.x -= math.radians(1.8 * settle)
+                for side in 'LR':
+                    bone = 'clavicle.' + side
+                    if bone not in p.rig.pose.bones: continue
+                    h = getattr(qb, 'left' if side == 'L' else 'right')
+                    raised = h is not None and h.kind in ('touch', 'point', 'hold', 'wave')
+                    sign = side_sign(side)
+                    lift = 0.52 * breath + 0.44 * sign * shift + settle * (2.3 if raised else 1.05)
+                    # World up axis in the bone's rest frame: avoids a rig roll-dependent shrug.
+                    direction = p.rig.data.bones[bone].matrix_local.to_3x3() @ V((0, 1, 0))
+                    axis = direction.cross(V((0, 0, 1)))
+                    if axis.length > 0.1:
+                        axis = p.rig.data.bones[bone].matrix_local.to_3x3().inverted() @ axis.normalized()
+                        p.rot(bone, tuple(x * lift for x in axis))
+            if not canonical: self.face_values(ra, qa, qb, w, st, u, t, shot, acts)
             if not canonical and qb.blink:   # Zack look round 2: small eye-darts (saccades) on every hold, deterministic per person
                 ph = hash(ra.a.name) % 13; k_ = int((t + ph * 0.37) / 0.9)
                 ex = ((k_ * 7919 + ph) % 9 - 4) * 0.9; ey = ((k_ * 104729 + ph) % 5 - 2) * 0.8
@@ -477,7 +525,7 @@ class Runtime:
                     if eb in p.rig.pose.bones: p.rot(eb, (ey, 0, ex))
             self._cur.append((ra, qa, qb, w))
         bpy.context.view_layer.update()
-        self.solve_hands(shot, u, t)
+        self.solve_hands(shot, u, t, canonical)
 
     def look_point(self, look):
         if isinstance(look, KW.Actor):
@@ -510,20 +558,27 @@ class Runtime:
             return Wm @ Lm.inverted()
         pole = sh + out * 0.45 - Up * 0.6 - Fp * 0.2
         kind = h.kind if h is not None else 'rest'
-        seated = False
+        seated = walking = False
         for (r2, qa, qb, w) in self._cur:
-            if r2 is ra: seated = qb.base in ('sit', 'drive')
+            if r2 is ra: seated = qb.base in ('sit', 'drive'); walking = qb.base == 'walk'
         if kind == 'rest' and seated: kind = 'lap'
         if kind == 'rest':
             hip = self.bw(p, f'upperleg01.{side}'); D = hip + out * 0.1 - Up * 0.14 + Fp * 0.02
+            if self.body_r4 and walking:
+                step = sg * math.sin(t * 2 * math.pi * 0.95 - 0.20)
+                D += Fp * (0.115 * step) + Up * (0.019 * (1.0 - abs(step)))
             return D, 'palm', 'relaxed', orient(-out, -Up), pole
         if kind == 'lap':
             a_, b_ = self.bw(p, f'upperleg01.{side}'), self.bw(p, f'lowerleg01.{side}'); D = a_.lerp(b_, 0.6) + Up * 0.085 - out * 0.01
             return D, 'palm', 'relaxed', orient(-Up, (b_ - a_)), sh + out * 0.4 - Up * 0.5 + Fp * 0.05
         if kind == 'wheel':
             car = self.set_obj.get('car'); wc = car.wheel.matrix_world.translation.copy() if car is not None else V((0, -0.52, 1.0))
-            D = wc + V((0.17 * sg, 0.03, 0.04))
-            return D, 'palm', 'hold', orient(V((-0.4 * sg, -1, 0.15)), V((0, 0, 1))), sh + out * 0.5 + V((0, 0.3, -0.6))
+            offset = V((0.17 * sg, 0.03, 0.04)); nrm = V((-0.4 * sg, -1, 0.15)); up = V((0, 0, 1))
+            if self.body_r4 and car is not None:
+                axis = Matrix.Rotation(car.wheel.rotation_euler.x, 3, 'X') @ up
+                spin = Matrix.Rotation(car.wheel.rotation_euler.z, 3, axis)
+                offset, nrm, up = spin @ offset, spin @ nrm, spin @ up
+            return wc + offset, 'palm', 'hold', orient(nrm, up), sh + out * 0.5 + V((0, 0.3, -0.6))
         if kind == 'wave':
             D = sh + out * 0.3 + Up * 0.32 + Fp * 0.12; a_ = math.radians(22 * math.sin(t * 9)); f_w = Matrix.Rotation(a_, 3, Fp) @ Up
             return D, 'palm', 'open', orient(Fp, f_w), sh + out * 0.5 - Up * 0.3
@@ -546,7 +601,16 @@ class Runtime:
             if h.at in ('mouth', 'nose', 'ear'):
                 part = {'mouth': 'mouth', 'nose': 'nose', 'ear': 'ear_l' if side == 'L' else 'ear_r'}[h.at]
                 pt, nr = self.part_world(ra, part); D = pt + nr * 0.07 - Up * 0.05 + out * 0.03
-                return D, 'palm', 'hold', orient(-out, -nr + Up * 0.3), sh + out * 0.4 - Up * 0.6
+                wrist = orient(-out, -nr + Up * 0.3)
+                if self.body_r4 and h.at == 'mouth' and h.prop == 'slushie':
+                    # Match the prop's exact wrist-to-cup transform in kwfx. Solve from the
+                    # straw tip (the contact) rather than placing the cup at head height.
+                    info = ra.hand[side]
+                    f = (wrist @ info['fdir']).normalized()
+                    n = (wrist @ info['pnorm']).normalized()
+                    tip_x, tip_y, tip_z = Q.SLUSH_STRAW_TIP
+                    D = pt + nr * 0.008 - f * tip_x - n * (0.025 + tip_y) - f.cross(n) * tip_z
+                return D, 'palm', 'hold', wrist, sh + out * 0.4 - Up * 0.6
             if h.at == 'out':
                 D = sh + Fp * 0.5 - Up * 0.15 + out * 0.05; return D, 'palm', 'hold', orient(Up, Fp), pole
             D = self.bw(p, 'spine02') + Fp * 0.3 - Up * 0.12 + out * 0.08
@@ -601,7 +665,7 @@ class Runtime:
         D = far.lerp(near, 0.5)
         return D, bR
 
-    def solve_hands(self, shot, u, t):
+    def solve_hands(self, shot, u, t, canonical=False):
         jobs = []
         for (ra, qa, qb, w) in self._cur:
             for side in 'LR':
@@ -621,6 +685,10 @@ class Runtime:
                     (D0, t0, s0, R0, p0, w0, _), (D1, t1, s1, R1, p1, w1, _) = goals
                     D = D0.lerp(D1, w1); Rw = R0.to_quaternion().slerp(R1.to_quaternion(), w1).to_matrix(); pole = p0.lerp(p1, w1); tip, shape = (t1, s1) if w1 > 0.5 else (t0, s0)
                     shapes = [(s0, w0), (s1, w1)]
+                if self.body_r4 and not canonical:
+                    breath, shift, settle = ra.beat; sg = side_sign(side)
+                    # Secondary elbow arc only; authored hand contacts remain pinned.
+                    pole += ra.p.rig.matrix_world.to_3x3() @ V((sg * (0.018 * breath + 0.036 * settle), -0.026 * shift, 0.026 * settle))
                 jobs.append((ra, side, D, tip, shape, Rw, pole, shapes, h))
         if not jobs: return
         for ra, side, D, tip, shape, Rw, pole, shapes, h in jobs:
@@ -628,6 +696,12 @@ class Runtime:
             # finger pose (blend by weight)
             if len(shapes) == 1: self.set_shape(p, side, shape)
             else: self._blend_shapes(p, side, shapes)
+            if self.body_r4 and not canonical and tip == 'palm' and shape in ('relaxed', 'open'):
+                # Ripple through non-contact fingers, never rotate a pinch / prop / pressure pad.
+                breath, _, settle = ra.beat
+                for fi in (3, 4, 5):
+                    flex = (0.9 * breath + 2.0 * settle) * (0.70 + 0.14 * (fi - 3))
+                    p.pb(f'finger{fi}-2.{side}').rotation_euler.x += math.radians(flex)
             tgt, con, pl = ra.ik[side]; ra._tgt = getattr(ra, '_tgt', {}); ra._tgt[side] = D - (Rw @ tl)
             tgt.location = ra._tgt[side]; pl.location = pole; con.influence = 1.0
         bpy.context.view_layer.update()
@@ -681,6 +755,9 @@ class Runtime:
         lens = o.get('lens'); fstop = o.get('fstop'); push = o.get('push', 0.08 if c.kind in ('face', 'medium', 'wide', 'two_shot', 'over_shoulder', 'profile', 'part') else 0.0); orbit = o.get('orbit', 0.0); side = o.get('side', None)   # push default: Zack look slow push-in
         height = o.get('height', 0.0); dist = o.get('dist'); follow = o.get('follow')
         mv = un      # linear progress (continuous for the loop extrapolation)
+        if self.camera_r4 and 0.0 < un < 1.0:
+            # Partial ease: endpoints and the loop's extrapolation stay fixed.
+            mv = 0.72 * un + 0.28 * ease(un)
         def anc(actor, key=None):
             ra = self.actors[actor]; si_ = self.ep.shots.index(shot)
             C0 = self.canon.get((si_, actor))
@@ -742,6 +819,16 @@ class Runtime:
                 base_f = V((0, 0, 1)); Uax = V((0, 0, 1))
             dirv = Matrix.Rotation(ang, 3, V((0, 0, 1))) @ base_f
             pos = A + dirv * dd + V((0, 0, 1)) * height + self._shake(t, o, u)
+            if self.camera_r4 and kind == 'wide' and shot.set == 'room':
+                bounds = getattr(self.set_obj.get('room'), 'camera_bounds', None)
+                if bounds and all(bounds[0][i] < tgt[i] < bounds[1][i] for i in range(3)):
+                    # A point outside the wall can pass a collision check while filming its
+                    # opaque exterior. Dolly inside along the same sight line and widen the lens.
+                    lo, hi = bounds; k = 1.0
+                    for i in range(3):
+                        if pos[i] > hi[i]: k = min(k, (hi[i] - tgt[i]) / (pos[i] - tgt[i]))
+                        if pos[i] < lo[i]: k = min(k, (lo[i] - tgt[i]) / (pos[i] - tgt[i]))
+                    if k < 1.0: pos = tgt.lerp(pos, k); lens = max(16.0, lens * k)
             return pos, tgt, up, lens, fstop or (2.0 if kind == 'face' else 4.0), A   # Zack look round 2: f/2 face DOF
         if kind in ('two_shot', 'over_shoulder'):
             ra, C0 = anc(c.subj); rb, C1 = anc(o['other'])
@@ -781,7 +868,10 @@ class Runtime:
                 lens = lens or 24; pos = M0 + V((-1.3 + 1.0 * mv, 0.02, 0.03)); tgt = pos + V((1, 0, -0.02))
             if side: pos = M0 + Matrix.Rotation(math.radians(side), 3, V((0, 0, 1))) @ (pos - M0)
             pos = pos + self._shake(t, o, u) * 6
-            return pos, tgt, up, lens, fstop or 5.6, tgt if view != 'hole' else H
+            rich_macro = Q.enabled('MACRO')
+            if rich_macro and view == 'wide' and info['kind'] not in ('bone',):
+                up = Matrix.Rotation(math.radians(17 - 5 * mv), 3, (tgt - pos).normalized()) @ up
+            return pos, tgt, up, lens, fstop or (4.5 if rich_macro and view == 'wide' else 5.6), tgt if view != 'hole' else H
         if kind == 'prop':
             f = c.subj if isinstance(c.subj, KW.FX) else next((x for x in shot.fx if x.is_prop()), None)
             org, kindp = self.FX.station(f)
@@ -797,6 +887,15 @@ class Runtime:
         raise ValueError('unknown camera ' + kind)
 
     def _shake(self, t, o, u):
+        if self.camera_r4:
+            amp = o.get('shake', 0.0) * 0.0025 + 0.0011
+            d = V((math.sin(t * 2.23), 0.38 * math.sin(t * 1.42 + 1), 0.68 * math.sin(t * 1.99 + 2))) * amp
+            for h in o.get('hits', ()):
+                dt = u - h
+                if dt >= 0:
+                    k = 0.014 * math.exp(-dt * 7.5)
+                    d += V((0.43 * math.sin(dt * 24), 0.18 * math.sin(dt * 28), -math.sin(dt * 29))) * k
+            return d
         amp = o.get('shake', 0.0) * 0.006 + 0.0015
         for h in o.get('hits', ()):
             if u >= h: amp += 0.014 * math.exp(-(u - h) * 4.5)
@@ -826,12 +925,25 @@ class Runtime:
         # LESSON: in a real set hide the episode's own key/rim/fill (the set has its own lights)
         subj = shot.cam.subj if isinstance(shot.cam, KW.Cam) and isinstance(shot.cam.subj, KW.Actor) else (next(iter(shot.cast)) if shot.cast else None)
         lights_on = (not real) and shot.set in ('studio',) or (shot.set in ('car', 'hospital', 'room', 'street') and self.K is None)
+        scan = shot.set == 'xray' and Q.enabled('XRAY')
+        scan2 = scan and Q.enabled('SCAN2')
+        lights_on = lights_on or scan
         hb = self.bw(self.actors[subj].p, 'head') if subj is not None else V((0, 0, 1.5))
         R = self.actors[subj].p.rig.matrix_world.to_3x3().normalized() if subj is not None else Matrix.Identity(3)
         for o, off, e in self.PL:
             o.hide_render = not lights_on; o.location = hb + R @ off
-            o.rotation_euler = (hb - o.location).to_track_quat('-Z', 'Y').to_euler(); o.data.energy = e
+            if Q.enabled('PEOPLE2'):
+                stage = not scan
+                if o is self.PL[0][0]:
+                    o.data.size = 1.27 if stage else 1.6
+                    if stage: o.location = hb + R @ V((1.02, -1.44, .57)); e = 236
+                elif o is self.PL[1][0] and stage: e = 76
+                elif o is self.PL[2][0] and stage: e = 19
+            o.rotation_euler = (hb - o.location).to_track_quat('-Z', 'Y').to_euler()
+            o.data.energy = e * (.49 if scan2 else .84 if scan else 1.)
         w = shot.world or KW.SET_WORLD[shot.set]
+        if scan2 and shot.world is None: w = 'scan2'
+        if shot.set == 'macro' and shot.world is None and Q.enabled('MACRO') and Q.enabled('MACRO2'): w = 'macro2'
         self.world(w)
         # Zack look: every set lands at frame luma ~0.5-0.65 (room rendered 0.72, hospital 0.43 before; audit 2026-11-22)
         self.S.view_settings.exposure = {'room': -0.5, 'hospital': 0.1}.get(shot.set, 0.0)   # round 2: brighter flat walls -> hospital +0.4 -> +0.1
@@ -860,6 +972,8 @@ class Runtime:
         c = shot.cam if isinstance(shot.cam, KW.Cam) else None
         on = (shot.set in self.BACKDROP and c is not None and c.kind in self.BD_KINDS and isinstance(c.subj, KW.Actor) and c.subj in self.actors
               and os.environ.get('KW_BACKDROP', '1') == '1')
+        if on and Q.enabled('DRESSING') and c.kind in ('medium', 'two_shot', 'over_shoulder'):
+            on = False                 # geography of wide coverage stays visible; blue hero cards remain on tight shots
         if on:
             ra = self.actors[c.subj]; up = ra.p.rig.matrix_world.to_3x3() @ V((0, 0, 1))
             on = abs(up.z) > 0.6          # lying patient: keep the real set
@@ -882,7 +996,11 @@ class Runtime:
         if d.length < 1e-3: d = V((0, 1, 0))
         d.normalize(); side = V((-d.y, d.x, 0))
         self.RIM.hide_render = False; self.RIM.location = hb + d * 1.1 + side * 0.45 + V((0, 0, 0.55))
-        self.RIM.rotation_euler = (hb - self.RIM.location).to_track_quat('-Z', 'Y').to_euler(); self.RIM.data.energy = 70
+        self.RIM.rotation_euler = (hb - self.RIM.location).to_track_quat('-Z', 'Y').to_euler()
+        if shot.set == 'xray' and Q.enabled('XRAY') and Q.enabled('SCAN2'):
+            self.RIM.data.energy = 38
+        else:
+            self.RIM.data.energy = 57 if Q.enabled('PEOPLE2') and shot.set in ('car', 'hospital', 'room', 'street', 'studio') else 70
 
     def prop_lights(self, origin, sc=1.0, on=True, gain=1.0):
         for o, off, e in self.ML:
@@ -894,6 +1012,7 @@ class Runtime:
     # ================================================================== frame update
     def update(self, t):
         ep = self.ep; shot = ep.shot_at(t); u = t - shot.t; si = ep.shots.index(shot)
+        self.render_budget(shot.set)
         self.prop_lights((0, 0, 0), on=False)
         self.visibility(shot)
         for st, obj in self.set_obj.items():

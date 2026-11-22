@@ -6,6 +6,8 @@ bones, so they follow every pose.  Paths (for fx.flow) are lists of (bone, bone-
 import bpy, math, random
 from mathutils import Vector as V, Matrix
 import kwlib as L
+import kwlook as Q
+import kwscan as Scan
 
 XRAY_BODY = ((0.15, 0.75, 1.0), 2.2, 0.03, 0.42)     # ep_sneeze glass-body look
 PATHS = ('air_out_nose', 'air_out_mouth', 'air_in', 'nose_to_sinus', 'sinus_to_eye', 'food_down', 'blood_heart', 'brain_blood')
@@ -13,6 +15,8 @@ COLORS = {'green': (0.55, 1.0, 0.05), 'red': (1.0, 0.08, 0.03), 'blue': (0.1, 0.
           'white': (0.9, 0.95, 1.0), 'orange': (1.0, 0.42, 0.02)}
 
 def organ_mat(name, col, es=0.7, rough=0.25, sss=0.3, coat=0.5, bump=None):
+    rich = Q.enabled('XRAY')
+    if rich: es *= 0.24; coat = min(coat, 0.37); rough = max(0.30, rough)
     m = L.mat(name, col, rough, emit=col, es=es, sss=sss, coat=coat)
     if bump: L.bumpy(m, *bump)
     return m
@@ -28,8 +32,21 @@ class Body:
         self.anchor = {}        # organ -> (bone, local point)
         self.paths = {}
         self.points = {}        # named rest-pose points (world == rest)
-        self.xmat, self.xem = L.glow(f'kw_xray_body_{p.name}', *XRAY_BODY)
+        self.rich = Q.enabled('XRAY')
+        self.scan2 = self.rich and Q.enabled('SCAN2')
+        if self.scan2:
+            self.xmat, self.xem = Q.scan_shell(f'kw_scan_cyan_{p.name}', (.008, .19, .35), (.026, .88, 1.), 3.05, .87, contour=True)
+        elif self.rich:
+            self.xmat, self.xem = Q.scan_shell(f'kw_xray_body_{p.name}', (.04, .23, .53), (.19, .85, 1.), 1.55, .74)
+        else:
+            self.xmat, self.xem = L.glow(f'kw_xray_body_{p.name}', *XRAY_BODY)
         self.orig = [s.material for s in p.body.material_slots]
+        # MPFB clothes leave per-asset culling masks on the body even when the
+        # outfit is hidden. Keep the basemesh helper/internal face masks intact.
+        self.scan_masks = [(m, m.show_render) for m in p.body.modifiers
+                           if self.scan2 and m.type == 'MASK' and m.vertex_group.startswith('Delete.')
+                           and not any(k in m.vertex_group.lower() for k in
+                                       ('eye', 'high-poly', 'teeth', 'tongue'))]
         self._build()
 
     # ------------------------------------------------------------------ helpers
@@ -77,14 +94,20 @@ class Body:
             o.rotation_euler = d.to_track_quat('Z', 'Y').to_euler(); L.smooth(o); self.add('airway', o, 'neck01')
         self.set_anchor('airway', 'neck02', tr_top.lerp(ph, 0.4))
         # --- lungs
-        lung_m = self.reg_mat('lungs', organ_mat('kw_lungs', (1.0, 0.36, 0.22), 0.7, 0.3, 0.3, 0.4, (55, 0.5)))
+        lung_m = self.reg_mat('lungs', organ_mat('kw_lungs', (.82, .20, .18) if self.scan2 else (1., .36, .22),
+                                                 .46 if self.scan2 else .7, .3, .21 if self.scan2 else .3, .4, (55, .5)))
+        if self.scan2:
+            Scan.organic(lung_m, (.22, .019, .033), (.90, .30, .20), 18., .0017)
+            lung_v = self.reg_mat('lungs', organ_mat('kw_lung_branches', (.55, .095, .08), .31, .43))
         lc = []
         for sx in (-1, 1):
             c = tr_bot + V((sx * 0.082, 0.03, -0.105)); lc.append(c)
             o = L.sphere(f'x_lung{sx}', 1, c, lung_m, None, 40, 20, (0.062, 0.06, 0.125))
-            tx = bpy.data.textures.new(f'kw_lt{sx}', 'CLOUDS'); tx.noise_scale = 0.9; dm = o.modifiers.new('d', 'DISPLACE'); dm.texture = tx; dm.strength = 0.22; dm.texture_coords = 'GLOBAL'
+            if self.scan2: Scan.lobulate(o, sx)
+            tx = bpy.data.textures.new(f'kw_lt{sx}', 'CLOUDS'); tx.noise_scale = 0.9; dm = o.modifiers.new('d', 'DISPLACE'); dm.texture = tx; dm.strength = .09 if self.scan2 else .22; dm.texture_coords = 'LOCAL' if self.scan2 else 'GLOBAL'
             self.add('lungs', o, 'spine02')
             self.add('lungs', L.tube(f'x_bronch{sx}', [tr_bot, tr_bot + V((sx * 0.035, 0.01, -0.03)), c + V((-sx * 0.015, -0.02, 0.05))], 0.0065, air_wall), 'spine02')
+            if self.scan2: Scan.lung_threads(self, c, sx, lung_v)
         self.set_anchor('lungs', 'spine02', (lc[0] + lc[1]) / 2)
         P['lungL'], P['lungR'] = lc[1], lc[0]
         # --- esophagus + stomach
@@ -95,11 +118,24 @@ class Body:
         self.set_anchor('esophagus', 'spine02', es_pts[2].lerp(es_pts[3], 0.5))
         stm = self.reg_mat('stomach', organ_mat('kw_stomach', (1.0, 0.45, 0.35), 0.7, 0.3, 0.4, 0.5, (30, 0.3)))
         o = L.sphere('x_stomach', 1, st_c, stm, None, 32, 16, (0.075, 0.045, 0.055)); o.rotation_euler = (0, math.radians(-25), 0)
+        if self.scan2:
+            Scan.organic(stm, (.28, .048, .047), (.80, .34, .25), 19., .0018, (.9, 1.0, 1.4))
+            for v in o.data.vertices:
+                x, _, z = v.co
+                v.co.z -= .30 * x * x + .22 * x
+                v.co.y *= 1 + .17 * z - .17 * x
         self.add('stomach', o, 'spine04'); self.set_anchor('stomach', 'spine04', st_c); P['stomach'] = st_c; P['es_pts'] = es_pts
         # --- heart + vessels
         hc = chest + V((0.025, 0.06, -0.02))
         hm = self.reg_mat('heart', organ_mat('kw_heart', (0.95, 0.06, 0.06), 1.0, 0.25, 0.3, 0.6, (20, 0.4)))
         o = L.sphere('x_heart', 1, hc, hm, None, 32, 16, (0.05, 0.042, 0.06)); o.rotation_euler = (0, math.radians(-30), math.radians(20))
+        if self.scan2:
+            Scan.organic(hm, (.16, .012, .022), (.67, .065, .055), 13., .0014, (.8, .9, 1.5))
+            for v in o.data.vertices:
+                _, _, z = v.co
+                v.co.x *= .78 + .28 * z
+                v.co.x += .21 * min(0., z)
+                v.co.y *= .85 + .16 * z
         self.add('heart', o, 'spine02'); self.set_anchor('heart', 'spine02', hc); P['heart'] = hc
         vm = self.reg_mat('vessels', organ_mat('kw_vessel', (0.95, 0.08, 0.06), 0.9, 0.2, 0.2, 0.7))
         vb = self.reg_mat('vessels', organ_mat('kw_vein', (0.1, 0.25, 0.95), 0.9, 0.2, 0.2, 0.7))
@@ -114,22 +150,62 @@ class Body:
         self.set_anchor('vessels', 'neck01', n1 + F * 0.01); P['carotid'] = car
         # --- brain + skull + orbits + eyes + sinus
         bc = head + U * 0.085 + V((0, 0.005, 0))
-        bm = self.reg_mat('brain', organ_mat('kw_brain', (1.0, 0.55, 0.65), 0.8, 0.35, 0.4, 0.3))
+        bm = self.reg_mat('brain', organ_mat('kw_brain', (.76, .19, .18) if self.scan2 else (1., .55, .65),
+                                             .35 if self.scan2 else .8, .35, .16 if self.scan2 else .4, .3))
+        if self.scan2:
+            Scan.cortex(bm)
+            cb = self.reg_mat('brain', organ_mat('kw_cerebellum', (.55, .16, .15), .38, .41, .13, .28))
+            Q.texture(cb, (.27, .045, .045), (.72, .29, .24), 14., stretch=(.5, .6, 3.7),
+                      bump=(.42, .003), source=cb.node_tree.nodes.new('ShaderNodeTexCoord').outputs['Generated'])
+            for s in (-1, 1):
+                self.add('brain', L.sphere('x_cerebellum', 1, bc + V((s*.019, .034, -.047)),
+                                         cb, None, 36, 20, (.024, .035, .020)), 'head')
+            self.add('brain', L.tube('x_medulla', [bc + V((0, .018, -.032)), bc + V((0, .030, -.063)),
+                                                bc + V((0, .021, -.088))], .011, cb, res=3, radii=(1.16, .91, .55)), 'head')
+        elif self.rich:
+            # Use normalized lobe coordinates: anatomy retains its detail when actors are different sizes.
+            tc = bm.node_tree.nodes.new('ShaderNodeTexCoord').outputs['Generated']
+            Q.texture(bm, (0.31, 0.065, 0.082), (0.93, 0.49, 0.47), 10.5, detail=2, stretch=(1.02, 1.37, 0.85),
+                      rough=(0.30, 0.48), bump=(0.45, 0.0045), source=tc)
         for sx in (1, -1):
+            if self.scan2:
+                self.add('brain', Scan.lobe(f'x_cortex{sx}', bc + V((sx * .029, 0, .007)), sx, bm), 'head')
+                continue
             o = L.sphere(f'x_brain{sx}', 1, bc + V((sx * 0.033, 0, 0)), bm, None, 40, 20, (0.034, 0.08, 0.06))
             tx = bpy.data.textures.new(f'kw_gyri{sx}', 'VORONOI'); tx.noise_scale = 0.015; dm = o.modifiers.new('d', 'DISPLACE'); dm.texture = tx; dm.strength = 0.006; dm.texture_coords = 'GLOBAL'
             ss = o.modifiers.new('s', 'SUBSURF'); ss.levels = 0; ss.render_levels = 1
             o.modifiers.move(1, 0); self.add('brain', o, 'head')
         self.set_anchor('brain', 'head', bc); P['brain'] = bc
-        sk_m, sk_em = L.glow('kw_skull', (0.95, 0.95, 1.0), 2.4, 0.04, 0.3); self.reg_mat('skull', sk_m)
+        sk_m, sk_em = (Q.scan_shell('kw_skull_layer', (0.60, 0.68, 0.78), (0.87, 0.96, 1.0), 0.76, 0.48)
+                       if self.rich else L.glow('kw_skull', (0.95, 0.95, 1.0), 2.4, 0.04, 0.3))
+        self.reg_mat('skull', sk_m)
         o = L.sphere('x_cranium', 1, bc + V((0, 0.0, -0.005)), sk_m, None, 40, 20, (0.078, 0.1, 0.085)); self.add('skull', o, 'head')
-        rim = self.reg_mat('skull', organ_mat('kw_orbit', (1.0, 0.97, 0.9), 1.4, 0.3, 0.0, 0.3))
+        if self.rich:
+            # Small branching arterial silhouettes anchored inside the existing head shell.
+            for sx in (-1, 1):
+                seed = bc + V((sx * 0.036, -0.004, -0.043))
+                mid_v = bc + V((sx * 0.054, -0.009, -0.017))
+                crown = bc + V((sx * 0.056, -0.020, 0.028))
+                for k, path in enumerate((
+                    [seed, mid_v, crown],
+                    [mid_v, bc + V((sx * 0.058, -0.03, 0.004)), bc + V((sx * 0.044, -0.056, 0.029))],
+                    [mid_v.lerp(crown, 0.56), bc + V((sx * 0.062, 0.018, 0.018)), bc + V((sx * 0.043, 0.048, 0.041))],
+                )):
+                    self.add('vessels', L.tube(f'x_cerebral_{sx}_{k}', path, 0.0023 if k == 0 else 0.0015, vm,
+                                              res=3, radii=(1.05, 0.83, 0.40)), 'head')
+        rim = self.reg_mat('skull', organ_mat('kw_orbit', (.105, .29, .38) if self.scan2 else (1., .97, .9), .35 if self.scan2 else 1.4, .3, 0., .3))
         ey_m = self.reg_mat('eyes', organ_mat('kw_xeye', (0.95, 0.97, 1.0), 0.9, 0.2, 0.2, 0.8))
         ir_m = organ_mat('kw_xiris', (0.1, 0.5, 1.0), 2.0)
         for nm, e, sx in (('L', eyeL, 1), ('R', eyeR, -1)):
             ec = e + F * 0.002
-            o = L.prim('torus', f'x_orbit{nm}', rim, None, major_radius=0.02, minor_radius=0.0028, location=ec + F * 0.006, major_segments=32, minor_segments=8)
-            o.rotation_euler = (math.radians(90), 0, 0); o.scale = (1.05, 1, 0.95); L.smooth(o); self.add('skull', o, 'head')
+            if self.scan2:
+                aa = (j * math.tau / 21 for j in range(22))
+                pts = [ec + V((sx * .022 * math.cos(t), -.001 + .007 * math.cos(t),
+                              .018 * math.sin(t) + .003 * math.cos(2 * t))) for t in aa]
+                self.add('skull', L.tube(f'x_orbit{nm}', pts, .0021, rim, res=2), 'head')
+            else:
+                o = L.prim('torus', f'x_orbit{nm}', rim, None, major_radius=0.02, minor_radius=0.0028, location=ec + F * 0.006, major_segments=32, minor_segments=8)
+                o.rotation_euler = (math.radians(90), 0, 0); o.scale = (1.05, 1, 0.95); L.smooth(o); self.add('skull', o, 'head')
             o = L.sphere(f'x_eyeball{nm}', 0.0125, ec + V((0, 0.012, 0)), ey_m, None, 24, 12); self.add('eyes', o, f'eye.{nm}')
             o = L.sphere(f'x_iris{nm}', 0.0055, ec + V((0, 0.0005, 0)), ir_m, None, 16, 8, (1, 0.35, 1)); self.add('eyes', o, f'eye.{nm}')
         # (no jaw tube: every version floated outside the glass face as a hose-like loop under the chin -- LESSON, removed)
@@ -157,6 +233,9 @@ class Body:
         self.set_anchor('intestines', 'spine05', ic); P['gut'] = pts
         lm = self.reg_mat('liver', organ_mat('kw_liver', (0.55, 0.08, 0.06), 0.7, 0.3, 0.3, 0.5))
         o = L.sphere('x_liver', 1, belly + V((-0.055, 0.04, 0.11)), lm, None, 32, 16, (0.085, 0.05, 0.042)); o.rotation_euler = (0, math.radians(12), 0)
+        if self.scan2:
+            Scan.organic(lm, (.13, .022, .028), (.49, .12, .10), 27., .0013)
+            for v in o.data.vertices: v.co.z *= 1. - .39 * max(0., v.co.x)
         self.add('liver', o, 'spine03'); self.set_anchor('liver', 'spine03', belly + V((-0.055, 0.04, 0.11)))
         km = self.reg_mat('kidneys', organ_mat('kw_kidney', (0.75, 0.12, 0.1), 0.8, 0.3, 0.3, 0.5))
         for sx in (1, -1):
@@ -164,6 +243,8 @@ class Body:
         self.set_anchor('kidneys', 'spine04', s4 + V((0, -0.02, 0.03)))
         blm = self.reg_mat('bladder', organ_mat('kw_bladder', (1.0, 0.85, 0.2), 0.8, 0.25, 0.3, 0.5))
         bp = s5 + V((0, -0.07, -0.07)); o = L.sphere('x_bladder', 0.032, bp, blm, None, 24, 12); self.add('bladder', o, 'spine05'); self.set_anchor('bladder', 'spine05', bp)
+        if self.scan2:
+            Scan.skeleton(self, head, n1, (s2, s3, s5), (lc[1].x - lc[0].x) * .81)
         # --- flow paths
         out_n = nostril + V((0, -0.14, -0.03)); out_m = lips + V((0, -0.16, -0.02))
         H = 'head'; N1 = 'neck01'; S2 = 'spine02'
@@ -193,13 +274,19 @@ class Body:
         return [self.world(b, lp) for b, lp in self.paths[name]]
     def show(self, on, organs=()):
         self.coll.hide_render = not on
+        visible = set(organs)
+        if visible & {'skull', 'brain', 'airway'}: visible.add('_cervical')
+        if visible & {'lungs', 'heart', 'esophagus', 'stomach', 'liver'}: visible.add('_thorax')
         for nm, objs in self.organs.items():
-            h = not (on and nm in organs)
+            h = not (on and nm in visible)
             for o in objs:
                 if o.hide_render != h: o.hide_render = h
         for i, s in enumerate(self.p.body.material_slots):
             m = self.xmat if on else self.orig[i]
             if s.material is not m: s.material = m
+        for mask, original in self.scan_masks:
+            value = original and not on
+            if mask.show_render != value: mask.show_render = value
     def reset_fx(self):
         for o, (sc, bev) in self.base.items():
             o.scale = sc
@@ -239,6 +326,8 @@ class Macro:
 
     def _tube(self):
         M0 = self.M0; R, wc, bc, per, ic = TUBE_KINDS[self.kind]
+        rich = Q.enabled('MACRO')
+        layered = rich and Q.enabled('MACRO2')
         wall = L.mat(f'kw_m_wall{self.m.idx}', wc, 0.16, sss=0.4, coat=0.7); nt = wall.node_tree; pb = nt.nodes['Principled BSDF']
         tc = nt.nodes.new('ShaderNodeTexCoord'); sx = nt.nodes.new('ShaderNodeSeparateXYZ'); nt.links.new(tc.outputs['Object'], sx.inputs[0])
         cr = nt.nodes.new('ShaderNodeValToRGB'); cr.color_ramp.elements[0].position = 0.25; cr.color_ramp.elements[0].color = (*wc, 1); cr.color_ramp.elements[1].position = 0.8; cr.color_ramp.elements[1].color = (*bc, 1)
@@ -251,12 +340,30 @@ class Macro:
         nz = nt.nodes.new('ShaderNodeTexNoise'); nz.inputs['Scale'].default_value = 22; nz.inputs['Detail'].default_value = 5; bp = nt.nodes.new('ShaderNodeBump'); bp.inputs['Strength'].default_value = 0.35; bp.inputs['Distance'].default_value = 0.03
         nt.links.new(tc.outputs['Object'], nz.inputs['Vector']); nt.links.new(nz.outputs['Fac'], bp.inputs['Height']); nt.links.new(bp.outputs['Normal'], pb.inputs['Normal'])
         inner = L.mat(f'kw_m_inner{self.m.idx}', ic, 0.25, coat=0.5)
+        if rich:
+            pb.inputs['Coat Weight'].default_value = 0.34
+            pb.inputs['Coat Roughness'].default_value = 0.22
+            pb.inputs['Subsurface Weight'].default_value = 0.22
+            bp.inputs['Distance'].default_value = 0.012
+            layer = nt.nodes.new('ShaderNodeMixRGB'); layer.blend_type = 'MULTIPLY'; layer.inputs[0].default_value = 0.57
+            nr = nt.nodes.new('ShaderNodeValToRGB'); nr.color_ramp.elements[0].position = 0.24
+            nr.color_ramp.elements[0].color = (0.28, 0.30, 0.33, 1); nr.color_ramp.elements[1].position = 0.69
+            nt.links.new(nz.outputs['Fac'], nr.inputs['Fac']); nt.links.new(nr.outputs[0], layer.inputs[2])
+            nt.links.new(cr.outputs[0], layer.inputs[1]); nt.links.new(layer.outputs[0], pb.inputs['Base Color'])
+            rr = nt.nodes.new('ShaderNodeMapRange'); rr.inputs['To Min'].default_value = 0.24; rr.inputs['To Max'].default_value = 0.42
+            nt.links.new(nz.outputs['Fac'], rr.inputs['Value']); nt.links.new(rr.outputs[0], pb.inputs['Roughness'])
+            Q.texture(inner, tuple(j * 0.46 for j in ic), tuple(j * 1.35 for j in ic), 16, stretch=(0.35, 1.4, 1.4),
+                      rough=(0.20, 0.36), bump=(0.20, 0.007))
+        def surface(x, a, delta=0.):
+            r = R + (0.016 * max(0., math.cos(2 * math.pi * (x - .09) / per)) ** 2 if per else .006 * math.sin(a * 5 + x * 7))
+            if rich: r += .006 * math.sin(a * 3 + x * 4) + .004 * math.sin(a * 7 - x * 9)
+            return V((x, (r + delta) * math.sin(a), (r + delta) * math.cos(a)))
+
         me = bpy.data.meshes.new('m_tube'); vs = []; fs = []; NA, NL = 96, 160
         for j in range(NL + 1):
             x = -1.6 + 3.2 * j / NL
             for i in range(NA):
-                a = 2 * math.pi * i / NA; rr = R + (0.016 * max(0.0, math.cos(2 * math.pi * (x - 0.09) / per)) ** 2 if per else 0.006 * math.sin(a * 5 + x * 7))
-                vs.append((x, rr * math.sin(a), rr * math.cos(a)))
+                vs.append(surface(x, math.tau * i / NA))
         for j in range(NL):
             for i in range(NA): fs.append((j * NA + i, j * NA + (i + 1) % NA, (j + 1) * NA + (i + 1) % NA, (j + 1) * NA + i))
         me.from_pydata(vs, [], fs); t = bpy.data.objects.new(f'kw_m_tube{self.m.idx}', me); self.coll.objects.link(t); t.location = M0; t.data.materials.append(wall); L.smooth(t)
@@ -270,14 +377,77 @@ class Macro:
         # surroundings: muscle, vessels, fat (ep_sneeze look)
         rnd = self.rnd
         mus = L.bumpy(L.mat(f'kw_m_musc{self.m.idx}', (0.62, 0.05, 0.06), 0.2, sss=0.2, coat=0.6), 60.0, 0.6, 2.0, 0.05, stretch=(0.03, 1, 1))
+        if rich:
+            Q.texture(mus, (0.21, 0.019, 0.028), (0.72, 0.17, 0.15), 7, stretch=(0.12, 4.5, 4.5),
+                      rough=(0.33, 0.49), bump=(0.33, 0.026))
         for k, (y, z, r) in enumerate(((0.75, 0.45, 0.42), (0.85, -0.5, 0.5), (0.2, -0.95, 0.36))):
             self.objs.append(L.cyl(f'kw_m_mus{k}', r, 5.0, M0 + V((0, y + R - 0.35, z)), mus, self.coll, (0, 90, 0), 48))
         vm = L.mat('kw_m_vein', (0.03, 0.12, 0.75), 0.15, coat=0.8); am = L.mat('kw_m_art', (0.85, 0.03, 0.04), 0.15, coat=0.8)
-        L.tube('kw_m_v', [M0 + V((-2.4, -0.2, R + 0.27)), M0 + V((-0.8, -0.12, R + 0.21)), M0 + V((0.8, -0.2, R + 0.25)), M0 + V((2.4, -0.1, R + 0.31))], 0.075, vm, self.coll, 8)
-        L.tube('kw_m_a', [M0 + V((-2.4, -0.25, -R - 0.25)), M0 + V((-0.7, -0.3, -R - 0.2)), M0 + V((0.9, -0.22, -R - 0.25)), M0 + V((2.4, -0.3, -R - 0.21))], 0.065, am, self.coll, 8)
+        if layered:
+            for m, dark, light in ((vm, (.023, .027, .108), (.14, .23, .46)),
+                                   (am, (.17, .015, .027), (.67, .11, .12))):
+                L.bsdf(m).inputs['Coat Weight'].default_value = .39
+                L.bsdf(m).inputs['Coat Roughness'].default_value = .23
+                Q.texture(m, dark, light, 9.5, detail=3, stretch=(.7, 1.4, 1.4),
+                          rough=(.28, .45), bump=(.31, .018))
+            for s, m in ((1, vm), (-1, am)):
+                pts = [V((x, y, s*(R + z))) for x, y, z in (
+                    (-2.20, -.02, .46), (-1.02, -.18, .22), (-.32, -.10, .29),
+                    (.25, -.22, .23), (.95, -.29, .37), (2.1, -.07, .26))]
+                L.tube('kw_m_vessel_trunk', [M0 + p for p in pts], .068, m, self.coll, 4,
+                       radii=(1.05, .92, 1.16, .81, .67, .48))
+                for k, seed in enumerate((pts[2], pts[3], pts[4])):
+                    dx = (-.57, .66, .51)[k]; dz = (.19, .15, -.18)[k] * s
+                    pp = [(0, 0, 0), (.35*dx, .033, .25*dz), (.77*dx, .013, .81*dz), (dx, .076, dz)]
+                    L.tube('kw_m_vessel_fork', [M0 + seed + V(p) for p in pp], .028, m,
+                           self.coll, 2, radii=(1.05, .84, .51, .16))
+        else:
+            L.tube('kw_m_v', [M0 + V((-2.4, -0.2, R + 0.27)), M0 + V((-0.8, -0.12, R + 0.21)), M0 + V((0.8, -0.2, R + 0.25)), M0 + V((2.4, -0.1, R + 0.31))], 0.075, vm, self.coll, 8)
+            L.tube('kw_m_a', [M0 + V((-2.4, -0.25, -R - 0.25)), M0 + V((-0.7, -0.3, -R - 0.2)), M0 + V((0.9, -0.22, -R - 0.25)), M0 + V((2.4, -0.3, -R - 0.21))], 0.065, am, self.coll, 8)
         fat = L.bumpy(L.mat('kw_m_fat', (1.0, 0.78, 0.2), 0.25, sss=0.5, coat=0.5), 8.0, 0.4)
+        if rich:
+            Q.texture(fat, (0.52, 0.24, 0.037), (0.93, 0.65, 0.18), 13, rough=(0.37, 0.50), bump=(0.27, 0.012))
+            fascia = Q.texture(L.mat('kw_m_fascia', (0.75, 0.36, 0.25), 0.36, sss=0.18),
+                              (0.34, 0.085, 0.054), (0.85, 0.47, 0.32), 22, stretch=(0.13, 1.5, 1.5),
+                              rough=(0.29, 0.48), bump=(0.35, 0.026))
+            for k in range(4):
+                z, y = (R + 0.33 + k * 0.087), (0.20 + k * 0.071)
+                L.tube(f'kw_m_fascial_band{k}', [M0 + V((-2.5, y + 0.04, z + 0.14)), M0 + V((-0.5, y, z)),
+                       M0 + V((0.75, y + 0.04, z - 0.04)), M0 + V((2.5, y + 0.12, z - 0.11))],
+                       0.036, fascia, self.coll, 3, radii=(0.45, 1.0, 0.75, 0.65))
         for i in range(16):
             L.sphere(f'kw_m_fat{i}', rnd.uniform(0.1, 0.2), M0 + V((rnd.uniform(-2.0, 2.0), rnd.uniform(0.15, 0.6), rnd.choice((-1, 1)) * rnd.uniform(R + 0.4, R + 0.8))), fat, self.coll, 20, 10, (1.2, 1.0, 0.8))
+        if layered:
+            pb.inputs['Coat Roughness'].default_value = .17
+            pb.inputs['Subsurface Weight'].default_value = .15
+            rnd2 = random.Random(119 + self.m.idx)
+            cap = L.mat('kw_m_surface_capillary', (.34, .018, .038), .32, coat=.35)
+            fib = L.mat('kw_m_sheathe_fibre', (wc[0] * .82, wc[1] * .73, wc[2] * .75), .34, coat=.29)
+            def attached(name, path, radius, material, radii):
+                o = L.tube(name, [surface(x, a, .001) for x, a in path], radius,
+                           material, self.coll, 1, radii=radii)
+                o.parent = t
+
+            # Leave an exclusion band around the animated wound and its debris.
+            for s in (-1, 1):
+                for j in range(13):
+                    a = rnd2.uniform(-3.2, .55); x0 = s * rnd2.uniform(.17, .93)
+                    span = rnd2.uniform(.26, .67) * s
+                    da = rnd2.uniform(-.43, .43); phase = rnd2.uniform(0, math.tau)
+                    path = [(x0 + span*u, a + da*u + .067*math.sin(phase+u*8)) for u in (0., .2, .4, .6, .8, 1.)]
+                    m = cap if j % 3 == 0 else fib
+                    attached('kw_m_surface_fibre', path, rnd2.uniform(.0017, .0042), m,
+                             (.1, .62, 1., .84, .48, .09))
+                    if m == cap:
+                        x, angle = path[2]
+                        attached('kw_m_capillary_fork', [(x + span*u*.45, angle + .21*u)
+                                 for u in (0., .32, .66, 1.)], .0018, cap, (.8, .81, .45, .09))
+                for j in range(5):
+                    z = s * (R + .25 + j*.095); y = .29 + .11*j
+                    pts = [M0 + V((x, y + rnd2.uniform(-.1, .1), z + rnd2.uniform(-.09, .09)))
+                           for x in (-2.0, -1.22, -.43, .39, 1.13, 2.)]
+                    L.tube('kw_m_soft_tissue_layer', pts, .060 + .012*j, mus, self.coll, 2,
+                           radii=(.64, .87, 1., .92, .86, .69))
         self.block_pt = M0 + V((0.25, 0, 0))
 
     def _bone(self):
@@ -288,6 +458,9 @@ class Macro:
         cr.color_ramp.elements[0].position = 0.05; cr.color_ramp.elements[0].color = (0.38, 0.16, 0.1, 1); cr.color_ramp.elements[1].position = 0.22; cr.color_ramp.elements[1].color = (0.82, 0.66, 0.48, 1)
         nt.links.new(vo.outputs['Distance'], cr.inputs['Fac']); nt.links.new(cr.outputs['Color'], pb.inputs['Base Color'])
         bp = nt.nodes.new('ShaderNodeBump'); bp.inputs['Strength'].default_value = 0.6; bp.inputs['Distance'].default_value = 0.03; nt.links.new(vo.outputs['Distance'], bp.inputs['Height']); nt.links.new(bp.outputs['Normal'], pb.inputs['Normal'])
+        if Q.enabled('MACRO'):
+            Q.texture(bm, (0.43, 0.25, 0.16), (0.80, 0.67, 0.51), 28, stretch=(0.70, 1, 1.5),
+                      rough=(0.34, 0.58), bump=(0.32, 0.011))
         me = bpy.data.meshes.new('m_plate'); vs = []; fs = []; NX, NZ = 120, 80
         for j in range(NZ + 1):
             z = -1.2 + 2.4 * j / NZ

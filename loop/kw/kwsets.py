@@ -4,6 +4,7 @@ build(kind, S, ref_person, K) -> object with .coll .lights and optional .update(
 import bpy, math, os
 from mathutils import Vector as V, Matrix
 import kwlib as L
+import kwlook as Q
 HERE = os.path.dirname(os.path.abspath(__file__))
 A = os.environ.get('KW_ASSETS', os.path.normpath(os.path.join(HERE, '..', '..', 'assets', 'real')))
 class Set: pass
@@ -78,6 +79,7 @@ def room(S, ref, K):
     c = L.coll('kw_room'); s = Set(); s.coll = c
     P = ref.bone_world('spine05'); H = ref.bone_world('head').z; seat = P.z - 0.075
     YW, XW, XR, ZC = 1.45, -2.2, 2.2, 2.65      # back wall (behind the desk chair), left/right walls, ceiling
+    s.camera_bounds = ((XW + 0.10, -3.85, 0.10), (XR - 0.10, YW - 0.10, ZC - 0.10))
     # Zack look round 2: flat bright sky-blue studio walls (hue ~190, V 0.7-0.86), no plaster texture, no white ceiling band
     wall = L.mat('kw_r_wall', (0.12, 0.62, 0.86), 0.9)
     wall2 = L.mat('kw_r_wall2', (0.16, 0.66, 0.88), 0.9)
@@ -134,6 +136,26 @@ def room(S, ref, K):
     gltf_fit(c, 'electric_stove', (XW + 0.34, -0.95, 0), 90, ('z', 0.92))
     gltf_fit(c, 'food_apple_01', (XW + 0.4, 0.5, 0.9), 0, ('z', 0.08))
     gltf_fit(c, 'food_apple_01', (XW + 0.47, 0.6, 0.9), 50, ('z', 0.075))
+    if Q.enabled('DRESSING'):
+        # Layer the kitchen below eye line without turning the cyan wall into clutter.
+        front = L.mat('kw_room_cabinet_door', (0.075, 0.26, 0.36), 0.48, coat=0.16)
+        metal = L.mat('kw_room_handle', (0.45, 0.52, 0.54), 0.32, 0.8)
+        seam = L.mat('kw_room_tile_grout', (0.09, 0.26, 0.31), 0.78)
+        tile = [L.mat(f'kw_room_tile_{i}', (0.13 + i * 0.012, 0.47 + i * 0.020, 0.57 + i * 0.023),
+                      0.36, coat=0.16) for i in range(3)]
+        L.box('r_tile_bed', (0.018, 1.6, 0.34), (XW + 0.011, 0.20, 1.075), seam, c, 0)
+        for j, z in enumerate((0.971, 1.074, 1.177)):
+            for i in range(10):
+                L.box('r_tile', (0.018, 0.154, 0.096), (XW + 0.022, -0.521 + 0.16 * i, z), tile[(i * 5 + j * 7) % 3], c, 0)
+        for i, yy in enumerate((-0.39, 0, 0.39, 0.78)):
+            L.box('r_cabinet_face', (0.024, 0.374, 0.725), (XW + 0.633, yy, 0.407), front, c, 0.006)
+            L.box('r_cabinet_pull', (0.038, 0.13, 0.018), (XW + 0.659, yy, 0.70), metal, c, 0.005)
+        board = wood('kw_chop_board', (0.59, 0.35, 0.16), 4, planks=False)
+        L.box('r_chop_board', (0.027, 0.25, 0.32), (XW + 0.09, 0.66, 1.05), board, c, 0.012, (3, -11, 0))
+        ceramic = L.mat('kw_room_ceramic', (0.63, 0.72, 0.70), 0.34, coat=0.24)
+        for i, (yy, rad, dep) in enumerate(((0.90, 0.049, 0.135), (0.78, 0.046, 0.093))):
+            L.cyl('r_ceramic_jar', rad, dep, (XW + 0.23, yy, 0.90 + dep / 2), ceramic, c, verts=24)
+            L.cyl('r_jar_lid', rad * 1.06, 0.017, (XW + 0.23, yy, 0.909 + dep), board, c, verts=24)
     if os.environ.get('ROOM_WINDOW') == '1': L.box('r_upper', (0.35, 1.6, 0.7), (XW + 0.18, 0.2, 1.85), cm, c, 0.01)   # round 3: wall unit read as a pale band over the head
     # rug + ceiling lamp
     L.box('r_rug', (1.8, 1.3, 0.01), (0.1, -0.2, 0.005), _tex(K, 'kw_r_rug', 'Fabric030', 2.0, tint=(0.6, 0.25, 0.2), fallback=(0.6, 0.25, 0.2)), c, 0.004)
@@ -142,6 +164,14 @@ def room(S, ref, K):
                 _area(c, 'r_key', (0.95, -1.55, 2.1), 170, 1.3, (1.0, 0.88, 0.74), (0, 0, H - 0.1)),
                 _area(c, 'r_rim', (-1.2, 1.0, 2.0), 120, 0.8, (0.6, 0.8, 1.0), (0, 0, H - 0.1)),
                 _area(c, 'r_fill', (-0.2, -2.2, 1.1), 40, 1.6, (1.0, 0.95, 0.9), (0, 0, H - 0.2))]
+    if Q.enabled('DRESSING'):
+        s.lights[0].data.energy = 190; s.lights[1].data.color = (1.0, 0.94, 0.87)
+    if Q.enabled('PEOPLE2'):
+        window, key, rim, fill = s.lights
+        key.location.x = 1.12
+        key.rotation_euler = (V((0, 0, H - .10)) - key.location).to_track_quat('-Z', 'Y').to_euler()
+        key.data.size, key.data.energy, key.data.color = 1.18, 218, (1., .96, .91)
+        window.data.energy, rim.data.energy, fill.data.energy = 146, 71, 21
     s.desk_top = top; s.desk_y = desk_y
     return s
 
@@ -168,6 +198,9 @@ def street(S, ref, K):
         gltf_fit(c, 'shrub_04', (x, y, 0), k * 70, ('z', 0.9 * sc))
     for k in range(10): gltf_fit(c, 'grass_medium_02', (-4.5 + k, 1.6 + 0.3 * (k % 3), 0), k * 37, ('z', 0.25))
     s.lights = [_area(c, 's_sun_key', (2.5, -3.0, 3.6), 900, 2.5, (1.0, 0.92, 0.8), (0, 0, 1.2)), _area(c, 's_fill', (-2.0, -2.5, 1.5), 120, 2.5, (0.8, 0.9, 1.0), (0, 0, 1.2))]
+    if Q.enabled('PEOPLE2'):
+        s.lights[0].data.color = (1., .96, .91)
+        s.lights[1].data.energy = 65
     sun = bpy.data.lights.new('s_sun', 'SUN'); sun.energy = 3.0; sun.angle = math.radians(3); sun.color = (1.0, 0.95, 0.85)
     so = bpy.data.objects.new('s_sun', sun); c.objects.link(so); so.rotation_euler = (math.radians(50), 0, math.radians(35)); s.lights.append(so)
     return s

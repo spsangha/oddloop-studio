@@ -1,6 +1,6 @@
 # Asset licences (Kinda Wild 3D kit)
 
-Every 3D asset the kit renders is CC0 (public domain). Nothing here comes from Zack D. Films, and nothing is AI-generated.
+The kit uses CC0 and other licensed assets as noted below. Nothing in the rendering kit comes from Zack D. Films, and nothing is AI-generated.
 Round 2 of the Zack look match (2026-11-22) added 0 MB (round 3 added the 18 MB `assets/mh` set below) of new files to the repo: the photo skins, hair, eyebrows, eyelashes and eyes below are the
 MakeHuman system assets the render workflow (`.github/workflows/render_kw.yml`) already downloads at render time. They are not committed.
 
@@ -34,6 +34,14 @@ Licences are taken from each pack's `packs/<pack>.json` metadata (field `license
 ## Sets, props, textures (in the repo)
 
 See `assets/real/CREDITS.md` (Poly Haven and ambientCG, CC0 1.0). Room and hospital walls are now flat untextured materials (no plaster texture).
+
+## Round 4: additive torso motion
+
+`assets/motion/cmu_torso_r4.json` contains trimmed, decimated torso rotations from CMU Graphics Lab subject 79, trials 40 (drinking a soda) and 15 (eating a sandwich), downloaded 2026-11-23 (Hong Kong). Source data: [CMU subject 79 catalogue](http://mocap.cs.cmu.edu/search.php?subjectnumber=79); BVH conversion by Bruce Hahne, mirrored at [79_40.bvh](https://github.com/una-dinosauria/cmu-mocap/blob/master/data/079/79_40.bvh) and [79_15.bvh](https://github.com/una-dinosauria/cmu-mocap/blob/master/data/079/79_15.bvh). The [CMU FAQ](https://mocap.cs.cmu.edu/faqs.php) permits copying, modifying and redistributing the data. The [CMU terms](http://mocap.cs.cmu.edu/) explicitly permit inclusion in commercial products but prohibit resale of the motion data itself, including converted versions. The project keeps the terms for these tracks; do not redistribute the tracks as a paid dataset.
+
+The data used in this project was obtained from mocap.cs.cmu.edu. The database was created with funding from NSF EIA-0196217.
+
+`assets/motion/cmu_contact_r4.json` adds torso-only trims from [CMU subject 22](http://mocap.cs.cmu.edu/search.php?subjectnumber=22), [22_03 (seated face hold)](https://github.com/una-dinosauria/cmu-mocap/blob/master/data/022/22_03.bvh) and [22_18 (forward lean)](https://github.com/una-dinosauria/cmu-mocap/blob/master/data/022/22_18.bvh), downloaded 2026-11-23 (Hong Kong). The [same CMU commercial-product terms](http://mocap.cs.cmu.edu/) apply. The second look pass adds no external visual assets.
 
 ## Music
 
