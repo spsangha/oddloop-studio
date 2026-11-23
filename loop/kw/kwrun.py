@@ -79,7 +79,13 @@ class Runtime:
                 pass
         print(f'people built {time.time() - self.t0:.0f}s')
         bpy.context.view_layer.update()
+        if os.environ.get('KW_HEADS') == 'humgen':   # opt-in Human Generator people (heads_hg.py; assets only from the private kw-assets repo)
+            import heads_hg as HGH
+            for a_, ra_ in self.actors.items(): HGH.graft(self, ra_, dict(a_.role))
+            bpy.context.view_layer.update()
         for ra in self.actors.values(): self._calibrate(ra)
+        for ra in self.actors.values():
+            if getattr(ra.p, 'hg', None) is not None: ra.p.hg.calibrate(self, ra)
         self._sets()
         self._lights_world_camera()
         import kwfx
@@ -236,6 +242,7 @@ class Runtime:
         p = ra.p
         if kind == 'seat':
             z = (KW.SEAT_H[st] + 0.075 - ra.sit_pelvis) if st in KW.SEAT_H else (self.seat_pelvis.get(st, ra.sit_pelvis) - ra.sit_pelvis)
+            z -= getattr(ra, 'hg_seat_drop', 0.0)     # humgen only: its seat-to-pelvis depth differs from the 7.5 cm kit rule
             return Matrix.Translation(V((xy[0], xy[1], z))) @ Matrix.Rotation(math.radians(rz), 4, 'Z'), st
         if kind == 'stand_near':
             ref = self.ref.get(st); hz = ref.sit_head if ref else ra.stand_head
@@ -347,7 +354,7 @@ class Runtime:
         nose = Mh @ ra.parts['nose'][1]; upb = (Mh.to_3x3() @ V((0, 1, 0))).normalized()
         f = nose - hb; f = (f - upb * f.dot(upb)).normalized(); left = upb.cross(f).normalized()
         R = p.rig.matrix_world.to_3x3().normalized()
-        A = dict(head=hb, nose=nose, up=upb, fwd=f, left=left, face=hb + f * 0.03 + upb * 0.03,
+        A = dict(head=hb, nose=nose, up=upb, fwd=f, left=left, face=hb + f * 0.03 + upb * (0.03 + getattr(ra, 'hg_face_dz', 0.0)),   # hg_face_dz: humgen only (HG face height on the head bone)
                  body_up=(R @ V((0, 0, 1))).normalized(), body_fwd=(R @ V((0, -1, 0))).normalized(), body_left=(R @ V((1, 0, 0))).normalized(),
                  hips=self.bw(p, 'spine05'), chest=self.part_world(ra, 'chest')[0], feet=p.rig.matrix_world.translation.copy())
         return A
@@ -357,7 +364,7 @@ class Runtime:
         return M @ loc, (M.to_3x3() @ nrm).normalized()
     def anchors_light(self, ra):
         Mh = self.wmat(ra.p, 'head'); hb = Mh.translation; up = (Mh.to_3x3() @ V((0, 1, 0))).normalized(); nose = Mh @ ra.parts['nose'][1]
-        f = nose - hb; f = (f - up * f.dot(up)).normalized(); return hb + f * 0.03 + up * 0.03
+        f = nose - hb; f = (f - up * f.dot(up)).normalized(); return hb + f * 0.03 + up * (0.03 + getattr(ra, 'hg_face_dz', 0.0))
 
     # ================================================================== per-frame posing
     def act_state(self, a, acts, u, t):
@@ -440,6 +447,7 @@ class Runtime:
         if sw.get('eye_l', 0) > 0.4 or sw.get('eye_r', 0) > 0.4: pass
         for e, v in exprs.items(): add(e, v)
         for path, k in ra.p.keys.items(): k.value = min(k.slider_max, want.get(path, 0.0))
+        if getattr(ra.p, 'hg', None) is not None: ra.p.hg.face(exprs)
         fl = qa.flush * (1 - w) + qb.flush * w
         if self.K and hasattr(self.K, 'flush'):
             try: self.K.flush(ra.p, fl)
@@ -674,6 +682,7 @@ class Runtime:
                 for h, wt in ((ha, 1 - w), (hb_, w)):
                     if wt <= 1e-4: continue
                     g = self.hand_goal(ra, side, h, u, t)
+                    if g is not None and getattr(ra.p, 'hg', None) is not None: g = ra.p.hg.goal(self, ra, side, h, g, u, t)
                     if g is None: continue
                     D, tip, shape, Rw, pole = g
                     if isinstance(D, tuple) and D and D[0] == 'PINCH': D, Rw = self.pinch_goal(ra, D[1], side)
@@ -915,6 +924,7 @@ class Runtime:
                 if o.type == 'ARMATURE': continue
                 h = (not on) or (xr and o is not ra.p.body)     # LESSON: every part incl. curves (stethoscope, lanyards)
                 if o.hide_render != h: o.hide_render = h
+            if getattr(ra.p, 'hg', None) is not None: ra.p.hg.xray(xr and on)
             self.FX.xray_body(ra, xr)
         cur = self.ep.spot_of(shot, next(iter(shot.cast.values())).keys[0][1])[0] if shot.cast and shot.set not in KW.SPOTS else shot.set
         for st, c in self.colls.items():
@@ -1025,6 +1035,8 @@ class Runtime:
             if st == 'car' and obj is not None and hasattr(obj, 'steer'): obj.steer(math.sin(t * 0.9) * 0.07)
         self.pose_all(shot, u)
         self.FX.update(shot, u, t)
+        for ra in self.actors.values():
+            if getattr(ra.p, 'hg', None) is not None: ra.p.hg.frame(self, shot)
         pos, tgt, up, lens, fs, foc = self.cam_eval(shot, u, si)
         self.set_cam(pos, tgt, up, lens, fs, foc)
         self.rim_light(shot, pos)
@@ -1080,6 +1092,8 @@ class Runtime:
     def main(self, argv):
         self.build()
         ep = self.ep
+        if os.environ.get('KW_HG_AUDIT'):   # sandbox-only build-time tests (tool lives outside the repo)
+            sys.path.insert(0, os.environ['KW_HG_AUDIT']); import hg_audit; hg_audit.run(self); return
         if '--check' in argv:
             frames = sorted(set(int(round((s.t + k * s.length) * FPS)) for s in ep.shots for k in (0.02, 0.5, 0.97)))
             errs = self.scene_check(frames)

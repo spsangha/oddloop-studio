@@ -110,6 +110,15 @@ MACRO_KINDS = ('windpipe', 'esophagus', 'artery', 'vein', 'intestine', 'stomach'
 BANNED_SOUNDS = ('whoosh', 'swoosh', 'woosh', 'swish')
 FX_FALLBACK = ('bounce', 'bubbles', 'crackle', 'engine', 'heal', 'inhale', 'pinch', 'pressure', 'puff', 'rip', 'rush', 'sneeze', 'sniff', 'thud')
 
+HG_AGE = {'kid': 'young', 'teen': 'young', 'young': 'young', 'middle': 'young', 'old': 'old'}
+
+
+def hg_slot(role):
+    """KW_HEADS=humgen cast slot name for a person role (m_young_caucasian ...); file = $KW_HG_LIB/<slot>.blend"""
+    g = {'male': 'm', 'female': 'f'}.get(role.get('gender'), role.get('gender'))
+    return f"{g}_{HG_AGE.get(role.get('age'), 'young')}_{role.get('race')}"
+
+
 def _sound_names():
     try:
         import fx_kw
@@ -656,6 +665,11 @@ class Episode:
         if not 22 <= self.duration <= 36: E.append(f'duration {self.duration:.1f} s; must be 22-36 s (Zack: 24-30 s; add words or gap=0.4)')
         for name, ok, why in self.hook_gate():
             if not ok: E.append(f'HOOK {name}: {why}')
+        if os.environ.get('KW_HEADS') == 'humgen':   # 4.11 fail loudly: every cast slot needs its HG file (never mix old and new people)
+            lib = os.environ.get('KW_HG_LIB', '/tmp/kw-assets/humgen/cast')
+            for a in sorted({a for s in self.shots for a in s.cast if isinstance(a, Actor)}, key=lambda a: a.name):
+                sl = hg_slot(a.role)
+                if not os.path.isfile(os.path.join(lib, sl + '.blend')): E.append(f'KW_HEADS=humgen: {a.name} needs cast slot {sl}.blend, missing in {lib}')
         for e in E: print('CHECK ERROR:', e)
         for w in W: print('check warning:', w)
         self.errors, self.warnings = E, W
