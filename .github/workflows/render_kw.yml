@@ -7,6 +7,7 @@ on:
       pct: {description: 'Render size percent of 1080x1920', required: false, default: '100'}
       samples: {description: 'Cycles samples', required: false, default: '24'}
       out: {description: 'Output file name', required: false, default: 'KindaWild.mp4'}
+      heads: {description: "People: 'scan' (default) or 'humgen' (licensed cast from the private asset store)", required: false, default: 'scan'}
 env:
   BLENDER: blender-4.2.3-linux-x64
   SHARDS: 20
@@ -48,6 +49,15 @@ jobs:
           D="$HOME/.config/blender/4.2/extensions/.user/user_default/mpfb/data"; mkdir -p "$D"
           unzip -q -o mpfb_cache/assets.zip -d "$D"
           ls "$D" | head; ls "$D/skins" | wc -l
+      - name: Private cast
+        if: github.event.inputs.heads == 'humgen'
+        env: {KW_ASSETS_KEY: '${{ secrets.KW_ASSETS_KEY }}'}
+        run: |
+          K="$RUNNER_TEMP/kwk"; ( umask 077; printf '%s\n' "$KW_ASSETS_KEY" > "$K" )
+          GIT_SSH_COMMAND="ssh -i $K -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new" git clone -q --depth 1 git@github.com:spsangha/kw-assets.git "$RUNNER_TEMP/kw-assets"
+          rm -f "$K"
+          test -d "$RUNNER_TEMP/kw-assets/humgen/cast"; echo "cast files: $(ls "$RUNNER_TEMP/kw-assets/humgen/cast" | wc -l)"
+          echo "KW_HEADS=humgen" >> "$GITHUB_ENV"; echo "KW_HG_LIB=$RUNNER_TEMP/kw-assets/humgen/cast" >> "$GITHUB_ENV"
       - name: Render shard
         env: {PCT: '${{ github.event.inputs.pct }}', SAMPLES: '${{ github.event.inputs.samples }}', ZK_TEX: '${{ github.workspace }}/assets/tex'}
         run: |
