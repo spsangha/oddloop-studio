@@ -21,11 +21,20 @@ def phase_seed(name):
     return zlib.crc32(name.encode('utf-8')) / 4294967296.0
 
 
+LOOP_T = None     # humgen episodes: loop length (s); breath / weight / alive layer frequencies lock to it so the last frame meets frame 0
+
+
+def loop_w(w):
+    """nearest angular frequency with a whole number of cycles in the loop (unchanged when no loop is set)."""
+    if not LOOP_T: return w
+    n = max(1, round(w * LOOP_T / (2 * math.pi))); return 2 * math.pi * n / LOOP_T
+
+
 def body_beat(t, u, phase, acts, base):
     """Pure time function: irregular breath, weight transfer, delayed action recoil."""
-    breath = (math.sin(t * 1.67 + phase * 6.283 + 0.20 * math.sin(t * 0.63))
-              + 0.23 * math.sin(t * 3.34 + phase * 12.566 - 0.6)) / 1.23
-    weight = 0.70 * math.sin(t * 1.11 + phase * 6.283) + 0.30 * math.sin(t * 2.19 + phase * 15.6)
+    breath = (math.sin(t * loop_w(1.67) + phase * 6.283 + 0.20 * math.sin(t * loop_w(0.63)))
+              + 0.23 * math.sin(t * loop_w(3.34) + phase * 12.566 - 0.6)) / 1.23
+    weight = 0.70 * math.sin(t * loop_w(1.11) + phase * 6.283) + 0.30 * math.sin(t * loop_w(2.19) + phase * 15.6)
     lift = 0.0
     for a in acts:
         delays = {'sneeze': (0.03,), 'blow_nose': (0.04,), 'drink': (0.19,), 'swallow': (0.04,), 'wince': (0.05,),

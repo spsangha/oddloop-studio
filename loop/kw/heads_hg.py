@@ -17,7 +17,7 @@ import os
 import numpy as np
 import bpy, math
 import kwkit as KW
-from mathutils import Vector as V, Matrix
+from mathutils import Vector as V, Matrix, Quaternion
 from mathutils.kdtree import KDTree
 
 LIB = os.environ.get('KW_HG_LIB', '/tmp/kw-assets/humgen/cast')
@@ -42,6 +42,7 @@ ARK = {   # kit expression -> HG ARKit shape keys (weight)
     'eyeswell_l': {'eyeBlink_L': 0.7, 'eyeSquint_L': 0.5}, 'eyeswell_r': {'eyeBlink_R': 0.7, 'eyeSquint_R': 0.5},
     'cheekswell_l': {'cheekPuff': 0.3}, 'cheekswell_r': {'cheekPuff': 0.3}, 'lipswell': {'mouthPucker': 0.3},
     'bloat': {'kw_bloat': 1.0},
+    'jaw': {'jawOpen': 1.0}, 'lipsclose': {'mouthClose': 1.0},     # humgen spoon bite (ruling d): jaw open + lips closed on the handle
 }
 ARK_NAMES = sorted({k for d in ARK.values() for k in d})
 
@@ -137,10 +138,66 @@ class Graft:
         P = ((R @ self.rig.pose.bones[f'thumb.03.{s2}'].tail) + (R @ self.rig.pose.bones[f'f_index.03.{s2}'].tail)) / 2
         nb = (M.to_3x3() @ V((0, 1, 0))).normalized(); front = M @ V((0, BOARD_T / 2 + PAPER_T, 0))
         T = P - nb * (P - front).dot(nb)
+        P = self._pen_clear(s2, T, P)      # C4: no finger through the pen (thumb / index / middle pads rest on it)
         ax = P - T; Lp = max(ax.length, 0.005); z = ax.normalized(); x = z.orthogonal().normalized(); y = z.cross(x)
         Mp = Matrix((x, y, z)).transposed().to_4x4() @ Matrix.Diagonal((1, 1, Lp + 0.09, 1)); Mp.translation = T
         self.pen.matrix_world = Mp
         self.pen_state = (T, P, Lp)
+
+    def _finger_skin(self, side):
+        """world positions of the thumb / index / middle distal + middle phalanx skin verts by linear-blend skinning
+        (the armature modifier's own maths; no shape key moves the fingers), cheap enough for every writing frame"""
+        ck = getattr(self, '_fsk', {})
+        if side not in ck:
+            vg = {g.index: g.name for g in self.body.vertex_groups}; names = [f'{f}.0{k}.{side}' for f in ('thumb', 'f_index', 'f_middle') for k in (2, 3)]
+            rows = []
+            for v in self.body.data.vertices:
+                ws = [(vg[g.group], g.weight) for g in v.groups if g.weight > 0.01 and vg.get(g.group) in self.rig.pose.bones]
+                fn_ = next((nm.split('.')[0] for n, w_ in ws for nm in names if n == nm and w_ > 0.5), None)
+                if fn_ is not None: rows.append((v.index, ws)); self._fskn = getattr(self, '_fskn', {}); self._fskn.setdefault(side, []).append(fn_)
+            sk = self.body.data.shape_keys          # HG body shape keys move the hands (proportions): mix them like the mesh does
+            if sk:
+                kb = sk.key_blocks; base = kb[0]
+                rows = [(V(base.data[i].co) + sum(((b.data[i].co - b.relative_key.data[i].co) * b.value for b in kb[1:] if b.value != 0.0 and not b.mute), V()), ws) for i, ws in rows]
+            else: rows = [(V(self.body.data.vertices[i].co), ws) for i, ws in rows]
+            ck[side] = rows; self._fsk = ck
+        R = self.rig.matrix_world; Wb = self.body.matrix_world; Mi = (R.inverted() @ Wb); out = []
+        for co, ws in ck[side]:
+            c = Mi @ co; acc = V(); tw = 0.0
+            for n, w_ in ws:
+                pb = self.rig.pose.bones[n]; acc += w_ * ((pb.matrix @ pb.bone.matrix_local.inverted()) @ c); tw += w_
+            out.append(R @ (acc / tw))
+        return out
+
+    def _pen_clear(self, side, T, P, r=0.0028, gap=0.0006):
+        """rotate the pen about its paper tip T (move its grip point P in the plane across the pen) by the smallest offset
+        that leaves every thumb / index / middle skin vert >= r + gap from the pen axis (1 mm grid, 16 mm disc)"""
+        pts = np.array([list(q) for q in self._finger_skin(side)]); T_ = np.array(list(T)); z0 = (P - T).normalized()
+        u_ = z0.orthogonal().normalized(); v_ = z0.cross(u_)
+        def worst(Pc):
+            z = Pc - T_; L = np.linalg.norm(z); z = z / L; d = pts - T_; t_ = d @ z
+            m = (t_ > 0) & (t_ < L + 0.03)
+            if not m.any(): return 0.0
+            rad = np.linalg.norm(d[m] - np.outer(t_[m], z), axis=1); return float(max(0.0, (r + gap - rad).max()))
+        P0 = np.array(list(P)); w0 = worst(P0)
+        fn = np.array(self._fskn[side]); th, ix = fn == 'thumb', fn == 'f_index'
+        def gaps(Pc):
+            z = Pc - T_; L = np.linalg.norm(z); z = z / L; d = pts - T_; t_ = d @ z; m = (t_ > 0) & (t_ < L + 0.03)
+            g = np.full(len(pts), 1.0); g[m] = np.linalg.norm(d[m] - np.outer(t_[m], z), axis=1) - r
+            return g[th].min() if th.any() else 0.0, g[ix].min() if ix.any() else 0.0, g.min()
+        if os.environ.get('KW_HG_AUDIT'): print('AUDIT penclear', side, len(pts), 'first depth mm', round(1000 * w0, 2))
+        best = None      # C4: no finger inside the pen (all >= gap) AND thumb + index pads resting on it (aim 1 mm)
+        for a in range(-16, 17):
+            for b in range(-16, 17):
+                o = 0.001 * (a * np.array(list(u_)) + b * np.array(list(v_))); n_ = np.linalg.norm(o)
+                if n_ > 0.016: continue
+                gt, gi, gm = gaps(P0 + o)
+                if gm < gap - 1e-5: continue
+                c = (gt - 0.001) ** 2 + (gi - 0.001) ** 2 + 1e-3 * n_ ** 2
+                if best is None or c < best[0]: best = (c, o, gt, gi)
+        if best is None: return P
+        if os.environ.get('KW_HG_AUDIT'): print('AUDIT penclear moved mm', round(1000 * float(np.linalg.norm(best[1])), 1), 'thumb/index gap mm', round(1000 * best[2], 1), round(1000 * best[3], 1))
+        return V(tuple(P0 + best[1]))
 
     def xray(self, on):
         """x-ray shots: the HG body is the glass body -> no clothing masks (whole silhouette), no hair strands."""
@@ -296,11 +353,23 @@ def _dress_can(kr):
     me = ob.data
     while len(me.materials) < 1: me.materials.append(None)
     me.materials[0] = M('kw_hg_can_label', label); me.materials.append(M('kw_hg_can_silver', silver))
+    def dark(m):
+        b = m.node_tree.nodes['Principled BSDF']; b.inputs['Base Color'].default_value = (0.015, 0.012, 0.012, 1); b.inputs['Roughness'].default_value = 0.6
+    me.materials.append(M('kw_hg_can_hole', dark))
     bm = bmesh.new(); bm.from_mesh(me); r0, h0 = GRIP['can']
-    for sg in (1, -1):
-        for rad, dep, z in ((r0 * 0.86, 0.002, sg * (h0 / 2 + 0.0008)), (r0 + 0.0006, 0.005, sg * (h0 / 2 - 0.0022))):
-            res = bmesh.ops.create_cone(bm, cap_ends=True, segments=48, radius1=rad, radius2=rad, depth=dep, matrix=Matrix.Translation((0, 0, z)))
-            for f in {f for v in res['verts'] for f in v.link_faces}: f.material_index = 1; f.smooth = True
+    def part(rad1, rad2, dep, Mx, mat, seg=48):
+        res = bmesh.ops.create_cone(bm, cap_ends=True, segments=seg, radius1=rad1, radius2=rad2, depth=dep, matrix=Mx)
+        for f in {f for v in res['verts'] for f in v.link_faces}: f.material_index = mat; f.smooth = True
+    T = lambda x, y, z: Matrix.Translation((x, y, z))
+    S = lambda sx, sy: Matrix.Diagonal((sx, sy, 1, 1))
+    # TOP (+z): rolled rim ring, recessed silver lid, the drinking opening toward local +y (the lip side) and the pull tab
+    part(r0 + 0.0006, r0 + 0.0006, 0.005, T(0, 0, h0 / 2 - 0.0022), 1)
+    part(r0 * 0.86, r0 * 0.86, 0.0016, T(0, 0, h0 / 2 + 0.0004), 1)
+    part(0.0045, 0.0045, 0.0005, T(0, r0 * 0.52, h0 / 2 + 0.0013) @ S(1.0, 0.75), 2, 24)
+    part(0.0065, 0.0065, 0.0006, T(0, r0 * 0.12, h0 / 2 + 0.0015) @ S(0.62, 1.0), 1, 24)
+    # BOTTOM (-z): narrower silver base (tapered neck + recessed dome), not a copy of the top
+    part(r0 * 0.80, r0 + 0.0004, 0.007, T(0, 0, -h0 / 2 + 0.0035), 1)
+    part(r0 * 0.70, r0 * 0.70, 0.0012, T(0, 0, -h0 / 2 + 0.0002), 1)
     bm.to_mesh(me); bm.free()
 
 
@@ -526,6 +595,7 @@ FIT_X0 = 0.12
 HIDE_ERODE = 0.015
 LAYER_OFF = 0.004
 BOARD_FWD = 0.03
+BOARD_DROP = 0.235       # C1: holding wrist this far below the HG neck base -> board top ~0.17 m below it (breastbone); measured board top = wrist + 0.065
 LAYER_IN = 0.010
 COLLAR_OFF = 0.006
 COLLAR_R = 0.10
@@ -764,7 +834,7 @@ def _graft_calibrate(self, kr, ra):
                 elif h.kind == 'touch' and h.part == 'belly': need.add((sd, 'plane', 'claw'))
     for (sd, key, shape) in sorted(need):
         kr.set_shape(p, sd, shape); bpy.context.view_layer.update()
-        self.curl[(sd, key)] = self._solve_real(kr, sd, key)
+        self.curl[(sd, key)] = self._solve_can(kr, sd) if key == 'can' else self._solve_pen(kr, sd) if key == 'spoon' else self._solve_real(kr, sd, key)
         kr.set_shape(p, sd, 'relaxed')
     bpy.context.view_layer.update()
     print(f'humgen curls {p.name}', {f'{k[0]}{k[1]}': v for k, v in self.curl.items()})
@@ -877,7 +947,9 @@ def _solve_real(self, kr, s, key):
         cs = {1: th[i]}; cs.update({k: (fc[i], fc[i]) for k in range(2, 6)})
         r = ev(cs)
         for k in cs: samp[k].append((cs[k], r[k]))
-    def score(c, d): return (0 if 0.0 <= d <= 0.004 else 1, abs(d - SKIN) if not (0.0 <= d <= 0.004) else (abs(c[0]) + abs(c[1])) * 1e-4)
+    def score(c, d):
+        if key == 'board': return (0 if 0.0 <= d <= 0.002 else 1, abs(d - SKIN))      # C3: skin to board 0-2 mm (was the loosest curl in 0-4 mm)
+        return (0 if 0.0 <= d <= 0.004 else 1, abs(d - SKIN) if not (0.0 <= d <= 0.004) else (abs(c[0]) + abs(c[1])) * 1e-4)
     best = {k: min(v, key=lambda x: score(*x)) for k, v in samp.items()}
     # fingers that never reach in the coupled scan: base joint and outer joints separately (base flex <= 100 deg extra)
     bad = [k for k in range(2, 6) if not (0.0 <= best[k][1] <= 0.004)]
@@ -924,10 +996,21 @@ Graft._sdf = _sdf
 def _goal(self, kr, ra, side, h, g, u, t):
     """retarget one kit hand goal onto the HG hand: prop contact on the HG lips / paper / tee (translation only)."""
     if g is None or not hasattr(self, 'Pl'): return g
+    getattr(self, '_canrel', {}).pop(side, None)
     D, tip, shape, Rw, pole = g
     if not isinstance(D, V) or Rw is None: return g
     tl = ra.hand[side][shape][tip]
     W = Matrix.Translation(D - Rw @ tl) @ Rw.to_4x4()
+    can_ = h is not None and h.kind == 'hold' and h.prop == 'can' and h.at == 'mouth' and shape == 'hold' and (side, 'can') in getattr(self, 'cangrip', {})
+    # the kit IK chain is 4 bones (upperarm01/02, lowerarm01/02): the 02 twist bones may only TWIST while the can is held,
+    # so the real elbow lands where the 2-bone arm solve put it (they bent ~10 cm off it); other hand jobs unchanged (G8)
+    for bn in (f'upperarm02.{side}', f'lowerarm02.{side}'):
+        pb_ = ra.p.rig.pose.bones.get(bn)
+        if pb_ is not None: pb_.lock_ik_x = pb_.lock_ik_z = bool(can_)
+    if can_:
+        return self.can_goal(kr, ra, side, tip, shape, u)
+    if h is not None and h.kind == 'hold' and h.prop == 'spoon' and h.at == 'mouth' and shape == 'hold' and (side, 'spoon') in getattr(self, 'curl', {}):
+        return self.spoon_goal(kr, ra, side, tip, shape, u, pole)
     if h is not None and h.kind == 'hold' and h.prop in GRIP and h.at == 'mouth' and shape == 'hold':
         r, hh = GRIP[h.prop]
         L = kr.wmat(ra.p, 'head') @ self.lip_local; _, nr = kr.part_world(ra, 'mouth')
@@ -952,6 +1035,7 @@ def _goal(self, kr, ra, side, h, g, u, t):
     if h is not None and h.kind == 'clipboard':
         # board a little further from the chest so the writing forearm's sleeve clears the shirt (overlap test)
         _, fw = kr.part_world(ra, 'belly'); fw = V((fw.x, fw.y, 0)).normalized() * BOARD_FWD
+        nz_ = (self.rig.matrix_world @ self.rig.pose.bones['neck'].head).z; fw = fw + V((0, 0, max(0.0, (nz_ - BOARD_DROP) - (D + fw).z)))   # C1: board top edge level with the breastbone (it sat at the hip)
         W = Matrix.Translation(fw) @ W; self._wl = (side, W)
         return (D + fw, tip, shape, Rw, pole)
     if h is not None and h.kind == 'write' and getattr(self, '_wl', None) is not None and self._wl[0] != side:
@@ -1000,8 +1084,337 @@ def _drink_w(self, kr, ra, u):
     w = 0.0
     for ac in acts:
         if ac.kind == 'drink':
-            d = ac.kw.get('dur', 1.2); w = max(w, sm(u, ac.at, ac.at + 0.3) * (1 - sm(u, ac.at + d, ac.at + d + 0.3)))
+            d = ac.kw.get('dur', 1.2); w = max(w, sm(u, ac.at, ac.at + 0.4 * d) * (1 - sm(u, ac.at + 0.6 * d, ac.at + d)))     # up 40 %, hold 20 %, down 40 %
     return w
+
+
+
+# ---------------------------------------------------------------- can grip (grip brief G1-G14 / M1-M8): built pose, not a retarget
+CAN_REST = 17.0      # deg: can axis above horizontal when held at the lips (not drinking)
+CAN_AB_MAX = 33.0   # deg upper-arm abduction ceiling on every frame of a sip (real drinking 30-39; G4 <= 40)
+CAN_PEAK = 36      # deg: at the top of a sip (bottom raised)
+CAN_BETA = 195.0     # deg: where the lip touches the rim, measured round the lid from its lowest point (180 = the highest point: opening on the lip, lid faces the chin)
+CAN_YAW = 38.0       # deg: can axis swung from straight-ahead toward the hand side (keeps the nose/eyes clear, G9)
+CAN_LIP = 0.002      # m: rim edge in front of the lower-lip landmark (G5 0-4 mm)
+CAN_SLIDE = 0.010      # m: hand centre along the can axis (+ toward the top) for G1 ~50 %
+CAN_ELB_OUT = 0.35   # hand-back target: down + this much out (keeps the wrist straight, elbow low)
+CAN_DF = (0.015,)   # can offset search in the hand (finger direction, m)
+CAN_DN = (0.002,)
+CAN_DG = (0.010,)                       # hand lower on the can (m): index 3-4 cm under the rim like a real hold
+CAN_ROLL = (8.0,)
+CAN_PYAW = (10.0,)
+FGAP = 0.0015        # m: skin gap between neighbouring middle finger segments (G10 side by side, 0 overlap)   # can axis turned in the palm plane (about the palm normal): the oblique palm crease, pinky end nearer the fingers
+WRAP_MIN = 150.0                                # deg: fingertips round the can from the palm contact (G2)                    # deg                  # (palm normal, m)
+CAN_NREF = 4                                     # capsule candidates refined on the real skin
+CAN_POLE_F = 0.25    # pole forward (m): elbow low and forward, G4
+CAN_POLE_O = 0.20    # pole out (m)
+CAN_POLE_FS = (0.05, 0.15, 0.25, 0.35)   # pole search (forward, m): straightest wrist inside G4
+CAN_POLE_OS = (-0.10, 0.0, 0.10, 0.20, 0.35)
+
+
+def _can_goal(self, kr, ra, side, tip, shape, u):
+    r, hh = GRIP['can']; p = ra.p
+    sg = 1.0 if side == 'L' else -1.0; R = p.rig.matrix_world.to_3x3().normalized()
+    Lp, Fp, Up = R @ V((1, 0, 0)), R @ V((0, -1, 0)), R @ V((0, 0, 1)); out = Lp * sg
+    L = kr.wmat(p, 'head') @ self.lip_local; _, nr = kr.part_world(ra, 'mouth')
+    Z = V((0, 0, 1)); nh = V((nr.x, nr.y, 0)).normalized()
+    oh = out - nh * out.dot(nh); oh.z = 0; oh.normalize()
+    th = math.radians(CAN_REST + (CAN_PEAK - CAN_REST) * self.drink_w(kr, ra, u))
+    yw = math.radians(CAN_YAW); fh = (nh * math.cos(yw) + oh * math.sin(yw)).normalized()
+    a = (-fh * math.cos(th) - Z * math.sin(th)).normalized()          # can axis bottom -> top; top at the lips, bottom out and down
+    d0 = (-Z - a * (-Z).dot(a)).normalized(); s0 = a.cross(d0).normalized()
+    if s0.dot(oh) > 0: s0 = -s0
+    bt = math.radians(CAN_BETA); uu = (d0 * math.cos(bt) + s0 * math.sin(bt)).normalized()   # lid centre -> rim contact on the lower lip (lid sits up/toward the hand side, clear of the nose)
+    P = L + nr * CAN_LIP; Ct = P - uu * r; C = Ct - a * (hh / 2)
+    Pr = self.Pl[(side, 'can')].to_3x3(); f_, n_, g_ = Pr.col[0], Pr.col[1], Pr.col[2]
+    hs = 1.0 if n_.cross(g_).dot(f_) > 0 else -1.0
+    gw = -a                                                          # grip axis index -> pinky runs top -> bottom
+    sh = kr.bw(p, f'upperarm01.{side}')
+    l1 = (kr.bw(p, f'lowerarm01.{side}') - sh).length; l2 = (kr.bw(p, f'wrist.{side}') - kr.bw(p, f'lowerarm01.{side}')).length
+    def elbow(W, pl):           # 2-bone IK elbow for shoulder sh, wrist W, pole pl
+        d = W - sh; dl = min(d.length, l1 + l2 - 1e-4); u_ = d.normalized()
+        aa = (l1 * l1 - l2 * l2 + dl * dl) / (2 * dl); hg_ = math.sqrt(max(l1 * l1 - aa * aa, 0.0))
+        v_ = (pl - sh) - u_ * (pl - sh).dot(u_); v_ = v_.normalized() if v_.length > 1e-6 else -Z
+        return sh + u_ * aa + v_ * hg_
+    b0 = (-oh - a * (-oh).dot(a)).normalized()
+    def frame(phi):
+        nw = (Matrix.Rotation(phi, 3, a) @ b0).normalized()           # palm -> can axis
+        fw = (nw.cross(gw) * hs).normalized()
+        return Matrix((fw, nw, gw)).transposed() @ Pr.inverted()
+    Wc = C - a * 0.02                       # wrist ~ near the can middle (refined below from the real frame)
+    def solve(e_t):
+        def cost(phi):
+            Rw_ = frame(phi); return (Rw_ @ V((0, -1, 0))).normalized().angle(e_t)
+        ph_ = min((i * math.pi / 18 for i in range(36)), key=cost); st = math.pi / 36
+        for _ in range(12):
+            ph_ = min((ph_ - st, ph_, ph_ + st), key=cost); st *= 0.5
+        return ph_, cost(ph_)
+    best = None
+    # ONE elbow pole per shot (chosen on the shot's first solve = the M1 rest at the mouth, canonical pass): re-choosing it
+    # per frame flipped the elbow between grid poles mid-tilt (abduction 16 -> 49 -> 14 deg in 4 frames, G12 pop)
+    self._polememo = getattr(self, '_polememo', {}); sh_ = getattr(kr, '_hshot', None)
+    pk = (side, sh_.name if sh_ is not None else None); fixed = self._polememo.get(pk)
+    def trial(pf, po, Wc):
+        pl = sh - Up * 0.6 + Fp * pf + out * po
+        for _ in range(2):
+            E_ = elbow(Wc, pl); e_t = (E_ - Wc).normalized(); ph, cb = solve(e_t)
+            Wm_ = Matrix.Translation(C + a * CAN_SLIDE) @ (frame(ph) @ Pr).to_4x4() @ self.Pl[(side, 'can')].inverted(); Wc = Wm_.translation.copy()
+        E_ = elbow(Wc, pl)                  # the elbow for the FINAL wrist (was the previous iterate's)
+        drop = Wc.z - E_.z; el_ = math.degrees(math.asin(max(-1, min(1, (Wc - E_).normalized().z))))
+        ua = (E_ - sh).normalized(); ab_ = math.degrees(math.atan2(ua.dot(out), -ua.dot(Up)))
+        pen = (0 if drop >= 0.12 else (0.12 - drop) * 20) + (0 if 50 <= el_ <= 80 else min(abs(el_ - 50), abs(el_ - 80)) / 20) \
+            + (0 if ab_ <= CAN_AB_MAX else (ab_ - CAN_AB_MAX) / 10) + (0 if (E_ - sh).dot(Fp) >= -0.02 else 1.0)
+        return (cb + pen, ph, pl, cb, pf, po, ab_)
+    if fixed:
+        # same pole all shot; when the tilt swings the elbow out past CAN_AB_MAX the pole slides inward continuously (bisection)
+        best = trial(fixed[0], fixed[1], Wc)
+        if best[6] > CAN_AB_MAX:
+            lo, hi = fixed[1] - 0.8, fixed[1]
+            for _ in range(10):
+                mid = (lo + hi) / 2; t_ = trial(fixed[0], mid, Wc)
+                if t_[6] > CAN_AB_MAX: hi = mid
+                else: lo = mid
+            best = trial(fixed[0], lo, Wc)
+    else:
+        for pf in CAN_POLE_FS:
+            for po in CAN_POLE_OS:
+                t_ = trial(pf, po, Wc)
+                if best is None or t_[0] < best[0]: best = t_
+    _, ph, pole, cb, pf_, po_, _ = best
+    if pk[1] is not None and not fixed: self._polememo[pk] = (pf_, po_)
+    def cost(phi): return cb if phi == ph else 0.0
+    Rw = frame(ph)
+    Gw = Matrix.Translation(C + a * CAN_SLIDE) @ (Rw @ Pr).to_4x4()
+    Wm = Gw @ self.Pl[(side, 'can')].inverted()
+    yc = uu.copy(); xc = yc.cross(a).normalized()
+    CanM = Matrix((xc, yc, a)).transposed().to_4x4(); CanM.translation = C        # can local +z = top, local +y = the lip side (drinking opening)
+    self._canrel = getattr(self, '_canrel', {}); self._canrel[side] = Wm.inverted() @ CanM
+    self._candbg = dict(side=side, th=math.degrees(th), phi=math.degrees(ph), wb=math.degrees(cost(ph)), L=L.copy(), P=P.copy(), a=a.copy())
+    tl = ra.hand[side][shape][tip]
+    return Wm @ tl, tip, shape, Rw, pole
+
+
+def _solve_can(self, kr, s):
+    """3-segment grip on the can (capsules on the HG finger bones): every finger/thumb segment 0-4 mm off the can.
+    Searches the can offset in the hand (along the finger direction and the palm normal) and per-finger (base, middle, tip) flex."""
+    p = self.p; rig = p.rig; RW = rig.matrix_world; key = 'can'; r, h = GRIP[key]
+    Mw = kr.wmat(p, f'wrist.{s}'); P0 = self.Pl[(s, key)].copy()
+    cache = os.environ.get('KW_CANCACHE')            # sandbox speed-up for the measuring loop only (never set in CI)
+    if cache and os.path.exists(cache):
+        import json as _j; cc = _j.load(open(cache))
+        self.Pl[(s, key)] = Matrix(cc['Pl']); self.cangrip = getattr(self, 'cangrip', {}); self.cangrip[(s, key)] = True
+        self.canax = getattr(self, 'canax', {}); self.canax[s] = {tuple(int(x) for x in kk.split(',')): tuple(v) for kk, v in cc['ax'].items()}
+        print('humgen cangrip from cache', cache); return {int(k): tuple(v) for k, v in cc['out'].items()}
+    f_, n_, g_ = P0.col[0].xyz, P0.col[1].xyz, P0.col[2].xyz
+    def segc(g): return 0.0 if 0.0005 <= g <= 0.0035 else (0.0005 - g) * 12.0 if g < 0.0005 else (g - 0.0035) * 1.5 + 0.0002
+    # refine on the REAL HG skin (all 3 segments, palm, thumb opposition): coordinate descent, all fingers at once
+    vgi = {g.name: g.index for g in self.body.vertex_groups}
+    def ids(names, wmin=0.5):
+        gi = {vgi[n] for n in names if n in vgi}
+        return np.array([v.index for v in self.body.data.vertices if any(g.group in gi and g.weight > wmin for g in v.groups)], int)
+    FN = {1: 'thumb', 2: 'f_index', 3: 'f_middle', 4: 'f_ring', 5: 'f_pinky'}
+    SEGI = {(k, j): ids([f'{FN[k]}.0{j}.{s}']) for k in FN for j in (1, 2, 3)}
+    PALMI = ids([f'hand.{s}'] + [f'palm.0{i}.{s}' for i in range(1, 5)], 0.6)
+    pbs = {k: [rig.pose.bones[f'finger{k}-{j}.{s}'] for j in (1, 2, 3)] for k in FN}
+    base = {k: [pb.rotation_euler.copy() for pb in v] for k, v in pbs.items()}
+    # true flex axis per finger bone (bone direction x palm normal, in the bone's own posed frame): the rig's X is not pure flexion
+    n_arm = (RW.to_3x3().inverted() @ (Mw.to_3x3() @ n_)).normalized(); AX = {}
+    # ONE hinge per finger = the can axis (made perpendicular to the base bone): every joint curls AROUND the can.
+    # (bone-y x palm-normal per joint drifted 51-86 deg off the can axis on the bent middle/tip bones -> fingers curled along the can)
+    g_arm = (RW.to_3x3().inverted() @ (Mw.to_3x3() @ g_)).normalized()
+    for k in range(2, 6):
+        y0 = (pbs[k][0].matrix.to_3x3().normalized() @ V((0, 1, 0))).normalized()
+        hk = (g_arm - y0 * g_arm.dot(y0)).normalized()
+        if hk.dot(y0.cross(n_arm)) < 0: hk = -hk
+        for j, pb in enumerate(pbs[k]):
+            R3 = pb.matrix.to_3x3().normalized()
+            AX[(k, j)] = (R3.inverted() @ hk).normalized()
+    self.canax = getattr(self, 'canax', {}); self.canax[s] = {kj: tuple(v) for kj, v in AX.items()}
+    def setang(A):
+        for k, ang in A.items():
+            for j, pb in enumerate(pbs[k]):
+                e = base[k][j].copy()
+                if k == 1: e.x += math.radians(ang[0] if j == 0 else ang[3] if (j == 2 and len(ang) > 3) else ang[2]); e.z += math.radians(ang[1] if j == 0 else 0.0)
+                else:
+                    ax_ = axes(k)[j]; R_ = e.to_matrix() @ Matrix.Rotation(math.radians(ang[j]), 3, ax_)
+                    if j == 0 and ADD.get(k): R_ = R_ @ Matrix.Rotation(math.radians(ADD[k][1]), 3, ADD[k][0])     # adduct first, then flex about the can hinge
+                    e = R_.to_euler(e.order, e)
+                pb.rotation_euler = e
+    ADD = {}                                          # G10 finger adduction at the knuckle: (local axis, deg)
+    R3b = {(k, j): pb.matrix.to_3x3().normalized() for k in range(2, 6) for j, pb in enumerate(pbs[k])}
+    def axes(k):
+        # middle / tip hinges stay ON the can axis when the knuckle is adducted (the adduction turns their frames)
+        if not ADD.get(k): return [AX[(k, 0)], AX[(k, 1)], AX[(k, 2)]]
+        Ri = Matrix.Rotation(-math.radians(ADD[k][1]), 3, ADD[k][0]); h0 = AX[(k, 0)]
+        return [h0] + [(R3b[(k, j)].inverted() @ R3b[(k, 0)] @ Ri @ h0).normalized() for j in (1, 2)]
+    def ev(A, Mc):
+        setang(A); w = _body_world(self); Mi = np.array(Mc.inverted())
+        gp = {kj: float(_sd_cyl(w[v], Mc, r, h).min()) for kj, v in SEGI.items() if len(v)}
+        def arc(v): lp = w[v].mean(0) @ Mi[:3, :3].T + Mi[:3, 3]; return math.degrees(math.atan2(lp[1], lp[0]))
+        d = abs(arc(SEGI[(1, 3)]) - arc(SEGI[(2, 3)])) % 360; d = min(d, 360 - d)
+        dpal = _sd_cyl(w[PALMI], Mc, r, h); pg = float(dpal.min())
+        # G2 wrap: each finger runs round the can from the palm contact (palm -> proximal -> middle -> tip), tip >= 150 deg
+        a0 = arc(PALMI[[int(np.argmin(dpal))]]); wrap = {}
+        for k in range(2, 6):
+            prev = a0; tot_ = 0.0
+            for j in (1, 2, 3):
+                aj = arc(SEGI[(k, j)]); dd = (aj - prev + 180) % 360 - 180; tot_ += dd; prev = aj
+            wrap[k] = tot_
+        sg_ = 1.0 if sum(wrap.values()) >= 0 else -1.0
+        self._wrap = {k: sg_ * v for k, v in wrap.items()}
+        cs = {k: sum(segc(gp[(k, j)]) for j in (1, 2, 3) if (k, j) in gp) + 0.0002 * max(0.0, WRAP_MIN - sg_ * wrap[k]) for k in range(2, 6)}
+        cs[1] = sum(segc(gp[(1, j)]) for j in (2, 3)) + (0.0 if 110 <= d <= 190 else 0.06 * min(abs(d - 110), abs(d - 190)) / 10)
+        return cs, gp, d, pg
+    def bis(A, Mc, j, lo, hi, n=7):
+        # per finger (2-5): angle of joint j so that segment j+1 sits SKIN off the can (gap falls as the joint flexes)
+        L_ = {k: lo for k in range(2, 6)}; H_ = {k: hi for k in range(2, 6)}
+        B = {k: list(v) for k, v in A.items()}
+        for k in L_: B[k][j] = hi
+        _, gh, _, _ = ev(B, Mc)
+        reach = {k: gh[(k, j + 1)] <= SKIN for k in L_}
+        for _ in range(n):
+            for k in L_: B[k][j] = (L_[k] + H_[k]) / 2
+            _, gm, _, _ = ev(B, Mc)
+            for k in L_:
+                if gm[(k, j + 1)] > SKIN: L_[k] = B[k][j]
+                else: H_[k] = B[k][j]
+        for k in L_: A[k][j] = H_[k] if reach[k] else hi
+        return A
+    res = None
+    Sp = P0.translation - n_ * (r + SKIN)                  # palm skin contact point (wrist space)
+    for df, dn, rho, dg, yw in [(a_, b_, c_, d_, e_) for a_ in CAN_DF for b_ in CAN_DN for c_ in CAN_ROLL for d_ in CAN_DG for e_ in CAN_PYAW]:
+            Rr = Matrix.Rotation(math.radians(yw), 4, n_) @ Matrix.Rotation(math.radians(rho), 4, f_)      # roll the can inside the palm about the finger direction (brings the little-finger end in)
+            Pl = Matrix.Translation(Sp) @ Rr @ Matrix.Translation(-Sp) @ P0; Pl.translation = Pl.translation + f_ * df + n_ * dn - g_ * dg; Mc = Mw @ Pl     # -g: the can slides toward its top, the hand sits lower on it
+            A = {k: [-20.0, -20.0, -20.0] for k in range(2, 6)}; A[1] = [30.0, -30.0, 35.0]
+            A = bis(A, Mc, 0, -30.0, 100.0); A = bis(A, Mc, 1, -20.0, 110.0); A = bis(A, Mc, 2, -20.0, 90.0)
+            bt_ = None
+            for x1 in (0, 30, 60):
+                for z1 in (-60, -30, 0, 30):
+                    for x2 in (0, 35, 70):
+                        A[1] = [x1, z1, x2]; c_, _, _, _ = ev(A, Mc)
+                        if bt_ is None or c_[1] < bt_[0]: bt_ = (c_[1], [x1, z1, x2])
+            A[1] = bt_[1]
+            cs, gp, d, pg = ev(A, Mc)
+            tot = sum(cs.values()) + (0.0 if -0.001 <= pg <= 0.004 else abs(pg - 0.0015) * 12)
+            print(f'humgen cangrip try {p.name} {s}: f {1000 * df:.1f} n {1000 * dn:.1f} roll {rho} yaw {yw} axial {1000 * dg:.0f} real {tot:.4f} palm {1000 * pg:.1f} thumb-index {d:.0f} wrap', {k: round(v) for k, v in self._wrap.items()},
+                  {k: [round(x) for x in v] for k, v in A.items()}, {f'{FN[k][-5:]}{j}': round(1000 * g, 1) for (k, j), g in gp.items()})
+            if res is None or tot < res[0]: res = (tot, df, dn, {k: list(v) for k, v in A.items()}, Pl, d, pg, dict(gp))
+    tot, df, dn, A, Pl, d, pg, gp = res; Mc = Mw @ Pl
+    # per finger: back the knuckle off so the middle and tip joints can wrap (greedy base-first leaves the tip floating)
+    cs0, _, _, _ = ev(A, Mc); keep = {k: (cs0[k], list(A[k])) for k in range(2, 6)}
+    for bo in (3, 5, 6, 7, 8, 10, 13):
+        B = {k: [A[k][0] - bo, -20.0, -20.0] for k in range(2, 6)}; B[1] = list(A[1])
+        B = bis(B, Mc, 1, -20.0, 110.0); B = bis(B, Mc, 2, -20.0, 90.0); cb_, gb_, _, _ = ev(B, Mc)
+        for k in range(2, 6):
+            if cb_[k] < keep[k][0]: keep[k] = (cb_[k], list(B[k]))
+        print(f'humgen cangrip knuckle back-off {bo}:', {FN[k]: [round(1000 * gb_[(k, j)], 1) for j in (1, 2, 3)] for k in range(2, 6)})
+    for k in range(2, 6): A[k] = keep[k][1]
+    # G10 side by side: each finger turns at the knuckle about the palm normal until its middle segment is FGAP from the
+    # neighbour toward the middle finger (index -> middle, ring -> middle, little -> ring); the fingers no longer splay in a V
+    from mathutils.kdtree import KDTree
+    def fgap(a_, b_):           # min skin gap over the middle AND tip segments (the tip of a converging finger crossed the ring)
+        setang(A); w = _body_world(self); P = np.concatenate([w[SEGI[(b_, j)]] for j in (2, 3)]); t_ = KDTree(len(P))
+        for i_, q in enumerate(P): t_.insert(V(q), i_)
+        t_.balance(); return min(t_.find(V(q))[2] for j in (2, 3) for q in w[SEGI[(a_, j)]])
+    for k, nb in ((2, 3), (4, 3), (5, 4)):
+        nl = (pbs[k][0].matrix.to_3x3().normalized().inverted() @ n_arm).normalized(); g0 = fgap(k, nb); tr = {}
+        for sgn in (1.0, -1.0): ADD[k] = (nl * sgn, 6.0); tr[sgn] = fgap(k, nb)
+        sg = min(tr, key=tr.get)
+        if tr[sg] >= g0 or g0 <= FGAP: ADD[k] = None; print(f'humgen cangrip adduct finger{k}: none (gap {1000 * g0:.1f}, +6 {1000 * tr[1.0]:.1f}, -6 {1000 * tr[-1.0]:.1f} mm)'); continue
+        lo, hi = 0.0, (10.0 if k == 2 else 18.0)      # index: more than 10 deg tips it into a cone and the tip leaves the can
+        for _ in range(7):
+            mid = (lo + hi) / 2; ADD[k] = (nl * sg, mid)
+            if fgap(k, nb) > FGAP: lo = mid
+            else: hi = mid
+        ADD[k] = (nl * sg, lo)
+        print(f'humgen cangrip adduct finger{k} toward {nb}: {lo:.1f} deg, middle-segment gap {1000 * g0:.1f} -> {1000 * fgap(k, nb):.1f} mm')
+    if any(ADD.values()):
+        c0_, _, _, _ = ev(A, Mc); B = {k: list(v) for k, v in A.items()}
+        B = bis(B, Mc, 1, -20.0, 110.0); B = bis(B, Mc, 2, -20.0, 90.0); c1_, gb_, _, _ = ev(B, Mc)
+        for k in range(2, 6):
+            if c1_[k] < c0_[k]: A[k] = B[k]
+        print('humgen cangrip after adduction re-fit:', {FN[k]: [round(x) for x in A[k]] for k in range(2, 6)})
+    for k, nb in ((2, 3), (3, 4), (4, 3), (5, 4)):     # guard after the re-fit: the new curl must not push a finger into its neighbour
+        if fgap(k, nb) >= 0.0005: continue
+        g_ = fgap(k, nb)
+        if ADD.get(k):
+            ax_, dg_ = ADD[k]; lo, hi = 0.0, dg_
+            for _ in range(7):
+                mid = (lo + hi) / 2; ADD[k] = (ax_, mid)
+                if fgap(k, nb) >= 0.0005: lo = mid
+                else: hi = mid
+            ADD[k] = (ax_, lo)
+        print(f'humgen cangrip overlap guard finger{k}->{nb}: {1000 * g_:.1f} -> {1000 * fgap(k, nb):.1f} mm, adduct {ADD[k][1] if ADD.get(k) else 0:.1f}')
+    AXo = dict(AX)
+    for k in range(2, 6):
+        for j, a_ in enumerate(axes(k)): AXo[(k, j)] = a_
+        if ADD.get(k): AXo[(k, -2)] = ADD[k][0] * ADD[k][1]          # adduction: axis * deg (consumer)
+    self.canax[s] = {kj: tuple(v) for kj, v in AXo.items()}
+    # thumb on the chosen placement: coarse grid on the real skin (base x, base z, outer x), 2 outer segments + opposition
+    best = None
+    TLIM = ((-20, 60), (-60, 30), (0, 70), (0, 85))  # real thumb ranges (deg): base flex, base swing, MCP flex 0-70, IP flex 0-85
+    for x1 in range(-20, 61, 10):
+        for z1 in range(-60, 31, 15):
+            for x2 in range(0, 71, 14):
+                A[1] = [x1, z1, x2, x2]; cs, gp, d, pg = ev(A, Mc)
+                if best is None or cs[1] < best[0]: best = (cs[1], [x1, z1, x2, x2])
+    A[1] = best[1]
+    for st in (10, 5, 2):
+        for jj in (0, 1, 2, 3):
+            for dd in (st, -st):
+                B1 = list(A[1]); B1[jj] = min(max(B1[jj] + dd, TLIM[jj][0]), TLIM[jj][1]); A2 = dict(A); A2[1] = B1; c2_, _, _, _ = ev(A2, Mc)
+                if c2_[1] < best[0]: best = (c2_[1], B1); A[1] = B1
+    cs, gp, d, pg = ev(A, Mc); tot = sum(cs.values()) + (0.0 if -0.001 <= pg <= 0.004 else abs(pg - 0.0015) * 12)
+    setang({k: (0, 0, 0) for k in FN})
+    self.Pl[(s, key)] = Pl
+    out = {k: tuple(round(x, 1) for x in A[k]) + (round(1000 * min(gp[(k, j)] for j in (1, 2, 3) if (k, j) in gp), 1),) for k in FN}     # thumb: (x1, z1, MCP, IP, gap)
+    print(f'humgen cangrip {p.name} {s}: offset f {1000 * df:.1f} n {1000 * dn:.1f} mm real cost {tot:.4f} palm {1000 * pg:.1f} thumb-index {d:.0f} deg', out)
+    self.cangrip = getattr(self, 'cangrip', {}); self.cangrip[(s, key)] = True
+    if cache:
+        import json as _j; _j.dump(dict(Pl=[list(rw) for rw in Pl], out=out, ax={f'{a},{b}': v for (a, b), v in self.canax[s].items()}), open(cache, 'w'))
+    return out
+
+
+Graft.can_goal = _can_goal
+
+
+CAN_AB_REAL = 36.0    # deg, kit-bone abduction ceiling on the solved pose (HG mesh reads ~2 deg more -> <= 38-39, real drinking 30-39, G4 <= 40)
+
+
+def _post_ik(self, kr, ra, side, h, shape):
+    """the blended goals of a pose transition (lift / lower) put the IK elbow where neither solve checked it (abduction
+    41-44 deg mid-lift): measure the real kit arm and slide the pole inward (continuous bisection) until it is under the ceiling."""
+    spoon_ = (h is not None and h.kind == 'hold' and h.prop == 'spoon' and h.at == 'mouth' and shape == 'hold'
+              and (side, 'spoon') in getattr(self, 'curl', {}) and getattr(self, '_sp_ab', None) is not None)
+    if not spoon_ and not (h is not None and h.kind == 'hold' and h.prop == 'can' and h.at == 'mouth' and shape == 'hold'
+            and (side, 'can') in getattr(self, 'cangrip', {})):
+        return
+    p = ra.p; R = p.rig.matrix_world.to_3x3().normalized(); sg = 1.0 if side == 'L' else -1.0
+    out = R @ V((sg, 0, 0)); Up = R @ V((0, 0, 1)); pl = ra.ik[side][2]
+    def ab():
+        sh = kr.bw(p, f'upperarm01.{side}'); u_ = (kr.bw(p, f'lowerarm01.{side}') - sh).normalized()
+        return math.degrees(math.atan2(u_.dot(out), -u_.dot(Up)))
+    if spoon_:
+        # R6: abduction follows the bite path (low point < 20, at the lips 35-55): continuous bisection of the pole along out
+        T = self._sp_ab; P0 = pl.location.copy(); lo, hi = -0.6, 0.6
+        for _ in range(10):
+            mid = (lo + hi) / 2; pl.location = P0 + out * mid; bpy.context.view_layer.update()
+            if ab() > T: hi = mid
+            else: lo = mid
+        pl.location = P0 + out * ((lo + hi) / 2); bpy.context.view_layer.update(); return
+    if ab() <= CAN_AB_REAL: return
+    P0 = pl.location.copy(); lo, hi = 0.0, 0.6        # metres the pole moves inward
+    pl.location = P0 - out * hi; bpy.context.view_layer.update()
+    if ab() > CAN_AB_REAL: return                     # cannot reach the ceiling: keep the widest slide
+    for _ in range(9):
+        mid = (lo + hi) / 2; pl.location = P0 - out * mid; bpy.context.view_layer.update()
+        if ab() > CAN_AB_REAL: lo = mid
+        else: hi = mid
+    pl.location = P0 - out * hi; bpy.context.view_layer.update()
+
+
+Graft.post_ik = _post_ik
+Graft._solve_can = _solve_can
 
 
 Graft.drink_w = _drink_w
@@ -1018,6 +1431,9 @@ Graft.bloat_value = _bloat_value
 
 def _apply_contacts(self, kr, shot):
     """frame hook part 1: finger curls + HG prop placement (after kwfx placed the props on the kit hand)."""
+    md_ = getattr(self, '_mound', None)
+    if md_ is not None:      # the food mound follows its spoon out of the shot (it floated by the arm in hos_belly)
+        h_ = md_.parent is None or md_.parent.hide_render; md_.hide_render = h_; md_.hide_viewport = h_
     if not hasattr(self, 'curl'): return
     if getattr(self, '_bdbg', None) is not None and os.environ.get('KW_HG_AUDIT'):
         sd, T, D0, Wt = self._bdbg; Mw = kr.wmat(self.p, f'wrist.{sd}')
@@ -1033,9 +1449,20 @@ def _apply_contacts(self, kr, shot):
         elif h.kind == 'clipboard': key = 'board'
         elif h.kind == 'touch' and h.part == 'belly' and shape == 'claw': key = 'plane'
         if key is None or len(shapes) != 1 or (side, key) not in self.curl: continue
-        for k, (c1, c2, _) in self.curl[(side, key)].items():
+        for k, cv in self.curl[(side, key)].items():
+            c1, c2 = cv[0], cv[1]; c3 = cv[2] if len(cv) in (4, 5) else None; c4 = cv[3] if len(cv) == 5 else c3
             for jj in (1, 2, 3):
                 e = p.pb(f'finger{k}-{jj}.{side}').rotation_euler
+                if k == 1 and c3 is not None: e.x += math.radians(c1 if jj == 1 else c3 if jj == 2 else c4); e.z += math.radians(c2 if jj == 1 else 0.0); continue
+                if k > 1 and c3 is not None:
+                    ax_ = getattr(self, 'canax', {}).get(side, {}).get((k, jj - 1)) if key == 'can' else getattr(self, 'penax', {}).get(side, {}).get((k, jj - 1)) if key == 'spoon' else None
+                    ad_ = getattr(self, 'canax', {}).get(side, {}).get((k, -2)) if (key == 'can' and jj == 1) else None
+                    if ax_ is not None:
+                        R_ = e.to_matrix() @ Matrix.Rotation(math.radians((c1, c2, c3)[jj - 1]), 3, V(ax_))
+                        if ad_ is not None and V(ad_).length > 1e-6: R_ = R_ @ Matrix.Rotation(math.radians(V(ad_).length), 3, V(ad_).normalized())
+                        p.pb(f'finger{k}-{jj}.{side}').rotation_euler = R_.to_euler(e.order, e)
+                    else: e.x += math.radians((c1, c2, c3)[jj - 1])
+                    continue
                 if k == 1: e.x += math.radians(c1); e.z += math.radians(c2 if jj == 1 else 0.0)
                 else:
                     e.x += math.radians(c1 if jj == 1 else c2)
@@ -1049,7 +1476,303 @@ def _apply_contacts(self, kr, shot):
         side, h = j[1], j[8]
         if h.kind == 'hold' and h.prop in GRIP:
             ob = kr.FX.props.get(h.prop)
-            if ob is not None: ob.matrix_world = kr.wmat(p, f'wrist.{side}') @ self.Pl[(side, h.prop)]
+            if ob is None: continue
+            rel = getattr(self, '_canrel', {}).get(side) if h.prop == 'can' else None
+            ob.matrix_world = kr.wmat(p, f'wrist.{side}') @ (rel if rel is not None else self.Pl[(side, h.prop)])
+            if h.prop == 'spoon':
+                if getattr(self, '_mound', None) is None: self._mound = _build_spoon(ob)
+                st_ = getattr(self, '_bite', None); hid = not (st_ is None or st_['mound'])     # food gone from the start of the pull-out
+                self._mound.hide_render = hid; self._mound.hide_viewport = hid
+    self.forearm_twist({j[1] for j in jobs})
+
+
+FTW_K = 0.65     # share of the hand's twist (about the forearm axis) carried by the forearm: real pronation turns the radius, not the wrist (G6)
+
+
+def _forearm_twist(self, sides='LR'):
+    """No twist bones in the HG arm: without this the whole hand roll sits in the wrist joint (candy-wrapper crease).
+    Rotates the HG forearm about its own axis by FTW_K of the hand twist; elbow and wrist positions do not move."""
+    rig = self.rig; self._ftw = getattr(self, '_ftw', {}); self._fb0 = getattr(self, '_fb0', {})
+    for sd in 'LR':
+        fb = rig.pose.bones.get(f'forearm.{sd}'); hb = rig.pose.bones.get(f'hand.{sd}')
+        if fb is None or hb is None: continue
+        if sd not in self._fb0: fb.rotation_mode = 'QUATERNION'; self._fb0[sd] = fb.rotation_quaternion.copy()
+        if sd not in sides:
+            if self._ftw.get(sd, 0.0): self._ftw[sd] = 0.0; fb.rotation_quaternion = self._fb0[sd]; bpy.context.view_layer.update()
+            continue
+        rr = (rig.data.bones[f'forearm.{sd}'].matrix_local.inverted() @ rig.data.bones[f'hand.{sd}'].matrix_local)
+        for _ in range(2):
+            rel = rr.inverted() @ (fb.matrix.inverted() @ hb.matrix)
+            tw = rel.to_euler('XZY').y; cur = self._ftw.get(sd, 0.0); new = FTW_K * (tw + cur)
+            if abs(new - cur) < 1e-3: break
+            self._ftw[sd] = new; fb.rotation_quaternion = self._fb0[sd] @ Quaternion((0, 1, 0), new)
+            bpy.context.view_layer.update()
 
 
 Graft.apply_contacts = _apply_contacts
+Graft.forearm_twist = _forearm_twist
+
+
+# ---------------------------------------------------------------- SPOON (direction S1-S9, addendum I R3/R4, part A R6, ruling D d/e)
+# spoon local frame: z = handle -> bowl, y = bowl up (the thumb side), origin = the pinch point under the thumb pad
+SP_END, SP_NECK, SP_TIP = -0.050, 0.075, 0.135          # handle end, neck, bowl tip (m): 18.5 cm long (S1 17-19)
+SP_BOWL_W, SP_BOWL_D = 0.040, 0.008                     # bowl width 4 cm x length 6 cm (neck -> tip), depth 8 mm
+SP_HX, SP_HY = 0.0055, 0.0010                           # handle half width / half thickness at the grip (11 x 2 mm)
+
+
+def _spoon_hw(z):
+    """half width of the spoon outline at z (handle widens to the end, slim neck, oval bowl)"""
+    if z <= SP_NECK:
+        k = (z - SP_END) / (SP_NECK - SP_END)
+        return 0.0068 * (1 - k) + 0.0032 * k
+    zc = (SP_NECK + SP_TIP) / 2; a = (SP_TIP - SP_NECK) / 2; e = max(0.0, 1 - ((z - zc) / a) ** 2)
+    return max(0.0032 * (1 - min(1, (z - SP_NECK) / 0.012)), SP_BOWL_W / 2 * math.sqrt(e))
+
+
+def _build_spoon(ob):
+    """S1 / ruling e: replace the kit stick with an 18.5 cm stainless spoon (4 x 6 cm bowl) + the food mound (child)"""
+    nz, nx = 64, 12; vs = []; fs = []
+    zc = (SP_NECK + SP_TIP) / 2; a = (SP_TIP - SP_NECK) / 2
+    for i in range(nz + 1):
+        z = SP_END + (SP_TIP - SP_END) * i / nz; hw = max(_spoon_hw(z), 0.0004)
+        for j in range(nx + 1):
+            x = -hw + 2 * hw * j / nx; y = 0.0
+            if z > SP_NECK:
+                r2 = (x / (SP_BOWL_W / 2)) ** 2 + ((z - zc) / a) ** 2
+                y = -SP_BOWL_D * max(0.0, 1 - r2) ** 0.8
+            else:
+                y = 0.0012 * ((z - SP_END) / (SP_NECK - SP_END) - 1) ** 2      # handle end bends up a little
+            vs.append((x, y, z))
+    for i in range(nz):
+        for j in range(nx): fs.append((i * (nx + 1) + j, i * (nx + 1) + j + 1, (i + 1) * (nx + 1) + j + 1, (i + 1) * (nx + 1) + j))
+    me = bpy.data.meshes.new('kw_spoon_hg'); me.from_pydata(vs, [], fs); me.update()
+    for pl in me.polygons: pl.use_smooth = True
+    old = ob.data; ob.data = me
+    for m in list(ob.modifiers): ob.modifiers.remove(m)
+    so = ob.modifiers.new('kw_thick', 'SOLIDIFY'); so.thickness = 2 * SP_HY; so.offset = 0.0
+    ob.modifiers.new('kw_smooth', 'SUBSURF').levels = 1
+    mat = bpy.data.materials.new('kw_spoon_steel'); mat.use_nodes = True
+    bs = mat.node_tree.nodes.get('Principled BSDF')
+    if bs is not None:
+        bs.inputs['Base Color'].default_value = (0.46, 0.46, 0.47, 1); bs.inputs['Metallic'].default_value = 1.0
+        bs.inputs['Roughness'].default_value = 0.24          # brushed steel: grey, not a blue mirror of the backdrop
+    me.materials.append(mat)
+    if old is not None and old.users == 0: bpy.data.meshes.remove(old)
+    # food mound: pale yellow, ~2 cm, in the bowl (hidden from 55 % of each bite, S4 / ruling d)
+    import bmesh
+    bm = bmesh.new(); bmesh.ops.create_uvsphere(bm, u_segments=20, v_segments=10, radius=1.0)
+    m2 = bpy.data.meshes.new('kw_spoon_mound'); bm.to_mesh(m2); bm.free()
+    md = bpy.data.objects.new('kw_spoon_mound', m2)
+    for c in ob.users_collection: c.objects.link(md)
+    md.parent = ob; md.matrix_parent_inverse = Matrix.Identity(4)
+    md.location = (0.0, -0.002, zc + 0.002); md.scale = (0.0105, 0.0075, 0.0130)    # top ~5 mm above the rim, base sunk in the bowl
+    mm = bpy.data.materials.new('kw_mound'); mm.use_nodes = True; b2 = mm.node_tree.nodes.get('Principled BSDF')
+    if b2 is not None: b2.inputs['Base Color'].default_value = (0.93, 0.80, 0.42, 1); b2.inputs['Roughness'].default_value = 0.7
+    md.data.materials.append(mm)
+    for pl in md.data.polygons: pl.use_smooth = True
+    return md
+
+
+def _box_sd(q):
+    """signed distance (m) of handle-local points q (N x 3) to the handle box (grip region, end -> neck)"""
+    c = np.array([0.0, 0.0, (SP_END + SP_NECK) / 2]); hx = np.array([SP_HX, SP_HY, (SP_NECK - SP_END) / 2])
+    d = np.abs(q - c) - hx
+    return np.linalg.norm(np.maximum(d, 0), axis=1) + np.minimum(d.max(axis=1), 0)
+
+
+def _solve_pen(self, kr, s):
+    """S2 pen (tripod) grip on the real HG skin: handle in the thumb-index web, resting on the side of the middle
+    finger's tip segment, thumb pad on top, index pad along it, ring + little curled loosely underneath (not gripping).
+    Every finger flexes about ONE hinge (bone x palm normal at the rest pose), all joints scaled from a template.
+    Simplex search over 10 values (handle frame 4, thumb flex + opposition, index base / tip closure, middle, ring + little).
+    Returns the curl dict for _apply_contacts and sets Pl[(s, 'spoon')] (spoon frame in wrist space), penax[s]."""
+    p = self.p; rig = p.rig; RW = rig.matrix_world; Mw = kr.wmat(p, f'wrist.{s}'); Mwi = Mw.inverted()
+    self.penax = getattr(self, 'penax', {})
+    cache = os.environ.get('KW_SPOONCACHE')
+    if cache and os.path.exists(cache):
+        import json as _j; cc = _j.load(open(cache))
+        self.Pl[(s, 'spoon')] = Matrix(cc['Pl']); self.penax[s] = {tuple(int(x) for x in kk.split(',')): tuple(v) for kk, v in cc['ax'].items()}
+        print('humgen pen grip from cache', cache); return {int(k): tuple(v) for k, v in cc['out'].items()}
+    vgi = {g.name: g.index for g in self.body.vertex_groups}
+    def ids(names, wmin=0.5):
+        gi = {vgi[n] for n in names if n in vgi}
+        return np.array([v.index for v in self.body.data.vertices if any(g.group in gi and g.weight > wmin for g in v.groups)], int)
+    FN = {1: 'thumb', 2: 'f_index', 3: 'f_middle', 4: 'f_ring', 5: 'f_pinky'}
+    SEGI = {(k, j): ids([f'{FN[k]}.0{j}.{s}']) for k in FN for j in (1, 2, 3)}
+    PALMI = ids([f'hand.{s}'] + [f'palm.0{i}.{s}' for i in range(1, 5)], 0.6)
+    WEBI = ids([f'thumb.01.{s}', f'palm.01.{s}'], 0.4)
+    HANDI = np.unique(np.concatenate([v for v in SEGI.values() if len(v)] + [PALMI]))
+    pbs = {k: [rig.pose.bones[f'finger{k}-{j}.{s}'] for j in (1, 2, 3)] for k in FN}
+    base = {k: [pb.rotation_euler.copy() for pb in v] for k, v in pbs.items()}
+    n2, f2 = self.pn[s]; RH = self.rig.matrix_world
+    n_arm = (RW.to_3x3().inverted() @ (Mw.to_3x3() @ n2)).normalized(); AX = {}
+    for k in range(2, 6):
+        y0 = (pbs[k][0].matrix.to_3x3().normalized() @ V((0, 1, 0))).normalized()
+        hk = n_arm.cross(y0).normalized()               # pn[0] is the BACK-of-hand normal: +angle curls the finger toward the palm (kit +x)
+        for j, pb in enumerate(pbs[k]): AX[(k, j)] = tuple((pb.matrix.to_3x3().normalized().inverted() @ hk).normalized())
+    self.penax[s] = AX
+    TPL = {2: (40.0, 45.0, 20.0), 3: (50.0, 60.0, 30.0), 4: (60.0, 75.0, 40.0), 5: (65.0, 80.0, 40.0)}
+    hb = lambda nm: Mwi @ (RH @ self.rig.pose.bones[nm].head)
+    gk = (hb(f'f_pinky.01.{s}') - hb(f'f_index.01.{s}')).normalized(); g2 = (gk - f2 * gk.dot(f2) - n2 * gk.dot(n2)).normalized()
+    web0 = (hb(f'thumb.02.{s}') + hb(f'f_index.01.{s}')) / 2
+    def angs(X):
+        on, of, an, ag, t1, tz, s2, s3, s2b, s45 = X
+        A = {1: (t1, tz, 0.8 * t1, 0.6 * t1), 2: (s2 * TPL[2][0], s2b * TPL[2][1], s2b * TPL[2][2]), 3: tuple(s3 * a for a in TPL[3]),
+             4: tuple(s45 * a for a in TPL[4]), 5: tuple(s45 * a for a in TPL[5])}
+        return A
+    def setang(A):
+        for k, ang in A.items():
+            for j, pb in enumerate(pbs[k]):
+                e = base[k][j].copy()
+                if k == 1: e.x += math.radians(ang[0] if j == 0 else ang[2] if j == 1 else ang[3]); e.z += math.radians(ang[1] if j == 0 else 0.0)
+                else: e = (e.to_matrix() @ Matrix.Rotation(math.radians(ang[j]), 3, V(AX[(k, j)]))).to_euler(e.order, e)
+                pb.rotation_euler = e
+    def frame(X, wl):
+        on, of, an, ag = X[:4]
+        Wb = web0 + n2 * on + f2 * of
+        d = (f2 * math.cos(math.radians(an)) * math.cos(math.radians(ag)) + n2 * math.sin(math.radians(an)) - g2 * math.sin(math.radians(ag)) * math.cos(math.radians(an))).normalized()
+        tc = V(wl[SEGI[(1, 3)]].mean(0)); O = Wb + d * (tc - Wb).dot(d)
+        yv = (tc - O); yv = (yv - d * yv.dot(d)); yv = yv.normalized() if yv.length > 1e-6 else n2
+        xv = yv.cross(d).normalized()
+        M = Matrix((xv, yv, d)).transposed().to_4x4(); M.translation = O
+        return M
+    band = lambda g, lo, hi: 0.0 if lo <= g <= hi else (lo - g) * 20.0 if g < lo else (g - hi) * 3.0
+    LO = np.array([-0.03, -0.04, -10.0, -40.0, -20.0, -70.0, 0.0, 0.0, -0.3, 0.75]); HI = np.array([0.03, 0.04, 80.0, 60.0, 80.0, 30.0, 1.6, 1.6, 1.6, 0.9])     # ring + little curled loosely (S2), not a fist
+    def ev(X, full=False):
+        X = np.clip(X, LO, HI); setang(angs(X)); w = _body_world(self)
+        wl = w @ np.array(Mwi)[:3, :3].T + np.array(Mwi)[:3, 3]; M = frame(X, wl); Mi = np.array(M.inverted())
+        q = wl @ Mi[:3, :3].T + Mi[:3, 3]
+        sd = {kj: _box_sd(q[v]) for kj, v in SEGI.items() if len(v)}
+        g = {kj: float(v.min()) for kj, v in sd.items()}
+        c = band(g[(1, 3)], 0.0005, 0.002) + 2 * band(g[(2, 3)], 0.0005, 0.002) + band(g[(3, 3)], 0.0005, 0.002)
+        sdh = _box_sd(q[HANDI]); pen = float(np.maximum(-sdh, 0).max()); c += 40 * max(0.0, pen - 0.0005)     # <= 0.5 mm skin compression allowed
+        ym = q[SEGI[(3, 3)]][int(np.argmin(sd[(3, 3)]))][1]; c += 0.0 if ym < 0 else ym * 5           # middle finger UNDER the handle
+        for k in (4, 5): c += band(min(g[(k, 2)], g[(k, 3)]), 0.003, 1.0) * 0.5                          # ring / little loose: never on the handle
+        wd = float(_box_sd(q[WEBI]).min()); c += band(wd, 0.0, 0.006) * 0.5                             # upper end in the web
+        zt = float(q[SEGI[(1, 3)]][:, 2].mean()); c += 0.0 if -0.01 <= zt <= 0.03 else 0.2 * min(abs(zt + 0.01), abs(zt - 0.03))
+        ry = math.degrees(M.col[1].xyz.angle(-n2)); c += band(ry, 10.0, 35.0) * 0.002     # R6 palm-up 55-80 with the bowl level (-n2 = palmar)
+        if full: return c, g, pen, M, ym, wd, X, ry
+        return c
+    # simplex (Nelder-Mead) from a tripod start
+    x0 = np.array([-0.001, 0.011, 23.1, 34.8, -12.6, 6.6, 0.61, 0.92, 1.17, 0.85]); stp = np.array([0.01, 0.012, 20.0, 20.0, 25.0, 25.0, 0.4, 0.4, 0.5, 0.3])
+    best = None
+    for rs in range(2):
+        P = [x0] + [x0 + np.eye(10)[i] * stp[i] for i in range(10)]; Fv = [ev(x) for x in P]; nev = 11
+        for it in range(320 if rs == 0 else 200):
+            o = np.argsort(Fv); P = [P[i] for i in o]; Fv = [Fv[i] for i in o]
+            if Fv[-1] - Fv[0] < 1e-6: break
+            cen = np.mean(P[:-1], 0); xr = cen + (cen - P[-1]); fr = ev(xr); nev += 1
+            if fr < Fv[0]:
+                xe = cen + 2 * (cen - P[-1]); fe = ev(xe); nev += 1
+                P[-1], Fv[-1] = (xe, fe) if fe < fr else (xr, fr)
+            elif fr < Fv[-2]: P[-1], Fv[-1] = xr, fr
+            else:
+                xc = cen + 0.5 * (P[-1] - cen); fc = ev(xc); nev += 1
+                if fc < Fv[-1]: P[-1], Fv[-1] = xc, fc
+                else:
+                    P = [P[0]] + [P[0] + 0.5 * (x - P[0]) for x in P[1:]]; Fv = [Fv[0]] + [ev(x) for x in P[1:]]; nev += 10
+        i = int(np.argmin(Fv)); x0 = np.clip(P[i], LO, HI); stp = stp * 0.4
+        print(f'humgen pen simplex pass {rs}: cost {Fv[i]:.4f} evals {nev}')
+    c, g, pen, M, ym, wd, X, ry = ev(x0, True); A = angs(X)
+    setang({k: [0.0] * len(v) for k, v in A.items()})
+    self.Pl[(s, 'spoon')] = M
+    out = {1: tuple(round(x, 1) for x in A[1]) + (round(1000 * g[(1, 3)], 1),)}
+    for k in range(2, 6): out[k] = tuple(round(x, 1) for x in A[k]) + (round(1000 * g[(k, 3)], 1),)
+    print(f'humgen pen grip {p.name} {s}: cost {c:.4f} X {[round(float(x), 3) for x in X]} gaps mm',
+          {f'{FN[k][-5:]}{j}': round(1000 * v, 1) for (k, j), v in g.items()}, f'pen {1000 * pen:.1f} mm, middle y {1000 * ym:.1f}, web {1000 * wd:.1f}, bowl-up vs palm {ry:.0f} deg', out)
+    if cache:
+        import json as _j; _j.dump(dict(Pl=[list(r) for r in M], out=out, ax={f'{a},{b}': list(v) for (a, b), v in AX.items()}), open(cache, 'w'))
+    return out
+
+
+Graft._solve_pen = _solve_pen
+
+
+JAW_DEG = 28.0          # deg of jaw opening per unit ARKit jawOpen (measured on the HG head, see the cast sheet N-numbers)
+SP_JAW, SP_CHEW = 12.0, 4.0     # deg: jaw open for the spoon (S4 10-15), one chew (S5 3-5)
+SP_LIPS = (0.10, 0.30)          # (jawOpen, mouthClose) while the lips close on the spoon / chew: lips shut, jaw a little open
+SP_IN0, SP_IN1 = -0.015, 0.025  # bowl tip vs the lips along the spoon (m): waiting just outside -> 2.5 cm inside (S4 2-3)
+SP_YAW, SP_PITCH, SP_PITCH_M = 30.0, 6.0, 35.0   # deg: spoon comes in from the hand side; handle below the bowl: on the lift (bowl level within 10) / at the lips
+# (elbow flexion 121 deg at the lips [D3] needs the hand beside the chin, not in front of the mouth)
+SP_LOW = (0.37, 0.22, 0.06)     # low point of the bowl tip vs the mouth: down, forward, out to the hand side (m; S4 35-40 cm; shot 15 drop 0.16)
+SP_MZ = 0.115                   # mouth height above the kit neck base (rest) - the low point does not follow the head nod
+SP_ARC = 0.05                   # m: gentle forward arc of the lift
+SP_AB = (14.0, 45.0)            # deg upper-arm abduction at the low point / at the mouth (R6: < 20, 35-55)
+
+
+def _bite_state(self, kr, ra, u, acts=None):
+    """S4-S6 / R3: per frame state of the spoon bites from the eat act's frame beats.
+    p: path (0 low point -> 1 at the lips), ins: bowl insertion (0 outside -> 1 inside), mound: food on the bowl,
+    jaw / lips: ARKit weights, lean: head + trunk toward the spoon (0..1)"""
+    if acts is None: acts = [ac for x in kr._cur if x[0] is ra for q in (x[1], x[2]) for ac in q.acts]
+    acts = [ac for ac in acts if ac.kind == 'eat' and ac.kw.get('beats')]
+    st = dict(p=0.0, ins=0.0, mound=False, jaw=0.0, lips=0.0, lean=0.0, phase='low', drop=SP_LOW[0], gaze=0.0)
+    if not acts: return st
+    ac = acts[0]; st['drop'] = ac.kw.get('drop', SP_LOW[0]); Lf, If, Of, Df = ac.kw['beats']; n = int(ac.kw.get('bites', 1)); per = (Lf + If + Of + Df) / KW.FPS
+    sm = lambda x: 0.0 if x <= 0 else 1.0 if x >= 1 else x * x * (3 - 2 * x)
+    jaw_u = SP_JAW / JAW_DEG
+    for i in range(n):
+        c = ac.at + i * per; x = (u - c) * KW.FPS            # frames since this bite started
+        if x < 0: continue
+        if x < Lf:
+            st.update(p=sm(x / Lf), ins=0.0, mound=True, phase='lift'); st['jaw'] = jaw_u * sm((x - 0.6 * Lf) / (0.4 * Lf))
+            st['lean'] = sm((x - 0.4 * Lf) / (0.6 * Lf))
+        elif x < Lf + If:
+            k = (x - Lf) / If; st.update(p=1.0, ins=sm(k), mound=True, phase='in', lean=1.0)
+            st['jaw'] = jaw_u * (1 - sm((k - 0.5) / 0.5)) + SP_LIPS[0] * sm((k - 0.5) / 0.5); st['lips'] = SP_LIPS[1] * sm((k - 0.5) / 0.5)
+        elif x < Lf + If + Of:
+            k = (x - Lf - If) / Of; st.update(p=1.0, ins=1 - sm(k), mound=False, phase='out', lean=1.0, jaw=SP_LIPS[0], lips=SP_LIPS[1])
+        elif x < Lf + If + Of + Df or i == n - 1:
+            k = min(1.0, (x - Lf - If - Of) / Df); st.update(p=1 - sm(k), ins=0.0, mound=False, phase='down', lean=1 - sm(k))
+            st['lips'] = SP_LIPS[1] * (1 - sm(k / 0.5)); st['jaw'] = SP_LIPS[0] * (1 - sm(k / 0.5))
+        ph_, xx = st['phase'], x       # F4: eyes reach the spoon 5 frames into the lift, leave it while it comes out
+        st['gaze'] = (sm(xx / 5.0) if ph_ == 'lift' else 1.0 if ph_ == 'in' else (1 - sm((xx - Lf - If) / Of)) if ph_ == 'out' else 0.0)
+        ch = ac.kw.get('chew')
+        if ch and i == n - 1 and ch[0] <= (u - ac.at) * KW.FPS <= ch[1]:
+            kk = ((u - ac.at) * KW.FPS - ch[0]) / max(1, ch[1] - ch[0])
+            st['jaw'] = max(st['jaw'], (SP_CHEW / JAW_DEG) * math.sin(math.pi * kk)); st['lips'] = max(st['lips'], SP_LIPS[1])
+    if ac.kw.get('gaze') == 'hold': st['gaze'] = 1.0      # F4 shot 15: eyes down on the spoon the whole shot
+    return st
+
+
+def _spoon_frame(self, kr, ra, side, st):
+    """world frame of the spoon (z handle -> bowl, y bowl up) for a bite state"""
+    p = ra.p; R = p.rig.matrix_world.to_3x3().normalized(); Z = V((0, 0, 1))
+    sg = 1.0 if side == 'L' else -1.0; out = R @ V((sg, 0, 0)); Fp = R @ V((0, -1, 0))
+    mpt, nr = kr.part_world(ra, 'mouth'); nh = V((nr.x, nr.y, 0)).normalized()
+    oh = out - nh * out.dot(nh); oh.z = 0; oh.normalize()
+    # at the lips: the spoon points into the mouth, coming from the hand side, bowl level
+    pp = st['p']; k_ = max(0.0, min(1.0, (pp - 0.3) / 0.7)) if st['phase'] != 'down' else pp; k_ = k_ * k_ * (3 - 2 * k_)   # down: the bowl is empty, so the pitch unwinds over the whole path (no wrist flick, tip speed)
+    yw = math.radians(SP_YAW); pt_ = math.radians(SP_PITCH + (SP_PITCH_M - SP_PITCH) * k_)     # bowl level on the lift, handle lower at the lips
+    a_m = (-(nh * math.cos(yw) + oh * math.sin(yw)) * math.cos(pt_) + Z * math.sin(pt_)).normalized()
+    tip = mpt + a_m * (SP_IN0 + (SP_IN1 - SP_IN0) * st['ins'])
+    O_m = tip - a_m * SP_TIP
+    # low point: hand just above the thighs, bowl level, spoon pointing forward-in (as if over a bowl in the lap)
+    # anchored on the neck base (moves with the trunk, NOT with the head nod), short drops keep more of the mouth angle
+    fh = V((Fp.x, Fp.y, 0)).normalized(); a_l = (fh * math.sin(math.radians(35)) - oh * math.cos(math.radians(35))).normalized()     # pointing across the lap
+    dr = st['drop']; a_l = a_l.slerp(a_m, min(1.0, max(0.0, 1 - dr / SP_LOW[0]) * 1.4)).normalized()     # short drop (shot 15): less turn of the spoon
+    nb = kr.bw(p, 'neck01')
+    tip_l = V((mpt.x, mpt.y, nb.z + SP_MZ)) - Z * dr + fh * (SP_LOW[1] * dr / SP_LOW[0]) + oh * SP_LOW[2]
+    O_l = tip_l - a_l * SP_TIP
+    O = O_l.lerp(O_m, pp) + fh * (SP_ARC * math.sin(math.pi * pp))
+    a = a_l.slerp(a_m, pp) if hasattr(a_l, 'slerp') else (a_l * (1 - pp) + a_m * pp).normalized()
+    a = a.normalized(); y = (Z - a * Z.dot(a)).normalized(); x = y.cross(a).normalized()
+    M = Matrix((x, y, a)).transposed().to_4x4(); M.translation = O
+    return M
+
+
+def _spoon_goal(self, kr, ra, side, tip, shape, u, pole):
+    st = self.bite_state(kr, ra, u); self._bite = st
+    Ms = self.spoon_frame(kr, ra, side, st)
+    Wm = Ms @ self.Pl[(side, 'spoon')].inverted(); Rw = Wm.to_3x3().normalized()
+    tl = ra.hand[side][shape][tip]
+    p = ra.p; R = p.rig.matrix_world.to_3x3().normalized(); sg = 1.0 if side == 'L' else -1.0
+    out = R @ V((sg, 0, 0)); Up = R @ V((0, 0, 1)); Fp = R @ V((0, -1, 0)); sh = kr.bw(p, f'upperarm01.{side}')
+    pl = sh - Up * 0.6 + Fp * 0.05 + out * (0.10 + 0.35 * st['p'])
+    self._sp_ab = SP_AB[0] + (SP_AB[1] - SP_AB[0]) * st['p']
+    return Wm @ tl, tip, shape, Rw, pl
+
+
+Graft.bite_state = _bite_state
+Graft.spoon_frame = _spoon_frame
+Graft.spoon_goal = _spoon_goal

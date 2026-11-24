@@ -1,5 +1,5 @@
 """kwrun - Blender side of kwkit: builds people/sets/fx for an Episode and renders it.  Not edited per episode."""
-import bpy, os, sys, math, random, json, time
+import bpy, os, sys, math, random, json, time, zlib
 from mathutils import Vector, Matrix, Euler, Quaternion
 from mathutils.bvhtree import BVHTree
 import kwkit as KW
@@ -32,6 +32,17 @@ PARTSPEC = {
     'knee_l': ('lowerleg01.L', (0, 0.3, 0.0), (0, -1, 0), 'all'), 'knee_r': ('lowerleg01.R', (0, 0.3, 0.0), (0, -1, 0), 'all'),
 }
 FACE_PARTS = ('nose', 'mouth', 'chin', 'forehead', 'eye_l', 'eye_r', 'cheek_l', 'cheek_r', 'ear_l', 'ear_r', 'head_top')
+
+DRINK_HG = (13.5, 5.5, 0.45)
+HG_SWALLOW_DIP = 1.0             # deg
+HG_DRIFT = (0.7, 0.8, 0.3)       # alive head drift: pitch, turn amplitude (deg), amplitude while a rim/spoon is at the lips (L2)
+SP_HEAD_FWD, SP_TRUNK_FWD = 10.0, 3.0   # humgen spoon bite: head forward / trunk forward at the spoon (deg, R4 8-12 / 2-4)
+HG_SP_EYE = (-22.0, 0.65, 0.0)    # F4 spoon gaze (rendered check: +x on the HG eye bone looks UP): eye pitch deg at the low point, fraction lost by the lips, yaw toward the hand
+HG_BREATH_SPINE = (-0.40, -0.40, 0.0)   # humgen breath: spine03/02/01 pitch per unit breath (deg; negative = extension, chest rises)
+HG_DART = 0.8                    # idle eye dart amplitude (deg, R5 <= 1); one every HG_DART_F frames
+HG_DART_F = 14
+HG_FINGER_OFF = (0.0, 2.5, 5.0, 8.0)   # resting hand: index..pinky extra curl (deg, L6 not parallel)     # humgen drink: head nod back, neck back (deg; total ~12, addendum I R1), lid lowering
+
 
 def side_sign(side): return 1.0 if side == 'L' else -1.0
 
@@ -82,6 +93,7 @@ class Runtime:
         if os.environ.get('KW_HEADS') == 'humgen':   # opt-in Human Generator people (heads_hg.py; assets only from the private kw-assets repo)
             import heads_hg as HGH
             for a_, ra_ in self.actors.items(): HGH.graft(self, ra_, dict(a_.role))
+            Q.LOOP_T = round(max(s_.t + s_.length for s_ in self.ep.shots) * FPS) / FPS    # alive layer loop-locked (addendum H L9)
             bpy.context.view_layer.update()
         for ra in self.actors.values(): self._calibrate(ra)
         for ra in self.actors.values():
@@ -390,11 +402,25 @@ class Runtime:
                 F('puff', 0.9 * w * h); F('pressed', 0.7 * w); F('squint', 0.75 * w * h); F('bulge', 0.35 * w * h); F('open', 0.25 * ih)
             elif k == 'swallow':
                 b = bump(u, at, 0.15); st['nod'] += 7 * b; F('pressed', 0.8 * b); F('squint', 0.2 * b)
+            elif k == 'eat' and kw.get('beats') and getattr(getattr(self.actors.get(a), 'p', None), 'hg', None) is not None:
+                # humgen spoon (S4-S6, R3, R4): jaw opens before the spoon arrives, lips close on it, one chew; head + trunk lean in
+                bs = self.actors[a].p.hg.bite_state(self, self.actors[a], u, acts)
+                st['nod'] += kw.get('nod', SP_HEAD_FWD) * bs['lean']; st['lean'] += kw.get('trunk', SP_TRUNK_FWD) * bs['lean']
+                F('jaw', bs['jaw']); F('lipsclose', bs['lips'])
             elif k == 'eat':
                 for i in range(int(kw.get('bites', 2))):
                     c = at + i * 0.6; F('open', 0.55 * bump(u, c, 0.1)); F('open', 0.18 * max(0, math.sin((u - c) * 14)) * window_(u, c + 0.15, c + 0.55))
             elif k == 'drink':
-                d = kw.get('dur', 1.2); w = ramp(u, at, at + 0.3) * (1 - ramp(u, at + d, at + d + 0.3)); st['nod'] -= 16 * w; st['neck'] -= 6 * w; F('open', 0.2 * w)
+                d = kw.get('dur', 1.2); ra_ = self.actors.get(a)
+                if ra_ is not None and getattr(ra_.p, 'hg', None) is not None:
+                    # humgen (grip brief M2-M5 + addendum I R1): 40/20/40 eased tilt about the lip; head+neck back ~12 deg at the
+                    # peak; lips stay closed on the rim (no jaw open); lids lower to about half
+                    sm_ = lambda x, a0, b0: 0.0 if x <= a0 else 1.0 if x >= b0 else (lambda y: y * y * (3 - 2 * y))((x - a0) / (b0 - a0))
+                    w = sm_(u, at, at + 0.4 * d) * (1 - sm_(u, at + 0.6 * d, at + d))
+                    st['nod'] -= DRINK_HG[0] * w; st['neck'] -= DRINK_HG[1] * w; F('blink', DRINK_HG[2] * w)
+                    st['nod'] += HG_SWALLOW_DIP * bump(u, at + 0.62 * d, 0.13 * d)     # L4 swallow: 1 deg chin dip (no larynx control in the cast)
+                else:
+                    w = ramp(u, at, at + 0.3) * (1 - ramp(u, at + d, at + d + 0.3)); st['nod'] -= 16 * w; st['neck'] -= 6 * w; F('open', 0.2 * w)
             elif k == 'wince':
                 b = bump(u, at, 0.16) * kw.get('hard', 1.0); st['nod'] += 5 * b; st['tilt'] += 6 * b; F('grimace', 0.8 * b); F('squint', 0.6 * b)
             elif k == 'nod':
@@ -421,7 +447,7 @@ class Runtime:
         want = {}
         def add(expr, v):
             if v <= 0: return
-            for path, wt in P.EXPR[expr]: want[path] = max(want.get(path, 0.0), v * wt)
+            for path, wt in P.EXPR.get(expr, ()): want[path] = max(want.get(path, 0.0), v * wt)     # humgen-only names (jaw, lipsclose) have no kit key
         mix = {}
         for nm, v in qa.face.items(): mix[nm] = mix.get(nm, 0) + v * (1 - w)
         for nm, v in qb.face.items(): mix[nm] = mix.get(nm, 0) + v * w
@@ -432,7 +458,18 @@ class Runtime:
         if 'puff' in exprs: exprs['puff'] *= 1 + 0.08 * math.sin(t * 9)
         for e, v in acts_st['face'].items(): exprs[e] = max(exprs.get(e, 0), v)
         # blinks (deterministic per person); not while eyes squeezed
-        if qb.blink and exprs.get('blink', 0) < 0.5:
+        if getattr(ra.p, 'hg', None) is not None and getattr(self.ep, 'blinks', None) is not None:
+            # humgen: blinks keyed to the frame timeline (addendum G), R7 shape: close 1-2 frames, shut 2, open over 2
+            f_ = int(round(t * FPS)); bl = 0.0
+            for b0 in self.ep.blinks.get(ra.a.name, ()):
+                if isinstance(b0, tuple):        # soft eye close (a, b, c, d): close a..b, held to c, open c..d
+                    a0, b1, c0, d0 = b0
+                    v_ = 0.0 if f_ < a0 or f_ > d0 else min(1.0, (f_ - a0) / max(1, b1 - a0)) if f_ < b1 else 1.0 if f_ <= c0 else 1.0 - (f_ - c0) / max(1, d0 - c0)
+                    bl = max(bl, 0.92 * v_ * v_ * (3 - 2 * v_)); continue
+                k_ = f_ - b0
+                if 0 <= k_ < 5: bl = max(bl, (0.5, 1.0, 1.0, 0.45, 0.12)[k_])
+            exprs['blink'] = max(exprs.get('blink', 0), bl)
+        elif qb.blink and exprs.get('blink', 0) < 0.5:
             if self.body_r4:
                 if exprs.get('squint', 0) < 0.75:
                     exprs['blink'] = max(exprs.get('blink', 0), Q.auto_blink(t, ra.phase, acts, u))
@@ -488,7 +525,8 @@ class Runtime:
             if qb.base == 'walk' and not canonical: M = M @ Matrix.Translation(V((0, 0, 0.012 * abs(math.sin(t * 2 * math.pi * 0.95)))))
             p.rig.rotation_mode = 'QUATERNION'; p.rig.matrix_world = M
             st = self.act_state(a, acts, u, t) if not canonical else self.act_state(a, [], u, t)
-            ra.beat = Q.body_beat(t, u, ra.phase, acts, qb.base) if self.body_r4 and not canonical else (0.0, 0.0, 0.0)
+            acts_b = [ac for ac in acts if not (ac.kind == 'eat' and ac.kw.get('beats'))]     # humgen spoon bites carry their own lean (R4): no kit recoil / mocap eat track
+            ra.beat = Q.body_beat(t, u, ra.phase, acts_b, qb.base) if self.body_r4 and not canonical else (0.0, 0.0, 0.0)
             breath, shift, settle = ra.beat
             hd = tuple(qa.head[i] + (qb.head[i] - qa.head[i]) * w for i in range(3))
             nod, turn, tilt = hd[0] + st['nod'], hd[1] + st['turn'], hd[2] + st['tilt']
@@ -501,14 +539,24 @@ class Runtime:
                     lw = w if qb.look is not None and qa.look is None else 1.0
                     turn += clamp(lt, -65, 65) * lw; nod += clamp(ln, -35, 40) * lw
             if st['shake']: nod += st['shake'] * 2.0 * math.sin(t * 47); tilt += st['shake'] * 1.5 * math.sin(t * 39)
+            if getattr(p, 'hg', None) is not None and not canonical:
+                # L2: never a locked head; slow loop-locked drift, smaller while a rim / spoon is at the lips
+                hm = [getattr(qb, sd_, None) for sd_ in ('left', 'right')]
+                at_lips = any(h_ is not None and h_.kind == 'hold' and h_.at == 'mouth' and h_.prop == 'can' for h_ in hm)
+                ap, at_ = (HG_DRIFT[2], HG_DRIFT[2]) if at_lips else (HG_DRIFT[0], HG_DRIFT[1]); ph_ = ra.phase * 6.283
+                nod += ap * (0.7 * math.sin(t * Q.loop_w(3.9) + ph_) + 0.3 * math.sin(t * Q.loop_w(6.1) + 2 * ph_))
+                turn += at_ * (0.7 * math.sin(t * Q.loop_w(2.7) + 1.3 + ph_) + 0.3 * math.sin(t * Q.loop_w(5.3) + 0.4))
             lean = qa.lean + (qb.lean - qa.lean) * w + st['lean']
             p.rot('neck02', (nod * 0.35 + st['neck'], turn * 0.35, tilt * 0.3)); p.rot('head', (nod * 0.65, turn * 0.65, tilt * 0.7))
-            p.rot('spine03', (lean * 0.4 + 0.24 * breath, 0.35 * shift, 0.52 * shift))
-            p.rot('spine02', (lean * 0.35 + 0.47 * breath + 0.75 * settle, 0.60 * shift, 0.75 * shift))
-            p.rot('spine01', (lean * 0.25 + 0.30 * breath + 0.40 * settle, 0.34 * shift, 0.22 * shift))
+            # L1 humgen: a breath IN is a small upper-back extension + the clavicle lift (measured on the HG mesh: chest
+            # +3.3 mm, shoulders +4.5 mm per full breath); the kit's forward bend made the chest sink 2 mm on every breath in
+            bk = HG_BREATH_SPINE if getattr(p, 'hg', None) is not None else (0.24, 0.47, 0.30)
+            p.rot('spine03', (lean * 0.4 + bk[0] * breath, 0.35 * shift, 0.52 * shift))
+            p.rot('spine02', (lean * 0.35 + bk[1] * breath + 0.75 * settle, 0.60 * shift, 0.75 * shift))
+            p.rot('spine01', (lean * 0.25 + bk[2] * breath + 0.40 * settle, 0.34 * shift, 0.22 * shift))
             if self.body_r4 and not canonical:
                 cue = next((at for at, q in ps.keys if q is qb), 0.)
-                Q.mocap_pose(p, self.mocap, acts, u, qb.base, qb, w if qa is not qb else 1., cue, a)
+                Q.mocap_pose(p, self.mocap, acts_b, u, qb.base, qb, w if qa is not qb else 1., cue, a)
                 if any(ac.kind in ('flinch', 'wince') for ac in acts):
                     p.pb('spine02').rotation_euler.x -= math.radians(2.4 * settle)
                     p.pb('spine01').rotation_euler.x -= math.radians(1.8 * settle)
@@ -529,6 +577,12 @@ class Runtime:
             if not canonical and qb.blink:   # Zack look round 2: small eye-darts (saccades) on every hold, deterministic per person
                 ph = hash(ra.a.name) % 13; k_ = int((t + ph * 0.37) / 0.9)
                 ex = ((k_ * 7919 + ph) % 9 - 4) * 0.9; ey = ((k_ * 104729 + ph) % 5 - 2) * 0.8
+                if getattr(p, 'hg', None) is not None:     # R5: <= 1 deg, 1-2 per second, loop-locked (728 frames / 14)
+                    ph = zlib.crc32(ra.a.name.encode()) % 13; k_ = (int(round(t * FPS)) + ph) // HG_DART_F
+                    ex = ((k_ * 7919 + ph) % 5 - 2) / 2 * HG_DART; ey = ((k_ * 104729 + ph) % 3 - 1) * 0.5 * HG_DART
+                if getattr(p, 'hg', None) is not None and any(ac.kind == 'eat' and ac.kw.get('beats') for ac in acts):
+                    bs_ = p.hg.bite_state(self, ra, u, acts)    # F4: eyes follow the spoon (down at the low point, ~level at the lips)
+                    ey += HG_SP_EYE[0] * bs_['gaze'] * (1 - HG_SP_EYE[1] * bs_['p']); ex += HG_SP_EYE[2] * bs_['gaze']
                 for eb in ('eye.L', 'eye.R'):
                     if eb in p.rig.pose.bones: p.rot(eb, (ey, 0, ex))
             self._cur.append((ra, qa, qb, w))
@@ -674,7 +728,7 @@ class Runtime:
         return D, bR
 
     def solve_hands(self, shot, u, t, canonical=False):
-        jobs = []
+        jobs = []; self._hshot = shot          # read by the humgen can arm (one elbow pole per shot)
         for (ra, qa, qb, w) in self._cur:
             for side in 'LR':
                 ha = getattr(qa, 'left' if side == 'L' else 'right'); hb_ = getattr(qb, 'left' if side == 'L' else 'right')
@@ -711,9 +765,15 @@ class Runtime:
                 for fi in (3, 4, 5):
                     flex = (0.9 * breath + 2.0 * settle) * (0.70 + 0.14 * (fi - 3))
                     p.pb(f'finger{fi}-2.{side}').rotation_euler.x += math.radians(flex)
+                if getattr(p, 'hg', None) is not None:     # L6: resting fingers not parallel (each a little more curled toward the pinky)
+                    for fi, off in zip((2, 3, 4, 5), HG_FINGER_OFF):
+                        for jj, kf in ((1, 0.4), (2, 1.0), (3, 0.6)): p.pb(f'finger{fi}-{jj}.{side}').rotation_euler.x += math.radians(off * kf)
             tgt, con, pl = ra.ik[side]; ra._tgt = getattr(ra, '_tgt', {}); ra._tgt[side] = D - (Rw @ tl)
             tgt.location = ra._tgt[side]; pl.location = pole; con.influence = 1.0
         bpy.context.view_layer.update()
+        for ra, side, D, tip, shape, Rw, pole, shapes, h in jobs:      # humgen only: closed-loop arm limits on the REAL solved pose
+            hg_ = getattr(ra.p, 'hg', None)
+            if hg_ is not None and hasattr(hg_, 'post_ik'): hg_.post_ik(self, ra, side, h, shape)
         for it in range(2):
             for ra, side, D, tip, shape, Rw, pole, shapes, h in jobs: self._set_wrist(ra, side, Rw)
             bpy.context.view_layer.update()
@@ -812,6 +872,8 @@ class Runtime:
                     fstop = fstop or 4.0; return pos, A, upv, lens, fstop, A
                 if kind == 'part':
                     lens = lens or 50; d = dist or 0.36; sd0 = o.get('side', 0.0)
+                    pt = pt + V((0, 0, 1)) * o.get('aim_dz', 0.0)     # aim below/above the part (cast sheet: the hanging hand under the wrist)
+                    if o.get('front'): nr = C0['body_fwd']                # view from the body's front (cast sheet hands), then 'side' orbits
                     nrm = Matrix.Rotation(math.radians(sd0 + orbit * mv), 3, U) @ nr
                     pos = pt + nrm * d * (1 - push * mv) + U * height; pos += self._shake(t, o, u)
                     return pos, pt, V((0, 0, 1)) if abs(nrm.z) < 0.9 else U, lens, fstop or 2.8, pt   # Zack look round 2: shallow part DOF
@@ -990,6 +1052,7 @@ class Runtime:
         if not on: o.hide_render = True; return
         cam = V(cam); fwd = (V(tgt) - cam).normalized()
         far = max(((self.bw(self.actors[a].p, 'head') - cam).dot(fwd) for a in shot.cast if a in self.actors), default=1.5)
+        far = max(far, (V(tgt) - cam).dot(fwd))     # the card always sits behind the aim point too (part close-ups of a hand below the head)
         D = far + 0.6; ctr = cam + fwd * D
         h = 2 * D * math.tan(self.CAM.data.angle / 2) * 2.4
         o.hide_render = False; o.location = ctr; o.rotation_euler = (-fwd).to_track_quat('Z', 'Y').to_euler(); o.scale = (h, h, 1)
@@ -1039,17 +1102,32 @@ class Runtime:
             if getattr(ra.p, 'hg', None) is not None: ra.p.hg.frame(self, shot)
         pos, tgt, up, lens, fs, foc = self.cam_eval(shot, u, si)
         self.set_cam(pos, tgt, up, lens, fs, foc)
+        self.cam_walls(shot, V(pos))
         self.rim_light(shot, pos)
         self.backdrop(shot, pos, tgt)
         self.FX.update_screen(shot, u, t)
         bpy.context.view_layer.update()
 
     # ================================================================== checks needing the scene
-    def inside_geometry(self, pos):
+    def cam_walls(self, shot, pos):
+        """A set wall the camera sits in or touches (e.g. a push that starts behind the back wall) is hidden
+        from CAMERA rays only, for that frame; shadows, bounce light and every other frame stay the same."""
+        for o in getattr(self, '_cam_hidden', ()): o.visible_camera = True
+        self._cam_hidden = []
+        for o in self.S.objects:
+            if o.type != 'MESH' or 'wall' not in o.name.lower() or not self._visible(o): continue
+            bb = [o.matrix_world @ V(c) for c in o.bound_box]
+            if not all(min(b[i] for b in bb) - 0.01 < pos[i] < max(b[i] for b in bb) + 0.01 for i in range(3)): continue
+            if self.inside_geometry(pos, only=o):
+                o.visible_camera = False; self._cam_hidden.append(o)
+                print(f'KW camwall hide {shot.name} {o.name} (camera rays only)', flush=True)
+
+    def inside_geometry(self, pos, only=None):
         """True if the camera point is inside a visible closed mesh (ray parity, 6 directions)"""
         dg = bpy.context.evaluated_depsgraph_get(); hits = []
-        for o in self.S.objects:
+        for o in ([only] if only is not None else self.S.objects):
             if o.type != 'MESH' or o.hide_render or o.name == 'kw_backdrop': continue
+            if only is None and not o.visible_camera: continue   # not seen by the camera (cam_walls)
             if any(c.hide_render for c in o.users_collection if c is not self.S.collection): continue
             if not self._visible(o): continue
             bb = [o.matrix_world @ V(c) for c in o.bound_box]

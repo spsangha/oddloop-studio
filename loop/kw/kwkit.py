@@ -165,7 +165,16 @@ class act:
     @staticmethod
     def swallow(at=0.5): return Act('swallow', at=at)
     @staticmethod
-    def eat(at=0.3, bites=2): return Act('eat', at=at, bites=bites)
+    def eat(at=0.3, bites=2, beats=None, chew=None, drop=None, nod=None, trunk=None, gaze=None):
+        """beats=(lift, in, out, down) frames per bite (humgen spoon); chew=(start, end) frames after `at` (one chew); drop: m the spoon goes below the mouth"""
+        kw = dict(at=at, bites=bites)
+        if drop is not None: kw['drop'] = float(drop)
+        if nod is not None: kw['nod'] = float(nod)
+        if trunk is not None: kw['trunk'] = float(trunk)
+        if gaze is not None: kw['gaze'] = gaze
+        if beats is not None: kw['beats'] = tuple(beats)
+        if chew is not None: kw['chew'] = tuple(chew)
+        return Act('eat', **kw)
     @staticmethod
     def drink(at=0.3, dur=1.2): return Act('drink', at=at, dur=dur)
     @staticmethod

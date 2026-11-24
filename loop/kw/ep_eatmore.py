@@ -12,6 +12,11 @@ Line sources: 1 NPR 'so perfectly engineered to get us to not just like them but
 """
 import sys, os; sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import kwkit as KW
+# lead 25 Nov (B), this episode only: stronger readable upper face (cast-master defaults untouched)
+KW.FACES = dict(KW.FACES)
+KW.FACES.update({'worry': {'worry': min(1.0, 0.9 * 1.5), 'wide': min(1.0, 0.35 * 1.5)},
+                 'focus': {'frown': min(1.0, 0.35 * 1.5), 'squint': min(1.0, 0.15 * 1.5)},
+                 'relief': {'smile': 1.0, 'squint': 0.1}, 'smile': {'smile': 1.0}})
 
 ep = KW.Episode('ep_eatmore', injury="wanting more", voice_lines=[
     "Food companies tune every snack so your brain keeps wanting more.",
@@ -44,8 +49,8 @@ ep.shot(2.2, 'macro_more', set='macro', macro=nrv, fx=[KW.fx.label('MORE', at=0.
         cam=KW.cam.macro(nrv, view='wide', push=0.3, hits=[0.15]))
 # ---- 2: the scientist and the bliss point --------------------------------------------------------------------
 ep.shot(L(1) + 0.1, 'lab_sci', set='room', cast={sci: KW.pose('stand', at='stand', left='clipboard', right='write', face='focus', act=KW.act.nod(at=0.6, n=1))},
-        cam=KW.cam.medium(sci, side=24, height=0.1, push=0.12))
-ep.shot(L(1) + 1.9, 'room_like', set='room', cast={ben: sip(at=0.1, dur=1.2)}, cam=KW.cam.face(ben, side=-18, push=0.15))
+        cam=KW.cam.medium(sci, side=-30, height=0.1, push=0.12))   # C2: the paper faces his right (normal -0.75 x): from side=24 the board was edge-on
+ep.shot(L(1) + 1.9, 'room_like', set='room', cast={ben: sip(at=0.1, dur=1.2)}, cam=KW.cam.face(ben, side=18, push=0.15))   # ruling k: mirrored to the free side, the raised can hid both eyes from side=-18
 ep.shot(L(1) + 3.6, 'macro_bliss', set='macro', macro=nrv, fx=[KW.fx.label('BLISS', at=0.1, pos=(0.5, 0.62), color='red')],
         cam=KW.cam.macro(nrv, view='wide', push=0.25, hits=[0.1]), sounds=[(0.1, 'thud', 0.8)])
 # ---- 3: fifty nine versions, three thousand taste tests ---------------------------------------------------------
@@ -58,10 +63,10 @@ ep.shot(L(2) + 3.3, 'lab_note', set='room', cast={sci: KW.pose('stand', at='stan
 ep.shot(L(3) - 0.1, 'xray_peak', set='xray', xray=ben, organs=['brain', 'skull'], cast={ben: xr(face='smile')},
         fx=[KW.fx.pressure(ben, 'brain', at=0.1, dur=1.4, swell=0.2), KW.fx.glow(ben, 'brain', at=0.1, dur=1.2, color='yellow')],
         cam=KW.cam.xray(ben, 'brain', view='front', push=0.18, dist=0.5, hits=[0.25]), sounds=[(0.25, 'thud', 0.8)])
-ep.shot(L(3) + 1.9, 'room_peak', set='room', cast={ben: sip(at=0.0, dur=0.6).then(0.8, face='relief')}, cam=KW.cam.face(ben, side=12, push=0.18, hits=[0.8]))
+ep.shot(L(3) + 1.9, 'room_peak', set='room', cast={ben: sip(at=0.0, dur=0.9).then(1.0, face='relief')}, cam=KW.cam.face(ben, side=12, push=0.18, hits=[1.0]))   # addendum I R2
 # ---- 5: the NIH study: about 500 more calories a day ------------------------------------------------------------
 ep.shot(L(4) - 0.1, 'hos_study', set='hospital',
-        cast={ben: KW.pose('sit', at='bed_sit', right=KW.hand.hold('spoon', where='mouth'), face='calm', act=KW.act.eat(at=0.3, bites=2)),
+        cast={ben: KW.pose('sit', at='bed_sit', right=KW.hand.hold('spoon', where='mouth'), face='calm', act=KW.act.eat(at=7 / 24, bites=1, beats=(19, 6, 4, 16), chew=(31, 39), drop=0.37)),     # R3: lift f447-466, in -472, out -476, one chew f478-486
               sci: KW.pose('stand', at='bedside_r', left='clipboard', right='write', face='focus', look=ben)},
         cam=KW.cam.two_shot(ben, sci, side=12, push=0.1))
 ep.shot(L(4) + 1.9, 'xray_stomach', set='xray', xray=ben, organs=['esophagus', 'stomach', 'intestines'], cast={ben: xr(face='calm')},
@@ -70,16 +75,18 @@ ep.shot(L(4) + 1.9, 'xray_stomach', set='xray', xray=ben, organs=['esophagus', '
 ep.shot(L(4) + 3.7, 'macro_500', set='macro', macro=sto, fx=[KW.fx.particles('food', at=0.0, speed=0.6, count=14), KW.fx.label('+500', at=0.15, pos=(0.5, 0.62), color='blue', size=1.3)],
         cam=KW.cam.macro(sto, view='wide', push=0.3, hits=[0.15]), sounds=[(0.15, 'thud', 0.8)])
 # ---- 6: ate faster, two pounds in two weeks ----------------------------------------------------------------------
-ep.shot(L(5) - 0.1, 'hos_fast', set='hospital', cast={ben: KW.pose('sit', at='bed_sit', right=KW.hand.hold('spoon', where='mouth'), face='focus', act=KW.act.eat(at=0.1, bites=3))},
+ep.shot(L(5) - 0.1, 'hos_fast', set='hospital', cast={ben: KW.pose('sit', at='bed_sit', right=KW.hand.hold('spoon', where='mouth'), face='focus', lean=8, act=KW.act.eat(at=2 / 24, bites=2, beats=(7, 3, 2, 6), drop=0.20, nod=3, trunk=1, gaze='hold'))},     # R3/R4: two 18-frame bites f576-594-611, bent ~8 deg
         cam=KW.cam.face(ben, side=-18, push=0.15, shake=0.3))
 ep.shot(L(5) + 1.5, 'calendar', set='graphic', world='hospital', fx=[KW.fx.calendar(weeks=2, at=0.05, dur=0.6)], cam=KW.cam.prop())
-ep.shot(L(5) + 2.9, 'hos_belly', set='hospital', cast={ben: KW.pose('sit', at='bed_sit', left=KW.hand.clutch('belly'), face='worry').then(0.3, swell={'belly': 0.8})},
+ep.shot(L(5) + 2.9, 'hos_belly', set='hospital', cast={ben: KW.pose('sit', at='bed_sit', left=KW.hand.clutch('belly'), face='worry', head=(14, 0, 0)).then(0.3, swell={'belly': 0.8})},
         cam=KW.cam.medium(ben, side=22, push=0.12))
 # ---- 7: payoff, loop back to the sip ----------------------------------------------------------------------------
 ep.shot(L(6) - 0.1, 'room_can', set='room', cast={ben: KW.pose('stand', at='counter', right=KW.hand.hold('can', where='mouth'), face='worry', head=(6, -12, 0)).then(0.6, face='calm')},
-        cam=KW.cam.face(ben, side=-14, push=0.15))
+        cam=KW.cam.face(ben, side=14, push=0.15))   # ruling k: mirrored to the free side, the index tip and can bottom covered the nose from side=-14 (elbow already out 25-27 deg)
 ep.shot(L(6) + 1.4, 'room_loop', set='room',
-        cast={ben: KW.pose('stand', at='counter', right=KW.hand.hold('can', where='mouth'), face='calm').then(0.3, face='smile', act=KW.act.drink(at=0.3, dur=0.6))},
+        cast={ben: KW.pose('stand', at='counter', right=KW.hand.hold('can', where='mouth'), face='calm').then(0.3, face='smile')},   # R8: no sip, still M1 hold, calm->smile from 0.3 s
         cam=KW.cam.loop())
 
+# blinks keyed to the frame timeline (addendum G, R7); shot 11 soft eye close f416-423, open f424-427
+ep.blinks = {'Ben': [258, 660, 695, (416, 420, 423, 427)], 'Howard': [125, 334]}
 ep.run()
