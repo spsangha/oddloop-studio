@@ -144,5 +144,5 @@ if __name__ == '__main__':
     p.stdin.close(); assert p.wait() == 0
     audio(cj, lines, music, out + '.a.wav')
     subprocess.run(['ffmpeg', '-v', 'error', '-y', '-i', out + '.v.mp4', '-i', out + '.a.wav', '-map', '0:v', '-map', '1:a', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '256k',
-                    '-shortest', '-movflags', '+faststart', out], check=True)
+                    '-movflags', '+faststart', out], check=True)
     os.remove(out + '.v.mp4'); os.remove(out + '.a.wav'); print('done', out, n, 'frames', len(caps), 'captions')
