@@ -246,12 +246,12 @@ class hand:
         if where not in ('chest', 'mouth', 'nose', 'ear', 'out'): raise ValueError("hold where: chest | mouth | nose | ear | out")
         return Hand('hold', None, {'mouth': 'mouth', 'nose': 'nose', 'ear': None}.get(where), 'hold', prop=prop, at=where)
 
-GRIPS = {'grip_cup': ('cup',), 'grip_tool': ('tweezers', 'penlight'), 'grip_pinch': ('pea', 'paperclip'), 'grip_burger': ('burger',), 'rest_belly': ()}
+GRIPS = {'grip_cup': ('cup',), 'grip_tool': ('tweezers', 'penlight'), 'grip_pinch': ('pea', 'paperclip'), 'grip_burger': ('burger',)}
 def _grip(name, item=None, where='chest'):
     """cast v1.1 (KW_CAST=v1.1, HG cast): a hand grip on a kwprops item - grip_cup | grip_tool (penlight, tweezers) |
-    grip_pinch (pea, paperclip) | grip_burger (two hands: give it to both hands) | rest_belly.  The item follows the hand."""
+    grip_pinch (pea, paperclip) | grip_burger (two hands: give it to both hands; where='mouth' = bite).  The item follows the hand.
+    (rest_belly was dropped in round 2: for a hand on the belly use KW.hand.clutch('belly') on a seated pose.)"""
     _check_name('grip', name, tuple(GRIPS))
-    if name == 'rest_belly': return Hand('touch', None, 'belly', 'claw')
     item = item or GRIPS[name][0]; _check_name(name + ' item', item, GRIPS[name])
     if where not in ('chest', 'mouth', 'out'): raise ValueError('grip where: chest | mouth | out')
     part = {'mouth': 'mouth'}.get(where)

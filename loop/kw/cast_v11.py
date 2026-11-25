@@ -24,6 +24,7 @@ LIP_TINT = (0.80, 0.60, 0.60)    # base colour multiplier at full lip mask
 PORE = dict(scale=1600.0, strength=0.35, dist=0.0007)        # Voronoi cells per m (~0.7 mm), bump
 MOUTH_IN = (0.16, 0.07, 0.07)    # mouth-inside colour multiplier (deep)
 LASH = dict(children=8, radius=1.25, light=0.45, red=0.6)   # + lash/brow hair colour = head hair (HG had ginger 1.9/0.9)   # eyelash children per guide, thickness multiplier
+HAND_MATCH = (0.9, 1.2)          # A3: clip of the hand -> face colour-map ratio
 SSS_SCALE = 0.005                # m (HG 0.01 reads waxy at close range)
 
 
@@ -220,8 +221,37 @@ def skin(G):
         nsrc = bsdf.inputs['Normal'].links[0].from_socket
         L.new(nsrc, bp.inputs['Normal']); L.new(bp.outputs['Normal'], bsdf.inputs['Normal'])
         bsdf.inputs['Subsurface Scale'].default_value = SSS_SCALE
+        hr = _hand_ratio(G, m)
+        if hr is not None:     # A3: the HG colour map is darker / more orange on the hands than on the face -> bring the hands to the face
+            ha = N.new('ShaderNodeAttribute'); ha.attribute_name = 'kw11_hand'; ha.attribute_type = 'GEOMETRY'
+            hm = N.new('ShaderNodeMix'); hm.data_type = 'RGBA'; hm.blend_type = 'MULTIPLY'; hm.inputs['B'].default_value = (*hr, 1)
+            src_ = bsdf.inputs['Base Color'].links[0].from_socket
+            L.new(ha.outputs['Fac'], hm.inputs['Factor']); L.new(src_, hm.inputs['A']); L.new(hm.outputs['Result'], bsdf.inputs['Base Color'])
     print('cast v1.1: skin', G.p.name)
     if os.environ.get('KW_V11_DBG'): _skin_dbg(G)
+
+
+def _hand_ratio(G, m):
+    """per-channel face / hand mean of the HG colour map (hand = hand, palm and finger bones), clipped to HAND_MATCH;
+    writes the kw11_hand point attribute (hand-bone weight, 0..1). None if no colour map."""
+    body = G.body; me = body.data
+    tex = next((nd.image for nd in m.node_tree.nodes if nd.type == 'TEX_IMAGE' and nd.image is not None and nd.image.colorspace_settings.name == 'sRGB'
+                and 'freckle' not in nd.image.name.lower() and 'aged' not in nd.image.name.lower() and nd.image.size[0] > 0), None)
+    at = me.color_attributes.get('kw11_skin')
+    if tex is None or at is None: return None
+    gi = {g.index for g in body.vertex_groups if g.name.startswith(('hand', 'palm', 'f_', 'thumb'))}
+    hw = np.array([min(1.0, sum(g.weight for g in v.groups if g.group in gi)) for v in me.vertices])
+    c = np.empty(len(me.vertices) * 4); at.data.foreach_get('color', c); face = c.reshape(-1, 4)[:, 2] > 0.5
+    a = me.attributes.get('kw11_hand') or me.attributes.new('kw11_hand', 'FLOAT', 'POINT'); a.data.foreach_set('value', hw.astype(np.float32))
+    W, H = tex.size; px = np.array(tex.pixels[:]).reshape(H, W, -1)[:, :, :3]
+    uvl = me.uv_layers.active; uv = np.empty(len(me.loops) * 2); uvl.data.foreach_get('uv', uv); uv = uv.reshape(-1, 2) % 1.0
+    vi = np.empty(len(me.loops), int); me.loops.foreach_get('vertex_index', vi)
+    def mean(sel):
+        u = uv[sel][:: max(1, sel.sum() // 2000)]; return px[(u[:, 1] * (H - 1)).astype(int), (u[:, 0] * (W - 1)).astype(int)].mean(0)
+    h_, f_ = mean(hw[vi] > 0.9), mean(face[vi])
+    r = tuple(float(x) for x in np.clip(f_ / np.maximum(h_, 1e-3), *HAND_MATCH))
+    print(f'cast v1.1: hand match {G.p.name} map {tex.name} hand {np.round(h_, 3).tolist()} face {np.round(f_, 3).tolist()} x {np.round(r, 3).tolist()}')
+    return r
 
 
 def _skin_dbg(G):

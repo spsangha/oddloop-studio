@@ -95,5 +95,7 @@ Enabled by default; set a variable to `0` to isolate or revert that class of cha
 - named jaw openings (front-teeth gap): `speak` 8 mm, `spoon` 20 mm, `bite` 32 mm (+ lips apart); per-character table in heads_hg.JAW_TAB.
 - `look='camera'` aims head and eyes at the lens.
 - grips (the item follows the hand): `KW.hand.grip('grip_cup')`, `grip('grip_tool', 'tweezers'|'penlight')`, `grip('grip_pinch', 'pea'|'paperclip')`,
-  `grip('grip_burger')` given to BOTH hands, `grip('rest_belly')`. Pinch, tool and burger are fixed hand-authored finger tables (heads_hg.AUTH) for one prop size.
-  Known limits (Nov 25): rest_belly standing lands on the chest/forearm (use `clutch('belly')` seated); grip_burger reads as held but the fingers do not wrap the bun.
+  `grip('grip_burger')` given to BOTH hands (hold at the chest; `grip('grip_burger', where='mouth')` on both hands + `face={'bite': 1}`, `look='held'` = the bite).
+  Cup, tool and pinch are hand-authored finger tables (heads_hg.AUTH); the burger fingers are closed on the real bun by the finger solver
+  `heads_hg.close_hand` (each finger curls its 3 joints together in 2 deg steps until the pad is 0-2 mm from the prop; human joint limits FINGER_ROM).
+  `look='held'` = head dips toward the held item, eyes on it.  A hand resting on the belly: `KW.hand.clutch('belly')` on a SEATED pose (rest_belly was removed).
