@@ -611,6 +611,8 @@ class Runtime:
         if isinstance(look, (tuple, list)): return V(look)
         if isinstance(look, KW.FX) and look.obj is not None: return self.FX.world_of(look)
         if look == 'camera': return self.CAM.matrix_world.translation.copy()
+        if look == 'held' and getattr(self, 'FX', None) is not None and self.FX.props.get('g_burger') is not None:   # cast v1.1: eyes on the held burger
+            return self.FX.props['g_burger'].matrix_world @ V((0, 0, 0.03))
         return None
     def anchor_world(self, an):
         ra = self.actors[an.actor]
