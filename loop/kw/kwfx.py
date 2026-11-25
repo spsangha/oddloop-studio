@@ -591,6 +591,19 @@ def _key_vals(keys, u):
 
 
 def _wound_vals(keys, u):
+    """smoothstep between wound keys; names carry forward ('sink' eases only between the keys that set it)"""
+    r = _wound_vals0(keys, u)
+    sk = sorted((t, v['sink']) for t, v in keys if 'sink' in v)
+    if sk:
+        if u <= sk[0][0]: r['sink'] = sk[0][1]
+        elif u >= sk[-1][0]: r['sink'] = sk[-1][1]
+        else:
+            for (t0, a), (t1, b) in zip(sk, sk[1:]):
+                if u <= t1: x = (u - t0) / max(1e-6, t1 - t0); r['sink'] = a + (b - a) * x * x * (3 - 2 * x); break
+    return r
+
+
+def _wound_vals0(keys, u):
     """smoothstep between wound keys; names carry forward"""
     names = ('open', 'stitches', 'out', 'red', 'collagen', 'vessels', 'line', 'scar', 'pink', 'dots', 'level', 'cpink', 'cells', 'specks', 'cinch', 'lwid', 'sink')
     full = []; cur = dict.fromkeys(names, 0.0); cur['line'] = None; cur['specks'] = -1.0; cur['cinch'] = None; cur['lwid'] = 1.0     # specks -1 = hidden

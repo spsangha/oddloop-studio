@@ -640,6 +640,6 @@ class Wound:
                 # H2 sink 0..1: the strands sink one after another under the levelled pink surface (2 mm down, then hidden; no pop)
                 sk = min(1.0, max(0.0, sink * 1.6 - ((i * 7) % max(1, len(grp))) / max(1, len(grp)) * 0.6)) if sink > 0 else 0.0
                 sk = sk * sk * (3 - 2 * sk)
-                o.hide_render = not (show and kk > 0.01) or sk >= 0.999; o['kw_grow'] = 1.001 if kk >= 1 else kk
+                o.hide_render = not (show and kk > 0.01) or sk >= 0.999; kg = min(kk, 1.0 - sk); o['kw_grow'] = 1.001 if kg >= 1 else kg     # and they shrink back along their length
                 if sink > 0 or o.get('kw_sunk'): o.location = -self.Nn * (0.002 * sk); o['kw_sunk'] = 1 if sk > 0 else 0
                 o.update_tag()
