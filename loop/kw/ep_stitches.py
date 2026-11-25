@@ -54,7 +54,7 @@ TS = END - 6 * F                            # last 6 frames: the scar splits bac
 K += [(TS, dict(open=1.0, stitches=10.0, cinch=10.0, out=10.0, level=1.0, cpink=1.0, scar=0.6, red=0.05)),
       (END, dict(open=1.0, stitches=0.0, cinch=0.0, out=0.0, level=0.0, cpink=0.0, scar=0.0, red=0.0, collagen=0.0, vessels=0.0, line=0.0, pink=0.0, dots=0.0, lwid=1.0, sink=0.0))]
 
-YL = dict(color='yellow', size=1.2); LP = (0.5, 0.84)
+YL = dict(color='gold', size=1.2); LP = (0.5, 0.84)
 TICKS = [T2 + SP * k + 4 * F for k in range(10)] + [TC + SC * k + 0.08 for k in range(10)] + [T14 + 3 * F * k for k in range(10)]
 LABELS = [('INFLAMED', W(2, 'vessels')), ('COLLAGEN', W(3, 'collagen')), ('VESSELS', W(4, 'blood')),
           ('2 WEEKS', W(5, 'two')), ('80%', W(5, 'eighty'))]
