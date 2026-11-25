@@ -44,6 +44,23 @@ ARK = {   # kit expression -> HG ARKit shape keys (weight)
     'bloat': {'kw_bloat': 1.0},
     'jaw': {'jawOpen': 1.0}, 'lipsclose': {'mouthClose': 1.0},     # humgen spoon bite (ruling d): jaw open + lips closed on the handle
 }
+# cast v1.1 (KW_CAST=v1.1, kindawild/cast/v11_brief.md part A/B2): six expressions + named jaw openings; unused on v1.0
+V11 = os.environ.get('KW_CAST', '') == 'v1.1'
+ARK.update({
+    'x_surprise': {**S2('browOuterUp', 0.8), 'browInnerUp': 0.8, **S2('eyeWide', 0.7), 'jawOpen': 0.35, 'mouthFunnel': 0.15},
+    'x_fear': {'browInnerUp': 0.9, **S2('browDown', 0.3), **S2('browOuterUp', 0.3), **S2('eyeWide', 0.8), **S2('mouthStretch', 0.6),
+               **S2('mouthLowerDown', 0.3), 'jawOpen': 0.15},
+    'x_disgust': {**S2('noseSneer', 0.9), **S2('mouthUpperUp', 0.6), 'mouthShrugLower': 0.4, **S2('browDown', 0.4), **S2('cheekSquint', 0.4),
+                  **S2('eyeSquint', 0.4)},
+    'x_pain': {**S2('browDown', 0.9), **S2('cheekSquint', 0.8), **S2('eyeSquint', 0.9), **S2('eyeBlink', 0.85), **S2('noseSneer', 0.7),
+               **S2('mouthUpperUp', 0.5), **S2('mouthStretch', 0.4), 'jawOpen': 0.05},
+    'x_wince': {**S2('browDown', 0.5), **S2('eyeSquint', 0.7), 'eyeBlink_L': 0.6, 'eyeBlink_R': 0.5, **S2('noseSneer', 0.35), **S2('mouthPress', 0.3)},
+    'x_laugh': {**S2('mouthSmile', 0.9), **S2('cheekSquint', 0.8), **S2('eyeSquint', 0.5), 'jawOpen': 0.3, **S2('mouthUpperUp', 0.2)},
+    # B2 jaw: jawOpen past 1.0 (slider raised) keeps opening linearly; lips part, lower lip down
+    'x_jaw': {'jawOpen': 1.0}, 'x_lips': {**S2('mouthLowerDown', 1.0), **S2('mouthUpperUp', 1.0)},
+})
+JAW_FIT = {'Ben': (21.0, -2.1), 'Howard': (21.0, -3.3), '*': (21.0, -2.5)}   # gap mm = a * jawOpen + b (cast blend, jaw_cal)
+JAW_MAX = 1.8                     # v1.1 jawOpen ceiling (HG key is linear past 1: ~21 mm incisor gap per unit)
 ARK_NAMES = sorted({k for d in ARK.values() for k in d})
 
 # HG bone -> (MakeHuman driver bone, HG point A, MakeHuman point A', HG point B, MakeHuman point B', scale?)
@@ -112,12 +129,17 @@ class Graft:
         for e, v in exprs.items():
             if v <= 0: continue
             for k, w in ARK.get(e, {}).items(): want[k] = max(want.get(k, 0.0), v * w)
+        if V11 and exprs.get('x_gap', 0) > 0:      # B2: named front-teeth gap (mm) -> jawOpen on this head
+            a, b = JAW_FIT.get(self.p.name, JAW_FIT['*']); want['jawOpen'] = max(want.get('jawOpen', 0.0), (exprs['x_gap'] - b) / a)
         for kb in self.keys:
             for k in ARK_NAMES:
                 b = kb.get(k)
                 if b is not None:
-                    nv = min(1.0, want.get(k, 0.0))
+                    nv = min(JAW_MAX if (V11 and k == 'jawOpen') else 1.0, want.get(k, 0.0))
+                    if V11 and k == 'jawOpen' and b.slider_max < JAW_MAX: b.slider_max = JAW_MAX
                     if abs(b.value - nv) > 1e-4: b.value = nv
+        tg = getattr(self, 'v11_tongue', None)
+        if tg is not None: tg.value = min(1.0, max(0.0, (want.get('jawOpen', 0.0) - 0.4) * 0.8))     # B2: tongue low at wide jaw
 
     def frame(self, kr, shot):
         """after kwfx placed the props: HG finger curls + props on the HG grip; clipboard on the left palm, pen tip on the paper."""
@@ -325,6 +347,8 @@ def graft(kr, ra, role):
     _hide_under(p, G)
     _skin_tone(p, G)
     _outfit_color(p, G)
+    if V11:
+        import cast_v11; cast_v11.apply(kr, p, G)
     _glasses(kr, p, G)
     if role.get('clipboard'): G.pen = _pen(coll); G.board, G.board_objs = _board(coll)
     p.hg = G

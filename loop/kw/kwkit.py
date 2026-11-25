@@ -85,6 +85,15 @@ FACES = {
     'focus': {'frown': 0.35, 'squint': 0.15}, 'scream': {'open': 1.0, 'wide': 0.8, 'worry': 0.5}, 'nausea': {'pressed': 0.7, 'worry': 0.6, 'squint': 0.3, 'puff': 0.4},
     'sniff': {'twitch': 0.9, 'squint': 0.3}, 'blow': {'puff': 0.9, 'pressed': 0.6, 'squint': 0.6, 'bulge': 0.4},
 }
+if os.environ.get('KW_CAST', '') == 'v1.1':
+    # cast v1.1 (kit/kw_api.md "Faces v1.1"): six tuned expressions + three named jaw openings (front-teeth gap in mm,
+    # per-character calibrated in heads_hg). Old names that meant the same thing now use them.
+    FACES.update({
+        'surprise': {'x_surprise': 1.0}, 'fear': {'x_fear': 1.0}, 'disgust': {'x_disgust': 1.0}, 'pain': {'x_pain': 1.0},
+        'wince': {'x_wince': 1.0}, 'laugh': {'x_laugh': 1.0},
+        'speak': {'x_gap': 8.0}, 'spoon': {'x_gap': 20.0}, 'bite': {'x_gap': 32.0, 'x_lips': 0.35},
+        'shock': {'x_surprise': 1.0}, 'scream': {'x_fear': 1.0, 'x_gap': 26.0}, 'nausea': {'x_disgust': 0.6, 'pressed': 0.5},
+    })
 EXTRA_EXPR = {   # extra shape keys loaded on every person (MakeHuman CC0 targets)
     'blink': [('expression/units/caucasian/eye-left-closure', 1.0), ('expression/units/caucasian/eye-right-closure', 1.0)],
     'talk': [('expression/units/caucasian/mouth-open', 0.35), ('expression/units/caucasian/mouth-pursing', 0.15)],
