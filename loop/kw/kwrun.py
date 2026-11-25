@@ -548,6 +548,8 @@ class Runtime:
                     if not any(h_ is not None and h_.at == 'mouth' for h_ in hs_):
                         R3 = M.to_3x3().normalized(); hp0 = M @ p.rig.data.bones['head'].head_local
                         tgt = hp0 + (R3 @ V((0, -1, 0))) * 0.6 - (R3 @ V((0, 0, 1))) * 0.17
+                    else:      # biting (bite_fix 1): chin down toward the bite point, the eyes do the rest
+                        import heads_hg as _hh; nod += _hh.BURGER2['bite_nod']
                 if tgt is not None:
                     hp = M @ p.rig.data.bones['head'].head_local; Ri = M.to_3x3().inverted(); d = Ri @ (tgt - hp)
                     lt = math.degrees(math.atan2(d.x, -d.y)); ln = -math.degrees(math.atan2(d.z, math.hypot(d.x, d.y)))
@@ -1034,8 +1036,13 @@ class Runtime:
                 if getattr(ra, 'cur_look', None) == 'camera': e.matrix_world = Matrix.Translation(cp)
                 elif getattr(ra, 'cur_look', None) == 'held' and self.FX.props.get('g_burger') is not None:
                     # aim along the eye->burger ray but 1.2 m out: the same gaze direction without the cross-eyed near convergence
-                    bc_ = self.FX.props['g_burger'].matrix_world @ V((0, 0, 0.04)); eo_ = self.bw(ra.p, 'head') + (ra.p.rig.matrix_world.to_3x3().normalized() @ V((0, -0.08, 0.08)))
-                    e.matrix_world = Matrix.Translation(eo_ + (bc_ - eo_).normalized() * 1.2)
+                    bc_ = self.FX.props['g_burger'].matrix_world @ V((0, 0, 0.04)); R3_ = ra.p.rig.matrix_world.to_3x3().normalized(); eo_ = self.bw(ra.p, 'head') + (R3_ @ V((0, -0.08, 0.08)))
+                    dl_ = R3_.inverted() @ (bc_ - eo_); yw_ = math.atan2(dl_.x, -dl_.y); pt_ = math.atan2(dl_.z, math.hypot(dl_.x, dl_.y))
+                    # bite_fix 1: a burger at the mouth sits almost under the eyes -> irises rolled into the corners. Clamp the gaze
+                    # (body frame) to 15 deg sideways and 32 deg down (head 12 + eyes 20): the iris stays mostly visible, lids follow
+                    yw_ = max(-math.radians(15), min(math.radians(15), yw_)); pt_ = max(-math.radians(32), min(math.radians(10), pt_))
+                    dd_ = R3_ @ V((math.sin(yw_) * math.cos(pt_), -math.cos(yw_) * math.cos(pt_), math.sin(pt_)))
+                    e.matrix_world = Matrix.Translation(eo_ + dd_ * 1.2)
                 else: e.matrix_basis = keep[e.name]
         bpy.context.view_layer.update()
 
@@ -1192,9 +1199,19 @@ class Runtime:
             for ra in self.actors.values():
                 hg_ = getattr(ra.p, 'hg', None)
                 if hg_ is None or not hasattr(hg_, 'lip_local'): continue
-                for dz_ in (0.0, 0.012):
-                    L_ = self.wmat(ra.p, 'head') @ hg_.lip_local + V((0, 0, dz_)); d_ = (L_ - cp_); hit_ = bpy.context.scene.ray_cast(dg_, cp_, d_.normalized(), distance=d_.length + 0.01)
-                    print('V11DBG lipview', shot.name, 'dz', dz_, 'hit', hit_[4].name if hit_[0] else None, 'at', round((hit_[1] - L_).length * 1000) if hit_[0] else None, 'mm from the lip')
+                L0_ = self.wmat(ra.p, 'head') @ hg_.lip_local; R3_ = ra.p.rig.matrix_world.to_3x3().normalized()
+                fw_, rt_, up_ = R3_ @ V((0, -1, 0)), R3_ @ V((-1, 0, 0)), V((0, 0, 1))
+                for s__ in 'LR':
+                    for b__ in ('wrist', 'finger3-3', 'finger1-2'):
+                        try:
+                            q__ = R3_.inverted() @ (self.bw(ra.p, f'{b__}.{s__}') - L0_); print('V11DBG hand', shot.name, s__, b__, 'mm his-right/fwd/up', round(-q__.x * 1000), round(-q__.y * 1000), round(q__.z * 1000))
+                        except Exception as ex__: print('V11DBG hand', b__, ex__)
+                print('V11DBG lip world', shot.name, tuple(round(x, 3) for x in L0_), 'fwd', tuple(round(x, 3) for x in fw_), 'his right', tuple(round(x, 3) for x in rt_))
+                for nm_, off_ in (('lip_up', up_ * 0.006), ('lip_lo', -up_ * 0.012), ('corner_R', rt_ * 0.024 - fw_ * 0.008), ('corner_L', -rt_ * 0.024 - fw_ * 0.008),
+                                  ('chin', -up_ * 0.045 - fw_ * 0.005), ('cheek_R', rt_ * 0.05 + up_ * 0.025 - fw_ * 0.025), ('jaw_R', rt_ * 0.05 - up_ * 0.03 - fw_ * 0.03), ('eye_R', rt_ * 0.032 + up_ * 0.075 - fw_ * 0.01)):
+                    L_ = L0_ + off_; d_ = (L_ - cp_); hit_ = bpy.context.scene.ray_cast(dg_, cp_, d_.normalized(), distance=d_.length + 0.01)
+                    nmh_ = hit_[4].name if hit_[0] else None; gap_ = round((hit_[1] - L_).length * 1000) if hit_[0] else None
+                    print('V11DBG lipview', shot.name, nm_, 'hit', nmh_, gap_, 'mm', 'BLOCKED' if hit_[0] and gap_ > 15 else 'ok')
         self.cam_walls(shot, V(pos))
         self.rim_light(shot, pos)
         self.backdrop(shot, pos, tgt)

@@ -1614,7 +1614,7 @@ def _v11_authored(self, kr, jobs):
 
 
 # ============================================================ cast v1.1 round 2: finger closer (A1) + two-hand burger (A2)
-BURGER2 = dict(width=0.11, height=0.06, front=0.24, tilt=20.0, lean=0.0, bite_in=0.012, bite_z=0.85, bite_tilt=30.0, bite_yaw=-15.0)
+BURGER2 = dict(width=0.11, height=0.06, front=0.24, tilt=20.0, lean=0.0, bite_in=0.012, bite_z=0.85, bite_tilt=30.0, bite_yaw=25.0, bite_turn=40.0, bite_nod=12.0)
 BURGER_HAND = dict(z=0.006, y=0.0)        # palm skin point in the burger frame: height above the bun bottom, front-back offset
 BURGER_TIP_IN = 0.030                      # m: fingertips this far in from the crown edge
 FINGER_ROM = {1: (60.0, 70.0, 80.0), 2: (90.0, 105.0, 80.0)}   # deg flex limits (MCP, PIP, DIP); thumb row 1, fingers row 2 (k >= 2)
@@ -1720,6 +1720,9 @@ def _burger_B(self, kr, ra, at):
     if at == 'mouth':
         L = kr.wmat(p, 'head') @ self.lip_local; _, nr = kr.part_world(ra, 'mouth')
         yf = V((nr.x, nr.y, 0)).normalized(); xr = (xr - yf * xr.dot(yf)).normalized()
+        # bite_fix 2/3: the bun goes in from his left at bite_turn (about the vertical), so from a camera on his right the
+        # near hand sits beyond the mouth, over the far cheek, never on the lips / chin / camera-side cheek
+        Rt = Matrix.Rotation(math.radians(float(os.environ.get('KW_BITE_TURN', BURGER2['bite_turn']))), 3, 'Z'); yf = Rt @ yf; xr = Rt @ xr
         # biting: the burger tips further (bite_tilt) so the crown's back edge goes between the teeth (a 6 cm stack in a
         # 32 mm gap) and the heel swings clear of the chin; upper teeth come down on the crown
         Rb = Matrix((xr, yf, xr.cross(yf))).transposed() @ Matrix.Rotation(math.radians(BURGER2['bite_tilt']), 3, 'X')
