@@ -1,0 +1,130 @@
+name: Patch a Kinda Wild Films Short (re-render listed frames only)
+# Re-renders only the listed frames over 20 shards, reuses every other frame and the cues of an earlier render_kw run,
+# checks one control frame against that run (mean difference), then assembles with the same post_kw (audio, captions, encode).
+on:
+  workflow_dispatch:
+    inputs:
+      episode: {description: 'Episode script in loop/kw', required: true, default: 'ep_stitches'}
+      frames: {description: 'Frames to re-render, e.g. 211-241,346-376', required: true}
+      base_run: {description: 'render_kw run id whose frames-* and cues artifacts are reused', required: true}
+      check: {description: 'Control frame rendered again and compared with the base run (not replaced)', required: false, default: '300'}
+      pct: {description: 'Render size percent (same as the base run)', required: false, default: '100'}
+      samples: {description: 'Cycles samples (same as the base run)', required: false, default: '16'}
+      out: {description: 'Output file name', required: false, default: 'KindaWild.mp4'}
+      heads: {description: "'scan' or 'humgen' (same as the base run)", required: false, default: 'humgen'}
+permissions:
+  contents: read
+  actions: read
+env:
+  BLENDER: blender-4.2.3-linux-x64
+  SHARDS: 20
+  MPFB_URL: https://extensions.blender.org/download/sha256:c075b3e9b94b8e5556a5f03f4653602d02ea306de08126e8f55ed6dee28a2dad/add-on-mpfb-v2.0.18.zip
+  ASSETS_URL: https://files.makehumancommunity.org/asset_packs/makehuman_system_assets/makehuman_system_assets_cc0.zip
+jobs:
+  render:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    strategy:
+      fail-fast: true
+      matrix: {shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        id: bc
+        with: {path: '${{ env.BLENDER }}', key: '${{ env.BLENDER }}'}
+      - name: Blender
+        if: steps.bc.outputs.cache-hit != 'true'
+        run: |
+          for u in https://download.blender.org/release/Blender4.2/$BLENDER.tar.xz https://mirrors.ocf.berkeley.edu/blender/release/Blender4.2/$BLENDER.tar.xz https://ftp.halifax.rwth-aachen.de/blender/release/Blender4.2/$BLENDER.tar.xz; do
+            curl -fsSL --retry 3 -o b.tar.xz "$u" && break; done
+          tar xf b.tar.xz && rm b.tar.xz
+      - name: Libraries
+        run: |
+          ./$BLENDER/blender -b --python-expr "import bpy" >/dev/null 2>&1 || { sudo apt-get install -y -qq --no-install-recommends libxi6 libxxf86vm1 libxfixes3 libxrender1 libgl1 libxkbcommon0 libsm6 || (sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends libxi6 libxxf86vm1 libxfixes3 libxrender1 libgl1 libxkbcommon0 libsm6); }
+      - uses: actions/cache@v4
+        id: mc
+        with: {path: mpfb_cache, key: mpfb-2.0.18-cc0-v1}
+      - name: MPFB download
+        if: steps.mc.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p mpfb_cache && cd mpfb_cache
+          curl -fsSL --retry 4 -o mpfb.zip "$MPFB_URL"
+          curl -fsSL --retry 4 -o assets.zip "$ASSETS_URL"
+      - name: MPFB install
+        run: |
+          ./$BLENDER/blender -b --command extension install-file -r user_default -e mpfb_cache/mpfb.zip 2>&1 | tail -3
+          D="$HOME/.config/blender/4.2/extensions/.user/user_default/mpfb/data"; mkdir -p "$D"
+          unzip -q -o mpfb_cache/assets.zip -d "$D"
+      - name: Private cast
+        if: github.event.inputs.heads == 'humgen'
+        env: {KW_ASSETS_KEY: '${{ secrets.KW_ASSETS_KEY }}'}
+        run: |
+          K="$RUNNER_TEMP/kwk"; ( umask 077; printf '%s\n' "$KW_ASSETS_KEY" > "$K" )
+          GIT_SSH_COMMAND="ssh -i $K -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new" git clone -q --depth 1 --branch v1.0 git@github.com:spsangha/kw-assets.git "$RUNNER_TEMP/kw-assets"
+          rm -f "$K"
+          test -d "$RUNNER_TEMP/kw-assets/humgen/cast"
+          echo "KW_HEADS=humgen" >> "$GITHUB_ENV"; echo "KW_HG_LIB=$RUNNER_TEMP/kw-assets/humgen/cast" >> "$GITHUB_ENV"
+      - name: Render shard (listed frames only)
+        env: {PCT: '${{ github.event.inputs.pct }}', SAMPLES: '${{ github.event.inputs.samples }}', ZK_TEX: '${{ github.workspace }}/assets/tex', SPEC: '${{ github.event.inputs.frames }}', CHK: '${{ github.event.inputs.check }}'}
+        run: |
+          EP=loop/kw/${{ github.event.inputs.episode }}.py; test -f $EP
+          python3 -m pip install -q --break-system-packages fonttools shapely || true
+          S=${{ matrix.shard }}
+          LIST=$(python3 -c "
+          import os
+          fr = set()
+          for p in os.environ['SPEC'].split(','):
+              a, _, b = p.strip().partition('-'); fr.update(range(int(a), int(b or a) + 1))
+          if os.environ.get('CHK'): fr.add(int(os.environ['CHK']))
+          fr = sorted(fr); n = len(fr); s = $S
+          print(','.join(str(f) for f in fr[n * s // 20:n * (s + 1) // 20]))")
+          echo "shard $S frames: $LIST"; mkdir -p frames
+          if [ -n "$LIST" ]; then ONLY=$LIST ./$BLENDER/blender -b -P $EP -- frames 0 1 2>&1 | grep -E "Saved|Error|Traceback|line [0-9]|KW label" | tail -60; fi
+          C=$(echo "$LIST" | tr ',' '\n' | grep -c . || true); ls frames | wc -l; test "$(ls frames | wc -l)" -eq "$C"
+      - uses: actions/upload-artifact@v4
+        with: {name: 'patch-${{ matrix.shard }}', path: 'frames/', retention-days: 7, if-no-files-found: ignore}
+  finish:
+    needs: render
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: {pattern: 'frames-*', path: frames, merge-multiple: true, run-id: '${{ github.event.inputs.base_run }}', github-token: '${{ secrets.GITHUB_TOKEN }}'}
+      - uses: actions/download-artifact@v4
+        with: {name: cues, path: ., run-id: '${{ github.event.inputs.base_run }}', github-token: '${{ secrets.GITHUB_TOKEN }}'}
+      - uses: actions/download-artifact@v4
+        with: {pattern: 'patch-*', path: patch, merge-multiple: true}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - name: Tools
+        run: |
+          python -m pip install -q numpy pillow imageio-ffmpeg edge-tts
+          mkdir -p "$HOME/bin"; ln -sf "$(python -c 'import imageio_ffmpeg as f; print(f.get_ffmpeg_exe())')" "$HOME/bin/ffmpeg"; echo "$HOME/bin" >> "$GITHUB_PATH"
+      - name: Control frame and overlay
+        env: {SPEC: '${{ github.event.inputs.frames }}', CHK: '${{ github.event.inputs.check }}'}
+        run: |
+          python - <<'EOF'
+          import os, shutil, numpy as np
+          from PIL import Image
+          fr = set()
+          for p in os.environ['SPEC'].split(','):
+              a, _, b = p.strip().partition('-'); fr.update(range(int(a), int(b or a) + 1))
+          base = sorted(os.listdir('frames')); print('base frames', len(base), 'patch frames', len(os.listdir('patch')))
+          c = os.environ.get('CHK')
+          if c:
+              n = f'f{int(c):04d}.png'
+              A = np.asarray(Image.open(f'frames/{n}').convert('RGB'), dtype=float); B = np.asarray(Image.open(f'patch/{n}').convert('RGB'), dtype=float)
+              d = np.abs(A - B); print(f'CONTROL frame {c}: mean abs diff {d.mean():.3f} /255, 99th pct {np.percentile(d, 99):.1f}, max {d.max():.0f}')
+          miss = [f for f in sorted(fr) if not os.path.exists(f'patch/f{f:04d}.png')]
+          assert not miss, f'missing patch frames {miss[:10]}'
+          for f in sorted(fr): shutil.copyfile(f'patch/f{f:04d}.png', f'frames/f{f:04d}.png')
+          print('replaced', len(fr), 'frames; total', len(os.listdir('frames')))
+          EOF
+      - name: Finish
+        run: |
+          ls frames | wc -l
+          python loop/kw/post_kw.py frames cues.json assets/music/sneaky_snitch.mp3 "${{ github.event.inputs.out }}"
+          ffmpeg -hide_banner -nostats -i "${{ github.event.inputs.out }}" -af ebur128=peak=true -f null - 2>&1 | tail -6 || true
+      - uses: actions/upload-artifact@v4
+        with: {name: kindawild, path: '${{ github.event.inputs.out }}*', retention-days: 30}
