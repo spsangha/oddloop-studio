@@ -241,7 +241,7 @@ class Wound:
         # F5: fine pores + criss-cross micro-creases (bump only; faded by camera distance in the shader) + mottling noise
         vor = N.new('ShaderNodeTexVoronoi'); vor.feature = 'F1'; vor.inputs['Scale'].default_value = 1.0 / 0.00035; vor.inputs['Randomness'].default_value = 1.0
         Lk(loc.outputs[0], vor.inputs['Vector'])
-        sep_ = N.new('ShaderNodeSeparateColor'); Lk(vor.outputs['Color'], sep_.inputs[0])
+        sep_ = N.new('FunctionNodeSeparateColor' if nt.bl_idname == 'GeometryNodeTree' else 'ShaderNodeSeparateColor'); Lk(vor.outputs['Color'], sep_.inputs[0])
         rad_ = mth('ADD', 0.16, mth('MULTIPLY', sep_.outputs[1], 0.14))                                 # G1: pore dots 0.15-0.25 mm, irregular
         pore = mth('MULTIPLY', mth('SUBTRACT', 1.0, sm(mth('MULTIPLY', rad_, 0.45), rad_, vor.outputs['Distance'])), sm(0.18, 0.32, sep_.outputs[0]))   # ~8 per mm2
         def crease(ang, per, seed):
@@ -280,12 +280,13 @@ class Wound:
         # G1: in the macro the HG colour map is magnified into smeared streaks -> a flat tan skin tone carries the procedural detail instead
         base = mixc(base, (0.47, 0.27, 0.155), mth('MULTIPLY', mfn, 0.92))
         nl = bsdf.inputs['Normal'].links
+        while nl and nl[0].from_node.type == 'REROUTE': nl = nl[0].from_node.inputs[0].links
         if nl and nl[0].from_node.type == 'NORMAL_MAP':
             nm_ = nl[0].from_node; s0 = nm_.inputs['Strength'].default_value; Lk(mth('MULTIPLY', s0, mth('SUBTRACT', 1.0, mth('MULTIPLY', mfn, 0.9))), nm_.inputs['Strength'])
         elif nl: print('wound: HG normal input from', nl[0].from_node.type, '(not faded)')
         cvar = mixc(base, mulc(base, (0.93, 0.86, 0.84)), mth('MULTIPLY', mth('MULTIPLY', fn.outputs['Fac'], near), 0.6))
         mo = N.new('ShaderNodeTexNoise'); mo.inputs['Scale'].default_value = 1.0 / 0.006; mo.inputs['Detail'].default_value = 2.0; Lk(loc.outputs[0], mo.inputs['Vector'])
-        mo2 = N.new('ShaderNodeTexNoise'); mo2.inputs['Scale'].default_value = 1.0 / 0.0045; mo2.inputs['Detail'].default_value = 2.0; mo2.inputs['W'].default_value = 3.7; mo2.noise_dimensions = '4D'; Lk(loc.outputs[0], mo2.inputs['Vector'])
+        mo2 = N.new('ShaderNodeTexNoise'); mo2.noise_dimensions = '4D'; mo2.inputs['Scale'].default_value = 1.0 / 0.0045; mo2.inputs['Detail'].default_value = 2.0; mo2.inputs['W'].default_value = 3.7; Lk(loc.outputs[0], mo2.inputs['Vector'])
         cvar = mixc(cvar, mulc(base, (1.06, 0.95, 0.95)), mth('MULTIPLY', sm(0.5, 0.68, mo.outputs['Fac']), mfn))       # mottling +-6 % red
         cvar = mixc(cvar, mulc(base, (1.02, 1.03, 0.90)), mth('MULTIPLY', sm(0.5, 0.68, mo2.outputs['Fac']), mfn))      # ... and yellow
         fv = N.new('ShaderNodeTexVoronoi'); fv.feature = 'F1'; fv.inputs['Scale'].default_value = 1.0 / 0.006; Lk(loc.outputs[0], fv.inputs['Vector'])
@@ -312,7 +313,7 @@ class Wound:
         c1 = mixc(c1, mulc(base, (0.95, 0.36, 0.32)), mth('MULTIPLY', flush, 0.8))
         tl_ = sm(0.0, 1.0, mth('DIVIDE', mth('SUBTRACT', ac_, w_), mth('MULTIPLY', lwc, 0.5)))                       # 0 at the gap .. 1 on the crest
         bl_ = N.new('ShaderNodeTexNoise'); bl_.inputs['Scale'].default_value = 1.0 / 0.002; bl_.inputs['Detail'].default_value = 2.0; Lk(loc.outputs[0], bl_.inputs['Vector'])
-        GAPC, CRC = (0.180, 0.0090, 0.0160), (0.400, 0.0240, 0.0330)                                               # sRGB ~(120,25,35) -> (175,45,55) before the view transform
+        GAPC, CRC = (0.105, 0.0040, 0.0080), (0.250, 0.0090, 0.0140)                                               # sRGB ~(120,25,35) -> (175,45,55) before the view transform
         lipc = mixc(mixc(tuple(x * 0.88 for x in GAPC), tuple(x * 0.88 for x in CRC), tl_), mixc(tuple(x * 1.12 for x in GAPC), tuple(x * 1.12 for x in CRC), tl_), sm(0.3, 0.7, bl_.outputs['Fac']))
         c1 = mixc(c1, lipc, mth('MULTIPLY', bandr, 0.97))
         c1 = mixc(c1, mulc(base, (0.97, 0.72, 0.68)), mth('MULTIPLY', mth('MULTIPLY', lipn, 0.5), mth('SUBTRACT', 1.0, bandr)))   # fresh lips a little pinker than skin
@@ -361,14 +362,14 @@ class Wound:
             Lk(mth('ADD', 0.07, mth('MULTIPLY', sm(0.42, 0.62, gn_.outputs['Fac']), 0.38)), rn.inputs[3])          # G2: wet glints broken into small spots
             rh = N.new('ShaderNodeMix'); rh.data_type = 'FLOAT'; rh.clamp_factor = True; Lk(mth('MULTIPLY', halo, 0.5), rh.inputs[0]); Lk(r0, rh.inputs[2]); rh.inputs[3].default_value = 0.28
             Lk(rh.outputs[0], rn.inputs[2])        # inflamed skin is a little shinier
-        micro = mth('MULTIPLY', micro, mf)   # detail only in the macro
+        micro = mth('MULTIPLY', mth('MULTIPLY', micro, mf), mth('SUBTRACT', 1.0, bandr))   # detail only in the macro; not on the raw lips (they read as fabric)
         # height -> Displacement (material displacement method = BUMP)
         hgt = mth('ADD', mth('ADD', mth('MULTIPLY', g, -0.0002), mth('MULTIPLY', deep, -0.0002)),
                   mth('ADD', mth('ADD', mth('MULTIPLY', halo, 0.0002), mth('MULTIPLY', mth('MULTIPLY', rim, self.V['open']), 0.00025)), mth('ADD', mth('ADD', mth('MULTIPLY', scar, 0.00012), micro), mth('MULTIPLY', Hs, -0.0004))))
         wb = N.new('ShaderNodeTexNoise'); wb.inputs['Scale'].default_value = 1.0 / 0.0007; wb.inputs['Detail'].default_value = 5.0; wb.inputs['Roughness'].default_value = 0.6; Lk(loc.outputs[0], wb.inputs['Vector'])
         hgt = mth('ADD', hgt, mth('MULTIPLY', mth('MULTIPLY', g, wb.outputs['Fac']), 0.00035))      # glistening lumpy tissue inside the cut
         hgt = mth('ADD', hgt, mth('MULTIPLY', blood, 0.00012))
-        lu = N.new('ShaderNodeTexNoise'); lu.inputs['Scale'].default_value = 1.0 / 0.0016; lu.inputs['Detail'].default_value = 1.5; lu.inputs['W'].default_value = 1.3; lu.noise_dimensions = '4D'; Lk(loc.outputs[0], lu.inputs['Vector'])
+        lu = N.new('ShaderNodeTexNoise'); lu.noise_dimensions = '4D'; lu.inputs['Scale'].default_value = 1.0 / 0.0016; lu.inputs['Detail'].default_value = 1.5; lu.inputs['W'].default_value = 1.3; Lk(loc.outputs[0], lu.inputs['Vector'])
         gr = N.new('ShaderNodeTexNoise'); gr.inputs['Scale'].default_value = 1.0 / 0.0003; gr.inputs['Detail'].default_value = 2.0; Lk(loc.outputs[0], gr.inputs['Vector'])
         lump = mth('ADD', mth('MULTIPLY', mth('SUBTRACT', lu.outputs['Fac'], 0.5), 0.0009), mth('MULTIPLY', mth('SUBTRACT', gr.outputs['Fac'], 0.5), 0.00012))
         hgt = mth('ADD', hgt, mth('MULTIPLY', lump, mth('MULTIPLY', bandr, mf)))                                  # G2: lumpy raw lips (1-2 mm lumps, 0.3 mm grain)
@@ -551,7 +552,7 @@ class Wound:
 
     def _build_vessels(self, n):
         """stage 4: glossy red capillaries (0.25 mm -> 0.08 mm) sprouting from both lips, forking, meeting in a net over the yellow band"""
-        self.ves_mat = mt = self._strand_mat('vessels', (0.62, 0.014, 0.008), 0.22, 0.35); hl = self.L / 2; out = []; r = 0.0003
+        self.ves_mat = mt = self._strand_mat('vessels', (0.56, 0.006, 0.003), 0.22, 0.2); hl = self.L / 2; out = []; r = 0.0003
         per = n // 2; meets = [hl * 0.86 - (j + self.rnd.uniform(0.25, 0.75)) / per * 1.72 * hl for j in range(per)]
         top = 0.00125                                                                  # above the gap floor: over the collagen band
         for k in range(n):

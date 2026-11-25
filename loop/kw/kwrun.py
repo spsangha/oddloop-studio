@@ -876,7 +876,7 @@ class Runtime:
                     ta = o['at'] + u if o.get('at') is not None else t
                     lens = lens or 50; vis = KW.glide_eval(o['glide'], ta); d = vis * lens / 36.0
                     y0, y1, T_ = o.get('yaw', (0.0, 0.0, 1.0)); yaw = y0 + (y1 - y0) * (0.5 - 0.5 * math.cos(2 * math.pi * clamp(ta / T_)))   # y0 -> y1 at mid-film -> back to y0 (the loop)
-                    s0, s1, sm_ = o.get('slide', (0.0, 1.0, 0.0)); k_ = clamp((ta - s0) / max(s1 - s0, 1e-6)); k_ = k_ * k_ * (3 - 2 * k_)
+                    s0, s1, sm_ = tuple(o.get('slide', (0.0, 1.0, 0.0)))[:3]; k_ = clamp((ta - s0) / max(s1 - s0, 1e-6)); k_ = k_ * k_ * (3 - 2 * k_)
                     sl_ = o.get('slide', ())
                     if len(sl_) == 5: kb_ = clamp((ta - sl_[3]) / max(sl_[4] - sl_[3], 1e-6)); k_ *= 1.0 - kb_ * kb_ * (3 - 2 * kb_)   # (t0, t1, m, t2, t3): slide back to 0 over t2-t3 (the loop)
                     bk = -C0['body_fwd']; bk = Vector((bk.x, bk.y, 0)).normalized()
