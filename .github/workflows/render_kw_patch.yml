@@ -7,6 +7,7 @@ on:
       episode: {description: 'Episode script in loop/kw', required: true, default: 'ep_stitches'}
       frames: {description: 'Frames to re-render, e.g. 211-241,346-376', required: true}
       base_run: {description: 'render_kw run id whose frames-* and cues artifacts are reused', required: true}
+      overlay_runs: {description: 'Earlier render_kw_patch run ids (comma list, oldest first) whose patch-* frames are laid over the base before this run', required: false, default: ''}
       check: {description: 'Control frame rendered again and compared with the base run (not replaced)', required: false, default: '300'}
       pct: {description: 'Render size percent (same as the base run)', required: false, default: '100'}
       samples: {description: 'Cycles samples (same as the base run)', required: false, default: '16'}
@@ -95,6 +96,14 @@ jobs:
         with: {name: cues, path: ., run-id: '${{ github.event.inputs.base_run }}', github-token: '${{ secrets.GITHUB_TOKEN }}'}
       - uses: actions/download-artifact@v4
         with: {pattern: 'patch-*', path: patch, merge-multiple: true}
+      - name: Earlier patches over the base
+        if: github.event.inputs.overlay_runs != ''
+        env: {GH_TOKEN: '${{ secrets.GITHUB_TOKEN }}', RUNS: '${{ github.event.inputs.overlay_runs }}'}
+        run: |
+          for r in $(echo "$RUNS" | tr ',' ' '); do
+            rm -rf over && gh run download "$r" -R "$GITHUB_REPOSITORY" -p 'patch-*' -D over
+            n=0; for f in over/*/*.png; do cp "$f" frames/; n=$((n+1)); done; echo "run $r: laid $n frames over the base"
+          done
       - uses: actions/setup-python@v5
         with: {python-version: '3.12'}
       - name: Tools
