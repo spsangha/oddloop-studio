@@ -1582,11 +1582,13 @@ def _v11_authored(self, kr, jobs):
 
 
 # ============================================================ cast v1.1 round 2: finger closer (A1) + two-hand burger (A2)
-BURGER2 = dict(width=0.11, height=0.06, front=0.24, tilt=20.0, lean=12.0, bite_in=0.012, bite_z=0.012)
-BURGER_HAND = dict(z=0.024, y=0.0)        # palm skin point in the burger frame: height above the bun bottom, front-back offset
+BURGER2 = dict(width=0.11, height=0.06, front=0.24, tilt=20.0, lean=0.0, bite_in=0.012, bite_z=0.012)
+BURGER_HAND = dict(z=0.006, y=0.0)        # palm skin point in the burger frame: height above the bun bottom, front-back offset
+BURGER_TIP_IN = 0.030                      # m: fingertips this far in from the crown edge
+FINGER_ROM = {1: (60.0, 70.0, 80.0), 2: (90.0, 105.0, 80.0)}   # deg flex limits (MCP, PIP, DIP); thumb row 1, fingers row 2 (k >= 2)
 
 
-def close_hand(self, kr, side, objs, fingers=(1, 2, 3, 4, 5), start=None, step=2.0, gap=0.002, pen=0.002, max_deg=110.0, thumb_z=(-70, -55, -40, -25), score=None):
+def close_hand(self, kr, side, objs, fingers=(1, 2, 3, 4, 5), start=None, step=2.0, gap=0.002, pen=0.002, max_deg=110.0, thumb_z=(-70, -55, -40, -25), score=None, spread=0.022):
     """A1 reusable 'close the hand on the thing': every finger curls its three joints together from `start` (default open)
     in `step` degree steps until its distal two segments are within `gap` of the prop surface (signed distance against the
     evaluated prop meshes in `objs`, BVH nearest point), then stops (a last bisection keeps it within `pen` inside).
@@ -1609,11 +1611,12 @@ def close_hand(self, kr, side, objs, fingers=(1, 2, 3, 4, 5), start=None, step=2
         return 1.0 if best is None else best
     sg = 1 if side == 'R' else -1
     st = {k: (tuple(start[k][0]), start[k][1]) if start and k in start else ((0.0, 0.0, 0.0), 0.0) for k in fingers}
+    rom = lambda k, jj, a: min(a, FINGER_ROM[1 if k == 1 else 2][jj - 1])
     def setf(k, c, z):
         a0, z0 = st[k]
         for jj in (1, 2, 3):
             e = p.pb(f'finger{k}-{jj}.{side}').rotation_euler
-            e.x = math.radians(a0[jj - 1] + c); e.y = 0.0; e.z = math.radians(z if jj == 1 else 0.0) * sg
+            e.x = math.radians(rom(k, jj, a0[jj - 1] + c)); e.y = 0.0; e.z = math.radians(z if jj == 1 else 0.0) * sg
     def measure(ks):
         w = _body_world(self); out = {}
         for k in ks:
@@ -1622,11 +1625,12 @@ def close_hand(self, kr, side, objs, fingers=(1, 2, 3, 4, 5), start=None, step=2
         return out, w
     res = {}
     def run(ks, zs):
-        c = {k: 0.0 for k in ks}; done = {}; last = {k: 1.0 for k in ks}
+        c = {k: 0.0 for k in ks}; done = {}; bst = {}
         for k in ks: setf(k, 0.0, zs[k])
         while len(done) < len(ks):
             m, w = measure([k for k in ks if k not in done])
             for k, d in m.items():
+                if k not in bst or abs(d) < abs(bst[k][1]): bst[k] = (c[k], d)
                 if d <= gap:
                     if d < -pen:       # passed through: bisect back between the previous and this step
                         lo, hi = c[k] - step, c[k]
@@ -1637,12 +1641,22 @@ def close_hand(self, kr, side, objs, fingers=(1, 2, 3, 4, 5), start=None, step=2
                             else: break
                         c[k] = mid; d = dm
                     done[k] = (c[k], d)
-                elif c[k] >= max_deg: done[k] = (c[k], d)
+                elif c[k] >= max_deg: done[k] = bst[k]; setf(k, bst[k][0], zs[k])     # never reached: keep the closest curl
                 else: c[k] += step; setf(k, c[k], zs[k])
         return done
     body = [k for k in fingers if k != 1]
+    if spread and all(k in fingers for k in (2, 3, 4, 5)):      # tips together: side swing so neighbour tip centres sit `spread` apart
+        def tips_(cc):
+            for k in body: setf(k, cc, st[k][1])
+            w = _body_world(self); return {k: w[self.fids[(side, k)]].mean(0) for k in body}
+        for k, nb_ in ((2, 3), (4, 3), (5, 4)):
+            sc_ = []
+            for z in range(-16, 17, 4):
+                st[k] = (st[k][0], float(z)); tp = tips_(30.0); sc_.append((abs(float(np.linalg.norm(tp[k] - tp[nb_])) - spread), z))
+            st[k] = (st[k][0], float(min(sc_)[1]))
+        for k in body: setf(k, 0.0, st[k][1])
     r = run(body, {k: st[k][1] for k in body})
-    for k, (c, d) in r.items(): res[k] = (tuple(a + c for a in st[k][0]), st[k][1], d)
+    for k, (c, d) in r.items(): res[k] = (tuple(rom(k, jj, a + c) for jj, a in enumerate(st[k][0], 1)), st[k][1], d)
     if 1 in fingers:
         best = None
         for z in thumb_z:
@@ -1650,7 +1664,7 @@ def close_hand(self, kr, side, objs, fingers=(1, 2, 3, 4, 5), start=None, step=2
             w = _body_world(self); tipw = V(w[self.fids[(side, 1)]].mean(0))
             sc = (0 if d <= gap else 1, score(tipw) if score else abs(d))
             if best is None or sc < best[0]: best = (sc, z, c, d)
-        _, z, c, d = best; st[1] = (st[1][0], float(z)); res[1] = (tuple(a + c for a in st[1][0]), float(z), d)
+        _, z, c, d = best; st[1] = (st[1][0], float(z)); res[1] = (tuple(rom(1, jj, a + c) for jj, a in enumerate(st[1][0], 1)), float(z), d)
     for k, (a, z, d) in res.items():
         for jj in (1, 2, 3):
             e = p.pb(f'finger{k}-{jj}.{side}').rotation_euler
@@ -1682,7 +1696,7 @@ def _burger_B(self, kr, ra, at):
         if not hasattr(self, '_chest_front'):      # chest skin depth in front of the collarbone (rig local, measured once)
             K = (kr.bw(p, 'clavicle.L') + kr.bw(p, 'clavicle.R')) / 2; Fp = R @ V((0, -1, 0)); w = _body_world(self)
             d = w - np.array(K); along = d @ np.array(Fp); perp = np.linalg.norm(d - np.outer(along, np.array(Fp)), axis=1)
-            sel = (perp < 0.02) & (along > 0); self._chest_front = float(along[sel].max()) if sel.any() else 0.06
+            sel = (perp < 0.02) & (along > 0); self._chest_front = min(float(along[sel].max()), 0.075) if sel.any() else 0.06
             print(f'cast v1.1 burger {p.name}: chest skin {1000 * self._chest_front:.0f} mm in front of the collarbone')
         K = (kr.bw(p, 'clavicle.L') + kr.bw(p, 'clavicle.R')) / 2; Fp = R @ V((0, -1, 0)); Fp.z = 0; Fp.normalize()
         xr = (xr - Fp * xr.dot(Fp)).normalized()
@@ -1691,25 +1705,79 @@ def _burger_B(self, kr, ra, at):
     return Matrix.Translation(C) @ Rb.to_4x4() @ Matrix.Translation(V((0, 0, -H / 2)))
 
 
-def _burger_Pl(self, kr, ra, side):
-    """burger frame in wrist local for this hand: palm on the bun side, fingers up over the crown (leaning in), index at the
-    back (toward the person), thumb under the heel"""
-    key = (side, 'g_burger2')
-    if key in self.Pl: return self.Pl[key]
-    W, H = BURGER2['width'], BURGER2['height']; sx = 1.0 if side == 'R' else -1.0; a = math.radians(BURGER2['lean'])
-    n_t = V((-sx, 0, 0)); f_t = V((-sx * math.sin(a), 0, math.cos(a))); f_t = (f_t - n_t * f_t.dot(n_t)).normalized()
+def _burger_frame(self, kr, ra, side, zh, lean=None):
+    """wrist-in-burger frame for a palm-skin height zh: palm on the bun side, fingers up over the crown (leaning in),
+    index at the back (toward the person), thumb under the heel.  NB the kit grip normal self.pn n points out of the BACK
+    of the HG hand (fingers flex toward -n), so n faces away from the bun and the palmar skin is measured on the mesh."""
+    W = BURGER2['width']; sx = 1.0 if side == 'R' else -1.0; a = math.radians(BURGER2['lean'] if lean is None else lean)
+    Rl = Matrix.Rotation(-sx * a, 3, 'Y'); n_t = Rl @ V((sx, 0, 0)); f_t = Rl @ V((0, 0, 1))     # lean: fingers tip in over the crown
     n_l, f_l = (V(v).normalized() for v in self.pn[side]); f_l = (f_l - n_l * f_l.dot(n_l)).normalized()
     T = Matrix((n_t, f_t, n_t.cross(f_t))).transposed(); Lm = Matrix((n_l, f_l, n_l.cross(f_l))).transposed()
     Rwb = T @ Lm.inverted()
-    # chirality check: index->pinky must point away from the person (+y of the burger)
-    gi = kr.bw(ra.p, f'finger2-1.{side}'); gp = kr.bw(ra.p, f'finger5-1.{side}')
-    Mw = kr.wmat(ra.p, f'wrist.{side}'); g_l = (Mw.to_3x3().inverted() @ (gp - gi)).normalized()
-    chi = (Rwb @ g_l).y
-    P_t = V((sx * (W / 2 + SKIN), BURGER_HAND['y'], BURGER_HAND['z']))
-    Wb = Matrix.Translation(P_t - Rwb @ V(self.palm[side])) @ Rwb.to_4x4()
-    self.Pl[key] = Wb.inverted()
-    print(f'cast v1.1 burger hand {ra.p.name} {side}: index->pinky toward +y {chi:+.2f} (want > 0)')
-    return self.Pl[key]
+    if not hasattr(self, '_palmar'): self._palmar = {}
+    if side not in self._palmar:
+        Mw = kr.wmat(ra.p, f'wrist.{side}'); w = _body_world(self); Mi = np.array(Mw.inverted()); lw = w @ Mi[:3, :3].T + Mi[:3, 3]
+        RH = self.rig.matrix_world; Mwi = Mw.inverted()      # palm centre from the knuckles (self.palm L sits ~20 mm nearer the fingers than R)
+        ka = Mwi @ (RH @ self.rig.pose.bones[f'f_index.01.{side}'].head); kb_ = Mwi @ (RH @ self.rig.pose.bones[f'f_pinky.01.{side}'].head)
+        P0 = (ka + kb_) / 2 - f_l * 0.035; P0 = P0 + n_l * (V(self.palm[side]) - P0).dot(n_l)
+        d_ = lw - np.array(P0); an = d_ @ np.array(n_l); af = d_ @ np.array(f_l)
+        lat = np.linalg.norm(d_ - np.outer(an, n_l) - np.outer(af, f_l), axis=1)
+        fing = np.zeros(len(lw), bool)
+        for k_ in range(1, 6): fing[self.fids[(side, k_)]] = True
+        vgi = {g.name: g.index for g in self.body.vertex_groups}; gi_ = {vgi.get(f'thumb.01.{side}'), vgi.get(f'thumb.02.{side}')} - {None}
+        if gi_: fing[[v.index for v in self.body.data.vertices if any(g.group in gi_ and g.weight > 0.2 for g in v.groups)]] = True
+        sel = (lat < 0.02) & (af > -0.015) & (af < 0.015) & (an < 0.01) & (an > -0.06) & ~fing
+        dn = float(np.percentile(an[sel], 3)) if sel.sum() > 20 else -0.025
+        self._palmar[side] = P0 + n_l * dn
+        print(f'cast v1.1 burger hand {ra.p.name} {side}: palm centre (wrist local mm)', tuple(round(1000 * x) for x in self._palmar[side]),
+              'old grip point', tuple(round(1000 * x) for x in self.palm[side]))
+        gi = kr.bw(ra.p, f'finger2-1.{side}'); gp = kr.bw(ra.p, f'finger5-1.{side}'); g_l = (Mw.to_3x3().inverted() @ (gp - gi)).normalized()
+        print(f'cast v1.1 burger hand {ra.p.name} {side}: palmar skin {1000 * dn:+.1f} mm along n ({int(sel.sum())} verts), '
+              f'index->pinky along burger y {(Rwb @ g_l).y:+.2f} (want +1: index at the back)')
+    P_t = V((sx * (W / 2 + SKIN), BURGER_HAND['y'], zh))
+    return Matrix.Translation(P_t - Rwb @ self._palmar[side]) @ Rwb.to_4x4()
+
+
+def _burger_meshes(kr):
+    ob = kr.FX.props.get('g_burger'); it = getattr(kr.FX, 'grip_items', {}).get('g_burger')
+    src = it.objs if it is not None and hasattr(it, 'objs') else ob.children_recursive
+    return ob, [o for o in src if o.type == 'MESH' and o.display_type != 'WIRE' and any(t in o.name for t in ('hamburger_buns', 'kwp_patty'))]
+
+
+def _burger_Pl(self, kr, ra, side):
+    """burger frame in wrist local for this hand + the closed finger table, solved once (wrist relative) on the real
+    kwprops burger: close_hand at the default palm height, then the hand slides down/up so the middle fingertip lands
+    BURGER_TIP_IN in from the crown edge, and the fingers close again"""
+    key = (side, 'g_burger2')
+    if key in self.Pl: return self.Pl[key]
+    self.__dict__.setdefault('_bclose', {}); p = ra.p; W = BURGER2['width']
+    cf_ = os.environ.get('KW_BCLOSE_CACHE'); cc_ = None
+    if cf_ and os.path.exists(cf_):
+        import json; cc_ = json.load(open(cf_)).get(f'{p.name}:{side}')
+    if cc_:
+        self._bclose[side] = {int(k): (tuple(v[0]), v[1]) for k, v in cc_['tab'].items()}
+        self.Pl[key] = _burger_frame(self, kr, ra, side, cc_['z'], cc_.get('lean')).inverted(); return self.Pl[key]
+    ob, meshes = _burger_meshes(kr); zh = BURGER_HAND['z']; ln = BURGER2['lean']; t0 = time.time(); Mw = kr.wmat(p, f'wrist.{side}')
+    keep = [(pb, pb.rotation_euler.copy()) for k in range(1, 6) for pb in (p.pb(f'finger{k}-{jj}.{side}') for jj in (1, 2, 3))]
+    mw0 = ob.matrix_world.copy()
+    for it_ in range(3):
+        Pl = _burger_frame(self, kr, ra, side, zh, ln).inverted(); ob.matrix_world = Mw @ Pl; bpy.context.view_layer.update()
+        Bi = ob.matrix_world.inverted()
+        sc = lambda tw: (lambda q: q.z + 0.3 * abs(q.x))(Bi @ tw)      # thumb: tip under the heel, toward the middle
+        tab, rep = close_hand(self, kr, side, meshes, score=sc)
+        w_ = _body_world(self); tq = {k: Bi @ V(w_[self.fids[(side, k)]].mean(0)) for k in range(1, 6)}
+        rin = W / 2 - math.hypot(tq[3].x, tq[3].y)          # middle tip: distance in from the crown edge
+        print(f'cast v1.1 close_hand {p.name} {side} burger pass {it_}: palm z {1000 * zh:.0f} mm lean {ln:.0f} deg, middle tip {1000 * rin:.0f} mm in from the edge,',
+              tab, rep, 'tips burger-local mm', {k: tuple(round(1000 * x) for x in q) for k, q in tq.items()})
+        if abs(rin - BURGER_TIP_IN) < 0.006 or it_ == 2: break
+        ln = max(-15.0, min(25.0, ln - math.degrees((rin - BURGER_TIP_IN) / 0.085)))   # reaching too far over the top -> fingers lean out
+    for pb, e in keep: pb.rotation_euler = e
+    ob.matrix_world = mw0; self._bclose[side] = tab; self.Pl[key] = Pl
+    print(f'cast v1.1 burger hand {p.name} {side} solved in {time.time() - t0:.0f}s')
+    if cf_:
+        import json; d_ = json.load(open(cf_)) if os.path.exists(cf_) else {}
+        d_[f'{p.name}:{side}'] = {'z': zh, 'lean': ln, 'tab': {str(k): [list(a), z] for k, (a, z) in tab.items()}}; json.dump(d_, open(cf_, 'w'))
+    return Pl
 
 
 def _burger_goal(self, kr, ra, side, h, tip, shape):
@@ -1721,30 +1789,23 @@ def _burger_goal(self, kr, ra, side, h, tip, shape):
 
 
 def _burger_hold(self, kr, jobs):
-    """frame hook: put the burger on the solved frame and close both hands on it (solved once per side, wrist relative)"""
+    """frame hook: the closed finger tables on both hands, the burger on the first hand's wrist"""
     js = [j for j in jobs if j[8] is not None and j[8].kind == 'hold' and j[8].prop == 'g_burger']
-    if not js: return False
-    ob = kr.FX.props.get('g_burger'); it = getattr(kr.FX, 'grip_items', {}).get('g_burger')
-    if ob is None: return False
-    p = self.p; side0 = js[0][1]
-    ob.matrix_world = kr.wmat(p, f'wrist.{side0}') @ _burger_Pl(self, kr, self.ra, side0)
-    bpy.context.view_layer.update()
-    self.__dict__.setdefault('_bclose', {})
+    if not js or kr.FX.props.get('g_burger') is None: return False
+    p = self.p; ob = kr.FX.props['g_burger']
     for j in js:
-        side = j[1]
-        if side not in self._bclose:
-            meshes = [o for o in (it.objs if it is not None and hasattr(it, 'objs') else ob.children_recursive)
-                      if o.type == 'MESH' and o.display_type != 'WIRE' and any(t in o.name for t in ('hamburger_buns', 'kwp_patty'))]
-            Bw = ob.matrix_world.copy()
-            def sc(tw, Bw=Bw):      # thumb: tip under the heel, toward the middle
-                q = Bw.inverted() @ tw; return q.z + 0.3 * abs(q.x)
-            t0 = time.time(); tab, rep = close_hand(self, kr, side, meshes, score=sc)
-            self._bclose[side] = tab
-            print(f'cast v1.1 close_hand {p.name} {side} burger ({time.time() - t0:.0f}s, {len(meshes)} meshes):', tab, rep)
+        side = j[1]; _burger_Pl(self, kr, self.ra, side)
         for k, (a, z) in self._bclose[side].items():
             for jj in (1, 2, 3):
                 e = p.pb(f'finger{k}-{jj}.{side}').rotation_euler
                 e.x = math.radians(a[jj - 1]); e.y = 0.0; e.z = math.radians(z if jj == 1 else 0.0) * (1 if side == 'R' else -1)
+    side0 = js[0][1]; ob.matrix_world = kr.wmat(p, f'wrist.{side0}') @ _burger_Pl(self, kr, self.ra, side0)
+    if os.environ.get('KW_V11_DBG'):
+        bpy.context.view_layer.update(); Bt = _burger_B(self, kr, self.ra, js[0][8].at)
+        for j in js:
+            Wd = Bt @ _burger_Pl(self, kr, self.ra, j[1]).inverted(); Wa = kr.wmat(p, f'wrist.{j[1]}')
+            print('V11DBG burger', j[1], 'wrist pos err mm', round(1000 * (Wa.translation - Wd.translation).length, 1),
+                  'rot err deg', round(math.degrees(Wa.to_quaternion().rotation_difference(Wd.to_quaternion()).angle), 1))
     return True
 
 
