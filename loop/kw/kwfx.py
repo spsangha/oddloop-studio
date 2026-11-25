@@ -5,7 +5,7 @@ import kwkit as KW
 import kwlib as L
 import kwbody as B
 ramp, bump, pop = KW.ramp, KW.bump, KW.pop
-LABEL_COL = {'red': (1.0, 0.06, 0.04), 'yellow': (1.0, 0.82, 0.02), 'gold': (0.85, 0.42, 0.0), 'white': (1.0, 1.0, 1.0), 'green': (0.1, 0.9, 0.2), 'blue': (0.1, 0.45, 1.0)}
+LABEL_COL = {'red': (1.0, 0.06, 0.04), 'yellow': (1.0, 0.82, 0.02), 'white': (1.0, 1.0, 1.0), 'green': (0.1, 0.9, 0.2), 'blue': (0.1, 0.45, 1.0)}
 STATIONS = {'skin_block': V((100, 0, 1.0)), 'gauge': V((110, 0, 1.0)), 'calendar': V((120, 0, 1.5)), 'scan': V((130, 0, 1.2)), 'earth': V((140, 0, 1.5))}
 PROP_LIGHT = {'skin_block': (0.45, 0.8), 'gauge': (0.3, 0.5), 'calendar': (0.4, 0.5), 'scan': (0.4, 0.25), 'earth': (0.5, 0.55)}
 RX90 = Matrix.Rotation(math.radians(-90), 3, 'X')

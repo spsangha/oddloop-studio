@@ -439,7 +439,7 @@ class fx:
         A pos label is printed on the screen: same size and place whatever the camera does, never wider than 960 px (a long word
         is scaled down to fit). dur = seconds on screen, then it is gone (like a cut); a label may be given to several shots
         (at < 0 in the later ones) to stay on through a segment change of one continuous camera move."""
-        if color not in ('red', 'yellow', 'gold', 'white', 'green', 'blue'): raise ValueError('label color: red | yellow | gold | white | green | blue (gold = strong #FFD21F on screen)')
+        if color not in ('red', 'yellow', 'white', 'green', 'blue'): raise ValueError('label color: red | yellow | white | green | blue')
         return FX('label', text=str(text), at=at, pos=pos, near=near, size=size, color=color, dur=dur)
     @staticmethod
     def arrow(points=None, at=0.2, dur=0.6, color='yellow', width=0.012, path=None, person=None):
