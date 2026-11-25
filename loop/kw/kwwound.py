@@ -638,8 +638,8 @@ class Wound:
             for i, o in enumerate(grp):
                 kk = min(1.0, max(0.0, val * 1.6 - (i / max(1, len(grp))) * 0.6))
                 # H2 sink 0..1: the strands sink one after another under the levelled pink surface (2 mm down, then hidden; no pop)
-                sk = min(1.0, max(0.0, (sink - ((i * 7) % max(1, len(grp))) / max(1, len(grp)) * 0.4) / 0.6)) if sink > 0 and len(grp) > 2 else min(1.0, max(0.0, sink))   # baked into one mesh: the whole window; else each 0.6 of the window, starts spread over 0..0.4: the last one ends at sink=1
-                sk = sk * sk * (3 - 2 * sk)
+                sk = min(1.0, max(0.0, (sink - ((i * 7) % max(1, len(grp))) / max(1, len(grp)) * 0.7) / 0.3)) if sink > 0 and len(grp) > 2 else min(1.0, max(0.0, sink))   # baked into one mesh: the whole window; else each 0.3 of the window, starts spread over 0..0.7: the last one ends at sink=1
                 o.hide_render = not (show and kk > 0.01) or sk >= 0.999; kg = min(kk, 1.0 - sk); o['kw_grow'] = 1.001 if kg >= 1 else kg     # and they shrink back along their length
-                if sink > 0 or o.get('kw_sunk'): o.location = -self.Nn * (0.002 * sk); o['kw_sunk'] = 1 if sk > 0 else 0
+                if sink > 0 or o.get('kw_sunk'): o.location = -self.Nn * (0.0012 * sk); o['kw_sunk'] = 1 if sk > 0 else 0
                 o.update_tag()
+                if os.environ.get('KW_SINK_PROBE'): print(f'SINKPROBE {o.name} val={val:.3f} sink={sink:.3f} kk={kk:.3f} sk={sk:.3f} hide={o.hide_render} n={len(grp)}')
