@@ -105,6 +105,10 @@ HAND_SHAPES = ('relaxed', 'open', 'fist', 'pinch', 'point', 'press2', 'hold', 'c
 HANDS = ('rest', 'lap', 'wheel', 'pinch_nose', 'cover_mouth', 'cover_nose', 'tissue_nose', 'wave', 'point_fwd', 'clipboard', 'write', 'hips',
          'to_mouth', 'phone_ear') + tuple('touch_' + p for p in PARTS) + tuple('clutch_' + p for p in ('chest', 'belly', 'neck', 'head', 'throat', 'forehead', 'eye_l', 'eye_r', 'cheek_l', 'cheek_r', 'ear_l', 'ear_r'))
 ACTS = ('sneeze', 'cough', 'blow_nose', 'swallow', 'eat', 'drink', 'wince', 'nod', 'shake_head', 'gasp', 'breathe_hard', 'look_around', 'flinch', 'yawn', 'sniff', 'scratch')
+ITEMS = ('tray', 'burger', 'fries', 'salmon', 'wedges', 'salad', 'cup', 'penlight', 'tweezers', 'probe', 'magnifier',
+         'paperclip', 'pea', 'ball', 'bulb', 'bench')      # table-top props (kwprops) placed with fx.item
+ITEM_CONTROLS = {'burger': ('eaten',), 'fries': ('eaten',), 'salmon': ('eaten',), 'wedges': ('eaten',), 'salad': ('eaten',),
+                 'penlight': ('on',), 'pea': ('sprout',), 'ball': ('squash',)}
 PROPS = ('tissue', 'cup', 'apple', 'pill', 'phone', 'pen', 'spoon', 'bottle', 'can', 'earbud', 'swab', 'pepper', 'slushie')
 ORGANS = ('airway', 'lungs', 'esophagus', 'stomach', 'heart', 'brain', 'intestines', 'sinus', 'eyes', 'skull', 'vessels', 'kidneys', 'bladder', 'liver')
 MACRO_KINDS = ('windpipe', 'esophagus', 'artery', 'vein', 'intestine', 'stomach', 'bone', 'nerve', 'sinus')
@@ -383,6 +387,17 @@ class cam:
         """escape hatch: fixed world position looking at a world point"""
         return Cam('at', None, pos=tuple(pos), look=tuple(look), lens=lens, **o)
     @staticmethod
+    def bench(which='wide', at=(63.0, 0.0), top=0.9, lens=None, look=(0.0, 0.0), h=None, width=None, **o):
+        """table-top presets on an fx.item('bench') whose top centre is at (at, top).  'wide' frames the whole 120 cm top
+        from in front and above (lens 35); 'close' frames about 30 cm of the top (lens 50).  look = (dx, dy) shift of the
+        aim point on the top; h = camera height above the top (default wide 0.55 m / close 0.2 m, scaled with width);
+        width = framed width in metres (overrides the preset's 1.25 / 0.30)."""
+        if which not in ('wide', 'close'): raise ValueError("cam.bench which: 'wide' | 'close'")
+        lens = lens or (35 if which == 'wide' else 50); w0 = 1.25 if which == 'wide' else 0.30; width = width or w0
+        d = width * lens / 20.25; hh = h if h is not None else (0.55 if which == 'wide' else 0.2) * width / w0
+        tgt = (at[0] + look[0], at[1] + look[1], top); dy = math.sqrt(max(1e-4, d * d - hh * hh))
+        return Cam('at', None, pos=(tgt[0], tgt[1] - dy, top + hh), look=tgt, lens=lens, **o)
+    @staticmethod
     def loop(**o):
         """LAST SHOT ONLY: ends exactly on the first shot's camera so the Short loops."""
         return Cam('loop', None, **o)
@@ -399,6 +414,8 @@ class FX:
         if k == 'crack': return [(o.get('at', 0.5), 'rip', 0.8), (o.get('at', 0.5) + 0.03, 'thud', 0.9)]
         if k == 'leak': return [(o.get('at', 0.2), 'bubbles', 0.7)]
         if k == 'flow' and o.get('sound', True): return [(o.get('at', 0.0), 'rush', 0.7)]
+        if k == 'flow_path' and o.get('sound'): return [(o.get('at', 0.0), 'rush', 0.6)]
+        if k == 'counter': return [(o.get('at', 0.2) + o.get('dur', 1.0), 'tick', 0.6)]
         if k == 'pressure': return [(o.get('at', 0.0), 'pressure', 0.8)]
         if k == 'calendar': return [(o.get('at', 0.1) + 0.3 * i, 'pinch', 0.5) for i in range(max(1, int(o.get('weeks', 5)) - 1))]
         if k == 'scan': return [(o.get('heal_at', 0.6), 'heal', 0.7)] if o.get('heal', True) else []
@@ -437,6 +454,36 @@ class fx:
         cam_raise: camera elevation (deg) used by cam.prop for this station."""
         if mode not in ('wrap2', 'half'): raise ValueError("earth mode: 'wrap2' | 'half'")
         return FX('earth', mode=mode, at=at, dur=dur, spin=spin, lon=lon, lat=lat, pulse_at=pulse_at, cam_raise=cam_raise)
+    @staticmethod
+    def item(kind, pos=(0.0, 0.0, 0.0), rz=0.0, tilt=0.0, keys=(), on=None, point=None, light=None, **params):
+        """table-top prop (kwprops) standing at world pos (or pos offset from an earlier fx.item `on`, at its named point:
+        'floor' for trays, 'top' for the bench).  rz = turn in degrees.  keys = [(local_t, {control: v}), ...] eased like
+        wound keys; controls: burger/fries/salmon/wedges/salad eaten, penlight on, pea sprout, ball squash (all 0..1).
+        params go to the prop (e.g. style='clinic', liner='paper', top=(1.2, 0.6), h=0.9, color=(r, g, b)).
+        light = scale of the 3-light prop rig around the shot's items when no person is in the shot (default 0.45)."""
+        _check_name('item', kind, ITEMS)
+        for _, v in keys:
+            for kk in v:
+                if kk not in ITEM_CONTROLS.get(kind, ()): raise ValueError(f'item {kind} control {kk!r}: one of {ITEM_CONTROLS.get(kind, ())}')
+        return FX('item', item=kind, pos=tuple(pos), rz=rz, tilt=tilt, keys=[(float(t), dict(v)) for t, v in keys], on=on, point=point, light=light, params=params)
+    @staticmethod
+    def counter(v0, v1, unit='', at=0.2, dur=1.0, pos=(0.5, 0.78), size=1.0, color='yellow', decimals=0, sign=False):
+        """number label that counts v0 -> v1 (eased) from local `at` over `dur`, with a unit ('kcal', '%', 'x').
+        sign=True prints '+'.  Yellow / white label style; size 1.0 = digits about 5 % of frame height (keep >= 0.8)."""
+        if color not in ('yellow', 'white', 'red', 'green', 'blue'): raise ValueError('counter color: yellow | white | red | green | blue')
+        return FX('counter', v0=float(v0), v1=float(v1), unit=str(unit), at=at, dur=dur, pos=pos, size=size, color=color, decimals=int(decimals), sign=sign)
+    @staticmethod
+    def beam(origin, target, at=0.0, fade=0.3, width=0.04, color=(1.0, 0.95, 0.8), strength=1.0, sweep=None):
+        """light beam: spot light + soft emissive cone (no volume).  origin/target = world points or (fx.item, 'point')
+        e.g. origin=(pen, 'tip').  width = beam diameter at the target (m).  fades in over `fade` s from `at`.
+        sweep = (target2, t0, t1): the aim slides to target2 between local t0 and t1."""
+        return FX('beam', origin=origin, target=target, at=at, fade=fade, width=width, color=tuple(color), strength=strength, sweep=sweep)
+    @staticmethod
+    def flow_path(points, at=0.0, dur=None, color='green', size=0.004, count=40, speed=1.0, spread=0.003, sound=False):
+        """glowing particles streaming along any world curve (points smoothed); size = particle radius (m), speed = laps
+        per ~1.1 s, count = density, spread = sideways jitter (m)."""
+        if color not in ('green', 'red', 'blue', 'yellow', 'white', 'orange'): raise ValueError('flow color: green | red | blue | yellow | white | orange')
+        return FX('flow_path', points=[tuple(p) for p in points], at=at, dur=dur, color=color, size=size, count=count, speed=speed, spread=spread, sound=sound)
     @staticmethod
     def wound(person, keys, side='R'):
         """a healing cut on the person's own calf skin (kwwound).  keys = [(local_t, {open, stitches, out, red, collagen, vessels, line, scar}), ...]

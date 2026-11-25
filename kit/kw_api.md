@@ -50,7 +50,7 @@ import kwkit as KW
 ## 7 Cameras (options: push, orbit, side, height, shake, hits=[t], lens, dist, fstop, follow)
 `face(p)` `medium(p)` `wide(p)` `two_shot(a, b)` `over_shoulder(a, b)` `profile(p, part)` `low_hero(p)` `top_down(p)` `part(p, 'eye_l')`
 `plunge(p, into='nose')` (fly into the body; next shot x-ray/macro) `xray(p, organ, view='34'|'front'|'profile'|'back34')`
-`macro(m, view='hole'|'wide'|'inside'|'object')` `prop()` `at(pos, look)` `loop()` (LAST shot only).
+`macro(m, view='hole'|'wide'|'inside'|'object')` `prop()` `at(pos, look)` `bench('wide'|'close', at=(x, y), top=0.9, width=, h=, look=)` (table-top items) `loop()` (LAST shot only).
 e.g. `cam=KW.cam.face(mia, push=0.12, side=14, shake=0.4)` — keep `push` 0.06-0.2 so every shot moves.
 
 ## 8 Effects (`at` = local seconds)
@@ -59,6 +59,9 @@ e.g. `cam=KW.cam.face(mia, push=0.12, side=14, shake=0.4)` — keep `push` 0.06-
 - macro: `tear(at)` `crack(at)` `leak(at, rate, kind='bubbles'|'blood'|'fluid')` `particles(kind)` `block(obj)` `heal(at, dur)`
 - graphics: `label('20x', pos=(0.5,0.74), color='yellow')` (1-3 words) `gauge(to=0.97, low='NORMAL\nBLOW', high='')` (dial text: low = green label, high = red full-scale label, '' hides it; default prints NORMAL SNEEZE / 20x) `arrow(...)` `bracket(...)`
   `calendar(weeks=3)` `scan('head'|'neck'|'chest'|'belly', heal=False)` `skin_block(press_at=)` `crackle(near=anchor, times=[...])`
+- table-top (kwprops, any set, best `set='studio', world='sky'`, no cast = own 3-light prop rig):
+  `item(kind, pos, rz, tilt, keys=[(t, {control: v})], on=other_item, light=0.45, **params)` kinds: tray(style='meal'|'clinic', liner='paper'|'cloth', color) burger fries salmon wedges salad (eaten 0..1) cup(lid, straw) penlight(on) tweezers probe magnifier paperclip pea(sprout) ball(squash) bulb bench(style='grey'|'table', top=(w, d), h)
+  `counter(v0, v1, unit, at, dur, pos, size, color, decimals, sign)` `beam(origin=(pen, 'tip'), target, at, fade, width, color, strength, sweep=(target2, t0, t1))` `flow_path(points, at, color, size, count, speed, spread)`
 - e.g. `fx=[KW.fx.crack(at=0.15), KW.fx.leak(at=0.45, rate=0.8)]`
 
 ## 9 Sounds

@@ -505,6 +505,8 @@ def build_hospital(S, ned, wall_col=(0.12, 0.60, 0.86)):   # Zack look: bright s
     _gltf(c, 'side_table_01', (0.75, YW - 0.35, 0.0), 0, 1.0)
     _gltf(c, 'wheelchair_01', (XW + 0.45, -1.15, 0.0), 75, 1.0)
     _gltf(c, 'modern_ceiling_lamp_01', (0.35, 0.25, ZC - 0.02), 0, 1.0)
+    if os.environ.get('KW_CLINIC_STOOL') == '1':     # slate batch 1: doctor's metal stool beside the exam bed (gated: parked ep06 frames stay unchanged)
+        _gltf(c, 'metal_stool_01', (0.72, 0.5, 0.0), 15, 1.0)
     # wall details: hand sanitiser box, glove box shelf, poster frame with soft gradient (no text)
     B.box('h_dispenser', (0.12, 0.08, 0.22), (1.6, YW - 0.04, 1.3), white, 0.015, (0, 0, 0), 3)
     B.box('h_shelf', (0.6, 0.18, 0.025), (-1.35, YW - 0.09, 1.55), white, 0.005)

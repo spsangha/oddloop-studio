@@ -133,6 +133,12 @@ class Builder:
         low = o.get('low'); high = o.get('high')
         return dict(low='NORMAL\nSNEEZE' if low in (None, 'NORMAL') else low, high='20x' if high is None else high, title=o.get('title') or 'PRESSURE')
 
+    def _pt(self, p):
+        """world point from a tuple or (fx.item, 'point name')"""
+        if isinstance(p, (tuple, list)) and len(p) == 2 and isinstance(p[0], KW.FX):
+            it = self.items.get(p[0]); return it['prop'].point(p[1]) if it and it.get('prop') else V((0, 0, 0))
+        return V(p)
+
     def _build_fx(self, s, f, c):
         G = self.G; o = f.o; k = f.kind; rt = self.rt
         if k == 'gauge' and o.get('place') != 'station':
@@ -149,6 +155,53 @@ class Builder:
                 bn = 'lowerleg01.' + o.get('side', 'R'); M = rt.wmat(ra.p, bn)
                 ra.parts['calf_' + o.get('side', 'R').lower()] = (bn, M.inverted() @ w.C, (M.to_3x3().inverted() @ w.Nn).normalized())
             return dict(w=ws[a])
+        if k == 'item':
+            import kwprops
+            pr = kwprops.make(o['item'], c, rt.K, **o['params']); base = V(o['pos'])
+            if o.get('on') is not None:
+                host = self.items.get(o['on'])
+                if host and host.get('prop'):
+                    bpy.context.view_layer.update(); hp = host['prop']; nm = o.get('point') or ('floor' if 'floor' in hp.pts else 'top')
+                    base = hp.point(nm) + base
+            pr.root.location = base; pr.root.rotation_euler = (0, math.radians(o.get('tilt', 0.0)), math.radians(o['rz'])); bpy.context.view_layer.update()
+            if o['keys']: pr.set(**_key_vals(o['keys'], 0.0))
+            return dict(prop=pr)
+        if k == 'counter':
+            if not G: return dict(label=None)
+            return dict(label=G.Label3D(_counter_text(o, o['v1']), V((0, 0, 0)), c, size=0.06, color=LABEL_COL[o['color']]))
+        if k == 'beam':
+            bpy.context.view_layer.update(); P0 = self._pt(o['origin']); P1 = self._pt(o['target'])
+            ld = bpy.data.lights.new(f'kw_beam_{id(f)}', 'SPOT'); ld.color = o['color']; ld.shadow_soft_size = 0.002; ld.spot_blend = 0.35
+            lo = bpy.data.objects.new(ld.name, ld); c.objects.link(lo)
+            r0 = 0.005; r1 = max(r0 * 1.2, o['width'] / 2); n = 32; vs = []; fs = []
+            for z, r in ((0.0, r0), (1.0, r1)):
+                for i in range(n): a = 2 * math.pi * i / n; vs.append((r * math.cos(a), r * math.sin(a), z))
+            for i in range(n): fs.append((i, (i + 1) % n, n + (i + 1) % n, n + i))
+            me = bpy.data.meshes.new(f'kw_beamcone_{id(f)}'); me.from_pydata(vs, [], fs); co = bpy.data.objects.new(me.name, me); c.objects.link(co); L.smooth(co)
+            m = bpy.data.materials.new(me.name); m.use_nodes = True; nt = m.node_tree; nt.nodes.clear(); N = nt.nodes; Lk = nt.links.new
+            out = N.new('ShaderNodeOutputMaterial'); em = N.new('ShaderNodeEmission'); em.inputs['Color'].default_value = (*o['color'], 1)
+            tr = N.new('ShaderNodeBsdfTransparent'); lw = N.new('ShaderNodeLayerWeight'); lw.inputs['Blend'].default_value = 0.5
+            tc = N.new('ShaderNodeTexCoord'); sep = N.new('ShaderNodeSeparateXYZ'); Lk(tc.outputs['Object'], sep.inputs[0])
+            def mth(op, a, b):
+                q = N.new('ShaderNodeMath'); q.operation = op
+                for i_, v in enumerate((a, b)):
+                    if isinstance(v, (int, float)): q.inputs[i_].default_value = v
+                    else: Lk(v, q.inputs[i_])
+                return q.outputs[0]
+            edge = mth('POWER', mth('SUBTRACT', 1.0, lw.outputs['Facing']), 2.5)
+            along = mth('SUBTRACT', 1.0, mth('MULTIPLY', sep.outputs['Z'], 0.55))
+            fadev = N.new('ShaderNodeValue'); fadev.outputs[0].default_value = 0.0
+            fac = mth('MULTIPLY', mth('MULTIPLY', edge, along), fadev.outputs[0])
+            mx = N.new('ShaderNodeMixShader'); Lk(mth('MINIMUM', mth('MULTIPLY', fac, 0.8), 1.0), mx.inputs[0]); Lk(tr.outputs[0], mx.inputs[1]); Lk(em.outputs[0], mx.inputs[2]); Lk(mx.outputs[0], out.inputs[0])
+            em.inputs['Strength'].default_value = 2.5 * o['strength']; co.data.materials.append(m)
+            co.visible_shadow = False; co.visible_diffuse = False; co.visible_glossy = False
+            return dict(light=lo, cone=co, fade=fadev, P0=P0, P1=P1)
+        if k == 'flow_path':
+            col = B.COLORS[o['color']]; m, em = L.glow(f'kw_flowp_{id(f)}', col, 9.0, 0.97); rnd = random.Random(len(self.items) + 7); parts = []
+            for i in range(int(o['count'])):
+                ob = L.ico(f'kw_flowp{i}', 1, (0, 0, 0), m, c, 2); ob.scale = (1e-5,) * 3
+                parts.append((ob, rnd.random(), rnd.uniform(-1, 1), rnd.uniform(-1, 1), rnd.random()))
+            return dict(parts=parts, em=em, col=col, path=L.smooth_path([V(p) for p in o['points']], 5))
         if k == 'earth':
             st = self.stations['earth']; key = f'{s.name}'
             st['obj'].add_line(key, o['mode'], o['lon'], o['lat']); return dict(key=key)
@@ -341,6 +394,28 @@ class Builder:
             for a, w in ws.items():
                 if a in act: w.set(**_wound_vals(act[a], u))
                 else: w.set(show=False)
+        # table-top items, beams, counters' lights (kwprops)
+        items = [(f, self.items.get(f)) for f in shot.fx if f.kind == 'item' and self.items.get(f)]
+        for f, it in items:
+            if f.o['keys']: it['prop'].set(**_key_vals(f.o['keys'], u))
+        if items and not shot.cast:
+            pts = [it['prop'].root.matrix_world.translation for f, it in items if f.o['item'] != 'bench']
+            if not pts: pts = [it['prop'].point('top') for f, it in items]
+            ctr = sum(pts, V((0, 0, 0))) / len(pts); sc = next((f.o['light'] for f, _ in items if f.o.get('light')), 0.45)
+            rt.prop_lights(ctr + V((0, 0, 0.05)), sc)
+        for f in shot.fx:
+            it = self.items.get(f)
+            if f.kind == 'beam' and it:
+                o = f.o; P1 = V(it['P1'])
+                if o.get('sweep'):
+                    t2, t0, t1 = o['sweep']; P1 = P1.lerp(self._pt(t2), ramp(u, t0, t1))
+                P0 = it['P0']; d = P1 - P0; L_ = max(1e-4, d.length); q = d.to_track_quat('Z', 'Y')
+                k_ = ramp(u, o['at'], o['at'] + max(0.01, o['fade']))
+                co = it['cone']; co.location = P0; co.rotation_euler = q.to_euler(); co.scale = (1, 1, L_); co.hide_render = k_ <= 0
+                lo = it['light']; lo.location = P0; lo.rotation_euler = d.to_track_quat('-Z', 'Y').to_euler(); lo.hide_render = k_ <= 0
+                lo.data.spot_size = min(3.0, 2 * math.atan(o['width'] * 0.6 / L_) * 1.6); lo.data.energy = 8.0 * o['strength'] * k_ * (L_ / 0.3) ** 2
+                it['fade'].outputs[0].default_value = k_
+            elif f.kind == 'flow_path' and it: self._flow(f, it, u, t)
         # stations
         for f in shot.fx:
             o = f.o; it = self.items.get(f)
@@ -389,10 +464,10 @@ class Builder:
         self._props(shot, u, t)
 
     def _flow(self, f, it, u, t):
-        o = f.o; body = self.bodies[o['person']]; path = L.smooth_path(body.path_world(o['path']), 5); heat = o.get('heat', 0.0)
+        o = f.o; path = it.get('path') or L.smooth_path(self.bodies[o['person']].path_world(o['path']), 5); heat = o.get('heat', 0.0)
         stop = o.get('stop', 1.0); sp_ = o.get('speed', 1.0); dur = o.get('dur')
         it['em'].inputs['Color'].default_value = (*[a + (b - a) * heat for a, b in zip(it['col'], (1.0, 0.25, 0.05))], 1)
-        span = sum((path[i + 1] - path[i]).length for i in range(len(path) - 1)); rr = 0.0035 if span < 0.25 else 0.0042
+        span = sum((path[i + 1] - path[i]).length for i in range(len(path) - 1)); rr = o.get('size') or (0.0035 if span < 0.25 else 0.0042); spr = o.get('spread', 0.003)
         for ob, ph, ox, oy, sp in it['parts']:
             if u < o['at'] or (dur is not None and u > o['at'] + dur + 0.6): ob.scale = (1e-5,) * 3; continue
             if stop < 1.0:
@@ -401,7 +476,7 @@ class Builder:
                 raw = (u - o['at']) * 0.9 * sp_ - ph; vis = raw > 0; s = raw % 1.0
                 if dur is not None and u > o['at'] + dur and raw - (u - o['at'] - dur) * 0.9 * sp_ > 1.0 - 1e-9: vis = False
             jit = (0.0025 + 0.004 * heat) * (1 if stop < 1 and s >= stop * 0.6 else 0.4)
-            p = L.poly_at(path, s) + V((ox * 0.003 + math.sin(t * 17 + ph * 20) * jit, oy * 0.003 + math.cos(t * 15 + sp * 9) * jit, math.sin(t * 13 + ph * 11) * jit))
+            p = L.poly_at(path, s) + V((ox * spr + math.sin(t * 17 + ph * 20) * jit, oy * spr + math.cos(t * 15 + sp * 9) * jit, math.sin(t * 13 + ph * 11) * jit))
             ob.location = p; ob.scale = ((rr if vis else 1e-5),) * 3
 
     def _spray(self, shot, u, t):
@@ -474,6 +549,31 @@ class Builder:
                     lab.root.matrix_world = Matrix.Translation(w) @ (Rc @ RX90).to_4x4() @ Matrix.Scale(dd / 0.55 * o['size'], 4)
                 else: place(lab.root, o['pos'], o['size'])
                 ka = pop((u - o['at']) / 0.3) if u > o['at'] else 0.0; lab.set(scale=max(ka, 1e-5))
+            elif f.kind == 'counter':
+                lab = it.get('label')
+                if lab is None: continue
+                place(lab.root, o['pos'], o['size'] * 0.62)
+                v = o['v0'] + (o['v1'] - o['v0']) * ramp(u, o['at'], o['at'] + o['dur'])
+                ka = pop((u - o['at'] + 0.15) / 0.3) if u > o['at'] - 0.15 else 0.0; lab.set(scale=max(ka, 1e-5), text=_counter_text(o, v))
+
+
+def _counter_text(o, v):
+    s = f"{v:,.{o['decimals']}f}" if abs(v) >= 1000 else f"{v:.{o['decimals']}f}"
+    if o['sign'] and v > 0: s = '+' + s
+    return (s + ' ' + o['unit']).strip() if o['unit'] and o['unit'] not in ('%', 'x') else s + o['unit']
+
+
+def _key_vals(keys, u):
+    """smoothstep between item keys [(t, {name: v})]; names carry forward from the previous key"""
+    full = []; cur = {}
+    for t, v in sorted(keys, key=lambda x: x[0]):
+        cur = dict(cur); cur.update(v); full.append((t, cur))
+    if u <= full[0][0]: return dict(full[0][1])
+    for (t0, a), (t1, b) in zip(full, full[1:]):
+        if u <= t1:
+            x = (u - t0) / max(1e-6, t1 - t0); x = x * x * (3 - 2 * x)
+            return {k: a.get(k, b[k]) + (b[k] - a.get(k, b[k])) * x for k in b}
+    return dict(full[-1][1])
 
 
 def _wound_vals(keys, u):

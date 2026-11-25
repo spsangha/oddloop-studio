@@ -316,7 +316,8 @@ class Runtime:
         try: import kw_realism as _R; _R.compositor_finish(S, glare=True, vignette=0, glare_threshold=1.0, glare_mix=-0.85)   # LESSON: the compositor ellipse-mask vignette renders as a sharp light oval in mid-frame (it looked like a skin patch); post_kw.grade does the vignette
         except Exception as e: print('compositor reset failed', repr(e))
         S.cycles.caustics_refractive = True   # LESSON: MPFB eyes sit behind a refractive cornea; without this the eyes render black
-        S.render.resolution_x, S.render.resolution_y = 1080, 1920; S.render.resolution_percentage = int(os.environ.get('PCT', '100')); S.render.fps = FPS
+        S.render.resolution_x, S.render.resolution_y = tuple(int(v) for v in os.environ.get('KW_RES', '1080x1920').split('x'))   # KW_RES=WxH: brand stills (profile / banner)
+        S.render.resolution_percentage = int(os.environ.get('PCT', '100')); S.render.fps = FPS
         self.path_defaults = {k: getattr(S.cycles, k) for k in (
             'max_bounces', 'diffuse_bounces', 'glossy_bounces', 'adaptive_threshold',
             'adaptive_min_samples', 'caustics_reflective')}

@@ -17,7 +17,7 @@ Dimensions are the catalogue's bounding box in metres (x, y, z); check them in t
 | steel_frame_shelves_01 | 1.1, 0.5, 2.14 | 4348 | 1.6 | not fitted |
 | desk_lamp_arm_01 | 0.62, 0.41, 0.88 | 25710 | 2.9 | not fitted |
 | book_encyclopedia_set_01 | 0.55, 0.16, 0.24 | 67306 | 3.3 | not fitted |
-| magnifying_glass_01 | 0.13, 0.03, 0.27 | 7240 | 0.5 | not fitted |
+| magnifying_glass_01 | 0.13, 0.03, 0.27 | 7240 | 0.5 | fitted: table props (kwprops.magnifier, 20 cm flat, real glass lens) 2026-11-25 |
 
 ## Kitchen and food
 | id | size m (x, y, z) | polygons | MB | Status |
@@ -32,7 +32,7 @@ Dimensions are the catalogue's bounding box in metres (x, y, z); check them in t
 | croissant | 0.2, 0.08, 0.06 | 1990 | 2.1 | not fitted |
 | carrot_cake | 0.23, 0.23, 0.1 | 13790 | 3.4 | not fitted |
 | strawberry_chocolate_cake | 0.24, 0.24, 0.08 | 27054 | 3.3 | not fitted |
-| hamburger_buns | 0.4, 0.11, 0.06 | 11588 | 2.3 | not fitted |
+| hamburger_buns | 0.4, 0.11, 0.06 | 11588 | 2.3 | fitted: table props (kwprops.burger, bun 01 cut in two) 2026-11-25 |
 | food_avocado_01 | 0.1, 0.09, 0.14 | 7743 | 0.6 | not fitted |
 | food_kiwi_01 | 0.07, 0.07, 0.09 | 7748 | 0.8 | not fitted |
 | wine_bottles_01 | 0.68, 0.08, 0.33 | 28848 | 3.9 | not fitted |
@@ -42,7 +42,7 @@ Dimensions are the catalogue's bounding box in metres (x, y, z); check them in t
 |---|---|---|---|---|
 | medical_box | 0.53, 0.35, 0.1 | 3718 | 2.0 | not fitted |
 | medical_tape | 0.05, 0.05, 0.03 | 1408 | 1.6 | not fitted |
-| metal_stool_01 | 0.35, 0.35, 0.88 | 8334 | 2.3 | not fitted |
+| metal_stool_01 | 0.35, 0.35, 0.88 | 8334 | 2.3 | fitted: hospital/clinic (beside the exam bed, KW_CLINIC_STOOL=1) 2026-11-25 |
 | vintage_crutches_01 | 0.4, 0.22, 1.61 | 10628 | 0.8 | not fitted |
 | korean_fire_extinguisher_01 | 0.28, 0.37, 0.66 | 9913 | 1.6 | not fitted |
 | WetFloorSign_01 | 0.3, 0.36, 0.63 | 228 | 0.3 | not fitted |
