@@ -4,6 +4,7 @@ from mathutils import Vector, Matrix, Euler, Quaternion
 from mathutils.bvhtree import BVHTree
 import kwkit as KW
 V11 = os.environ.get('KW_CAST', '') == 'v1.1'
+BURGER_HALF = 0.075           # m wrist out from the midline for grip_burger
 LAUGH_BACK, LAUGH_BOUNCE = 4.0, 1.4      # deg head back, deg clavicle lift per bounce (~3.5 mm at the shoulder)
 import kwlib as L
 import kwlook as Q
@@ -689,6 +690,12 @@ class Runtime:
                 return D, 'palm', 'hold', wrist, sh + out * 0.4 - Up * 0.6
             if h.at == 'out':
                 D = sh + Fp * 0.5 - Up * 0.15 + out * 0.05; return D, 'palm', 'hold', orient(Up, Fp), pole
+            if V11 and h.prop == 'can' and h.pad == 'cup':     # cast v1.1 grip_cup: palm toward the midline, knuckles vertical -> cup upright
+                D = self.bw(p, 'spine02') + Fp * 0.3 - Up * 0.1 + out * 0.1
+                return D, 'palm', 'hold', orient(-out + Up * 0.1, Fp), sh + out * 0.45 - Up * 0.55
+            if V11 and h.prop == 'g_burger':     # cast v1.1 grip_burger: both hands, palms facing, ~11 cm apart, elbows low
+                D = self.bw(p, 'spine02') + Fp * 0.32 - Up * 0.02 + out * BURGER_HALF
+                return D, 'palm', 'hold', orient(-out + Up * 0.15, Fp * 0.55 + Up), sh + out * 0.30 - Up * 0.65
             D = self.bw(p, 'spine02') + Fp * 0.3 - Up * 0.12 + out * 0.08
             return D, 'palm', 'hold', orient(Up * 0.6 - out, Fp), sh + out * 0.45 - Up * 0.55
         if kind == 'touch':

@@ -48,16 +48,17 @@ ARK = {   # kit expression -> HG ARKit shape keys (weight)
 V11 = os.environ.get('KW_CAST', '') == 'v1.1'
 ARK.update({
     # tuned on Ben (strip s1 -> s2): HG ARKit keys read weaker than the brief's starting weights
-    'x_surprise': {**S2('browOuterUp', 1.0), 'browInnerUp': 0.9, **S2('eyeWide', 1.0), 'jawOpen': 0.55, 'mouthFunnel': 0.3, 'mouthClose': 0.0},
-    'x_fear': {'browInnerUp': 1.0, **S2('browDown', 0.55), **S2('browOuterUp', 0.1), **S2('eyeWide', 1.0), **S2('mouthStretch', 1.0),
-               **S2('mouthLowerDown', 0.6), 'jawOpen': 0.12},
+    'x_surprise': {**S2('browOuterUp', 1.4), 'browInnerUp': 1.2, **S2('eyeWide', 1.0), 'jawOpen': 0.6, 'mouthFunnel': 0.3, 'mouthClose': 0.0},
+    'x_fear': {'browInnerUp': 1.45, **S2('browDown', 0.25), **S2('browOuterUp', 0.35), **S2('eyeWide', 1.0), **S2('mouthStretch', 1.3),
+               **S2('mouthLowerDown', 0.7), 'jawOpen': 0.2},
     'x_disgust': {**S2('noseSneer', 1.0), **S2('mouthUpperUp', 1.0), 'mouthShrugLower': 0.7, **S2('browDown', 0.6), **S2('cheekSquint', 0.7),
                   **S2('eyeSquint', 0.6), **S2('mouthFrown', 0.3)},
     'x_pain': {**S2('browDown', 1.0), **S2('cheekSquint', 1.0), **S2('eyeSquint', 1.0), **S2('eyeBlink', 0.7), **S2('noseSneer', 1.0),
                **S2('mouthUpperUp', 0.8), **S2('mouthStretch', 0.7), 'jawOpen': 0.05},
-    'x_wince': {**S2('browDown', 0.7), **S2('eyeSquint', 0.6), 'eyeBlink_L': 0.45, 'eyeBlink_R': 0.3, **S2('noseSneer', 0.5), **S2('mouthPress', 0.5),
-                **S2('cheekSquint', 0.3)},
-    'x_laugh': {**S2('mouthSmile', 1.0), **S2('cheekSquint', 1.0), **S2('eyeSquint', 0.7), 'jawOpen': 0.4, **S2('mouthUpperUp', 0.4), **S2('mouthDimple', 0.3)},
+    'x_wince': {**S2('browDown', 0.9), **S2('eyeSquint', 0.8), 'eyeBlink_L': 0.6, 'eyeBlink_R': 0.5, **S2('noseSneer', 0.7), **S2('mouthPress', 0.3),
+                **S2('mouthStretch', 0.45), **S2('cheekSquint', 0.6)},
+    'x_laugh': {**S2('mouthSmile', 1.45), **S2('cheekSquint', 1.2), **S2('eyeSquint', 1.0), 'jawOpen': 0.55, **S2('mouthUpperUp', 0.5),
+                **S2('mouthDimple', 0.3), 'browInnerUp': 0.3},
     # B2 jaw: jawOpen past 1.0 (slider raised) keeps opening linearly; lips part, lower lip down
     'x_jaw': {'jawOpen': 1.0}, 'x_lips': {**S2('mouthLowerDown', 0.45), **S2('mouthUpperUp', 1.0)},
 })
@@ -71,6 +72,9 @@ def jaw_for_gap(name, mm, scale=1.0):
         if g <= g1: return max(0.0, j0 + (j1 - j0) * (g - g0) / (g1 - g0))
     return t[-1][0]
 JAW_MAX = 1.8                     # v1.1 jawOpen ceiling (HG key is linear past 1: ~21 mm incisor gap per unit)
+# v1.1 keys allowed past 1.0 (HG brow / smile / stretch keys stay clean to 1.5; lids and lips are capped at 1.0)
+KEY_MAX = {'jawOpen': JAW_MAX, 'browInnerUp': 1.5, 'browOuterUp_L': 1.5, 'browOuterUp_R': 1.5, 'mouthSmile_L': 1.5, 'mouthSmile_R': 1.5,
+           'mouthStretch_L': 1.5, 'mouthStretch_R': 1.5}
 ARK_NAMES = sorted({k for d in ARK.values() for k in d})
 
 # HG bone -> (MakeHuman driver bone, HG point A, MakeHuman point A', HG point B, MakeHuman point B', scale?)
@@ -145,8 +149,9 @@ class Graft:
             for k in ARK_NAMES:
                 b = kb.get(k)
                 if b is not None:
-                    nv = min(JAW_MAX if (V11 and k == 'jawOpen') else 1.0, want.get(k, 0.0))
-                    if V11 and k == 'jawOpen' and b.slider_max < JAW_MAX: b.slider_max = JAW_MAX
+                    mx_ = KEY_MAX.get(k, 1.0) if V11 else 1.0
+                    nv = min(mx_, want.get(k, 0.0))
+                    if mx_ > 1.0 and b.slider_max < mx_: b.slider_max = mx_
                     if abs(b.value - nv) > 1e-4: b.value = nv
         tg = getattr(self, 'v11_tongue', None)
         if tg is not None: tg.value = min(1.0, max(0.0, (want.get('jawOpen', 0.0) - 0.4) * 0.8))     # B2: tongue low at wide jaw
@@ -757,6 +762,17 @@ def _glasses(kr, p, G):
 GRIP = {'can': (0.033, 0.12), 'spoon': (0.005, 0.15)}     # kit prop radius, length (kwfx._make_prop)
 ITEM_OFF = {}
 ITEM_OFF_P = {}
+# cast v1.1 hand-authored grips (fixed prop size; the prop follows the hand). Absolute finger angles (deg) on the kit finger
+# bones: finger k (1 thumb .. 5 pinky) -> (joint1, joint2, joint3) flex about x; thumb also 'z' on joint 1. Per character
+# override AUTH_P[(name, prop)]. Offsets (m) are in the grip frame named in AUTH_AT.
+AUTH = {
+    'g_pea': {1: ((30, 25, 25), -30), 2: ((38, 48, 38), 0), 3: ((55, 70, 50), 0), 4: ((62, 75, 50), 0), 5: ((68, 75, 50), 0)},
+    'g_paperclip': {1: ((32, 28, 28), -30), 2: ((42, 52, 40), 0), 3: ((55, 70, 50), 0), 4: ((62, 75, 50), 0), 5: ((68, 75, 50), 0)},
+    'g_burger': {1: ((5, 10, 10), -55), 2: ((25, 35, 25), 0), 3: ((28, 38, 25), 0), 4: ((30, 40, 25), 0), 5: ((32, 42, 25), 0)},
+}
+AUTH_P = {}
+AUTH_OFF = {'g_pea': (0.0, 0.0, 0.0), 'g_paperclip': (0.0, 0.0, 0.0), 'g_burger': (0.0, 0.0, 0.0)}
+BURGER = dict(width=0.11, height=0.06, squash=0.96, tilt=12.0)     # bun dent = (1 - squash) * height ~ 2.4 mm; tilt toward the face
 SKIN = 0.0015                                             # target skin-to-prop gap
 INV = {v[0]: k for k, v in MAP.items()}                   # MakeHuman bone -> HG bone
 
@@ -1457,6 +1473,49 @@ Graft._solve_can = _solve_can
 Graft.drink_w = _drink_w
 
 
+def _v11_authored(self, kr, jobs):
+    """cast v1.1 grip_pinch / grip_burger: fixed finger tables, then the item is put on the hand (it never moves the hand)"""
+    p = self.p; RW = self.rig.matrix_world; moved = []
+    for j in jobs:
+        side, h = j[1], j[8]
+        if not (h.kind == 'hold' and h.prop and h.prop in AUTH): continue
+        tab = AUTH_P.get((p.name, h.prop), AUTH[h.prop])
+        for k, (ang, tz) in tab.items():
+            for jj in (1, 2, 3):
+                e = p.pb(f'finger{k}-{jj}.{side}').rotation_euler
+                e.x = math.radians(ang[jj - 1]); e.y = 0.0; e.z = math.radians(tz if jj == 1 else 0.0) * (1 if side == 'R' else -1)
+        moved.append((side, h))
+    if not moved: return
+    bpy.context.view_layer.update()
+    tip = lambda b: RW @ self.rig.pose.bones[b].tail
+    p = self.p
+    for side, h in moved:
+        ob = kr.FX.props.get(h.prop)
+        if ob is None: continue
+        Mw = kr.wmat(p, f'wrist.{side}'); n_, f_ = self.pn[side]; n = (Mw.to_3x3() @ n_).normalized(); f = (Mw.to_3x3() @ f_).normalized()
+        off = V(AUTH_OFF.get(h.prop, (0, 0, 0)))
+        if h.prop in ('g_pea', 'g_paperclip'):
+            T, I = tip(f'thumb.03.{side}'), tip(f'f_index.03.{side}'); c = (T + I) / 2
+            ax = (I - T).normalized(); up = n - ax * n.dot(ax); up.normalize()
+            M = Matrix((ax, up.cross(ax), up)).transposed().to_4x4(); M.translation = c + Mw.to_3x3() @ off - (up * 0.004 if h.prop == 'g_pea' else V((0, 0, 0)))
+            if h.prop == 'g_paperclip': M = M @ Matrix.Rotation(math.radians(90), 4, 'Y')      # clip plane between the pads
+            ob.matrix_world = M
+            if os.environ.get('KW_V11_DBG') or not getattr(self, '_v11_said', {}).get(h.prop):
+                self.__dict__.setdefault('_v11_said', {})[h.prop] = 1
+                print(f'cast v1.1 grip {p.name} {side}{h.prop}: tip-to-tip bone ends {1000 * (I - T).length:.1f} mm')
+        elif h.prop == 'g_burger' and side == 'R':
+            P = Mw @ self.palm[side]; L_ = kr.wmat(p, 'wrist.L'); PL = L_ @ self.palm['L']
+            c = (P + PL) / 2 + Mw.to_3x3() @ off
+            x = (PL - P).normalized(); z = V((0, 0, 1)); z = (z - x * z.dot(x)).normalized()
+            fw = z.cross(x)          # toward the face side
+            R = Matrix.Rotation(math.radians(-BURGER['tilt']), 3, x) @ Matrix((x, fw, z)).transposed()
+            M = R.to_4x4(); M.translation = c - (R @ V((0, 0, BURGER['height'] * BURGER['squash'] / 2)))
+            ob.matrix_world = M @ Matrix.Diagonal((1, 1, BURGER['squash'], 1))
+            if not getattr(self, '_v11_bsaid', False):
+                self._v11_bsaid = True
+                print(f'cast v1.1 grip {p.name} burger: palms {1000 * (PL - P).length:.1f} mm apart (bun {1000 * BURGER["width"]:.0f})')
+
+
 def _bloat_value(self):
     b = self.body.data.shape_keys.key_blocks.get('kw_bloat')
     return b.value if b is not None else 0.0
@@ -1523,6 +1582,7 @@ def _apply_contacts(self, kr, shot):
                 st_ = getattr(self, '_bite', None); hid = not (st_ is None or st_['mound'])     # food gone from the start of the pull-out
                 hid = hid or bool(getattr(h, 'pad', None))       # cast v1.1 grip_tool: no food on a carried tool
                 self._mound.hide_render = hid; self._mound.hide_viewport = hid
+    if V11: self.v11_authored(kr, jobs)
     self.forearm_twist({j[1] for j in jobs})
 
 
@@ -1550,6 +1610,7 @@ def _forearm_twist(self, sides='LR'):
 
 
 Graft.apply_contacts = _apply_contacts
+Graft.v11_authored = _v11_authored
 Graft.forearm_twist = _forearm_twist
 
 
