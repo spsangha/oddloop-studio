@@ -527,7 +527,11 @@ class Builder:
     def update_screen(self, shot, u, t):
         """screen-space graphics (gauge / label with pos=) placed in front of the camera after it moved"""
         rt = self.rt; cam = rt.CAM; cd = cam.data; Rc = cam.matrix_world.to_3x3().normalized(); P0 = cam.matrix_world.translation
-        d = max(0.12, cd.dof.focus_distance * 0.85); th = 18.0 / cd.lens; hh = d * th; hw = hh * 9 / 16; sc = d / 0.55
+        fd_ = cd.dof.focus_distance
+        # H1: closer than 14 cm the old 12 cm floor put the word behind the subject; there it sits at 0.93 x focus (in front, little blur).
+        # Apparent size does not depend on d (sc grows with d), so a still camera renders exactly as before.
+        d = fd_ * 0.85 if fd_ * 0.85 >= 0.12 else min(0.12, fd_ * 0.93); d = max(d, cd.clip_start * 3)
+        th = 18.0 / cd.lens; hh = d * th; hw = hh * 9 / 16; sc = d / 0.55
         def place(root, pos, size=1.0):
             x = (pos[0] - 0.5) * 2 * hw; y = (pos[1] - 0.5) * 2 * hh
             root.matrix_world = (Matrix.Translation(P0 + Rc @ V((x, y, -d))) @ (Rc @ RX90).to_4x4() @ Matrix.Scale(sc * size, 4))
@@ -547,8 +551,18 @@ class Builder:
                 if o.get('near') is not None:
                     w = rt.anchor_world(o['near']); dd = (w - P0).length
                     lab.root.matrix_world = Matrix.Translation(w) @ (Rc @ RX90).to_4x4() @ Matrix.Scale(dd / 0.55 * o['size'], 4)
-                else: place(lab.root, o['pos'], o['size'])
-                ka = pop((u - o['at']) / 0.3) if u > o['at'] else 0.0; lab.set(scale=max(ka, 1e-5))
+                else:
+                    if 'fit' not in it:       # H1: whole word at full size <= 960 px of 1080 (60 px free each side)
+                        place(lab.root, o['pos'], o['size']); lab.set(scale=1.0); bpy.context.view_layer.update()     # text bbox evaluated (a shard may start here)
+                        Mo = lab.root.matrix_world @ lab.object.matrix_parent_inverse @ lab.object.matrix_basis; RcT = Rc.transposed(); xs = []
+                        for q in lab.object.bound_box:
+                            cq = RcT @ ((Mo @ V(q)) - P0); xs.append(cq.x / max(1e-6, -cq.z) / (th * 9 / 16) * 540 + 540)
+                        wpx = max(xs) - min(xs); it['fit'] = min(1.0, 945.0 / max(1.0, wpx)); it['wpx'] = wpx * it['fit']
+                        print(f"KW label '{o['text']}' width {wpx:.0f} px -> {it['wpx']:.0f} px at 1080 (fit {it['fit']:.3f})", flush=True)
+                    place(lab.root, o['pos'], o['size'] * it['fit'])
+                ka = pop((u - o['at']) / 0.3) if u > o['at'] else 0.0
+                if o.get('dur') is not None and u > o['at'] + o['dur']: ka = 0.0
+                lab.set(scale=max(ka, 1e-5))
             elif f.kind == 'counter':
                 lab = it.get('label')
                 if lab is None: continue
@@ -578,8 +592,8 @@ def _key_vals(keys, u):
 
 def _wound_vals(keys, u):
     """smoothstep between wound keys; names carry forward"""
-    names = ('open', 'stitches', 'out', 'red', 'collagen', 'vessels', 'line', 'scar', 'pink', 'dots', 'level', 'cpink', 'cells', 'specks', 'cinch')
-    full = []; cur = dict.fromkeys(names, 0.0); cur['line'] = None; cur['specks'] = -1.0; cur['cinch'] = None     # specks -1 = hidden
+    names = ('open', 'stitches', 'out', 'red', 'collagen', 'vessels', 'line', 'scar', 'pink', 'dots', 'level', 'cpink', 'cells', 'specks', 'cinch', 'lwid')
+    full = []; cur = dict.fromkeys(names, 0.0); cur['line'] = None; cur['specks'] = -1.0; cur['cinch'] = None; cur['lwid'] = 1.0     # specks -1 = hidden
     for t, v in sorted(keys, key=lambda x: x[0]):
         cur = dict(cur); cur.update(v); full.append((t, cur))
     if u <= full[0][0]: return {k: v for k, v in full[0][1].items() if v is not None}

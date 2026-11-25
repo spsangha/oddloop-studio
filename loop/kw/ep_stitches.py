@@ -45,14 +45,14 @@ K += [(W(2, 'and') - 0.3, dict(specks=-1.0)), (W(2, 'and'), dict(cells=0.0, spec
       (L(3), dict(cells=1.0)), (L(3) + 0.6, dict(cells=2.0))]                                         # cells sink away
 K += [(L(3) + 9 * F, dict(collagen=0.0)), (W(3, 'the') + 12 * F, dict(collagen=1.0))]
 K += [(L(4) + 6 * F, dict(vessels=0.0)), (L(4) + 42 * F, dict(vessels=1.0))]
-K += [(W(4, 'to') + 6 * F, dict(level=0.0, cpink=0.0, red=1.0)), (L(5), dict(level=1.0, cpink=1.0, collagen=1.0, vessels=1.0)), (L(5) + 0.75, dict(collagen=0.0, vessels=0.0))]   # strands and vessels sink into the levelled pink   # yellow -> pink, seam fills level
+K += [(W(4, 'to') + 6 * F, dict(level=0.0, cpink=0.0, red=1.0, pink=0.0)), (L(5), dict(level=1.0, cpink=1.0, collagen=1.0, vessels=1.0, pink=1.0, lwid=1.0)), (L(5) + 0.75, dict(collagen=0.0, vessels=0.0))]   # strands and vessels sink into the levelled pink   # yellow -> pink, seam fills level
 T14 = L(5) + 12 * F                         # stitches out: one every 3 frames, each 5 frames
-K += [(L(5) + 12 * F, dict(red=0.4, out=0.0, scar=0.0, dots=0.0, pink=0.0))]
-K += [(T14 + 3 * F * k, dict(out=float(k))) for k in range(1, 10)] + [(T14 + 3 * F * 9 + 5 * F, dict(out=10.0, scar=1.0, dots=0.6, pink=1.0))]
+K += [(L(5) + 12 * F, dict(red=0.4, out=0.0, scar=0.0, dots=0.0))]          # H2: the band under the strands is pink from L(5) on (pink=0 here showed the dark seam)
+K += [(T14 + 3 * F * k, dict(out=float(k), lwid=1.0 - 0.333 * k / 10)) for k in range(1, 10)] + [(T14 + 3 * F * 9 + 5 * F, dict(out=10.0, scar=1.0, dots=0.6, pink=1.0, lwid=0.667))]   # H2: pink band 3 mm -> 2 mm while the stitches leave
 K += [(W(5, 'and') + 30 * F, dict(red=0.1, dots=0.3)), (W(5, 'strength'), dict(red=0.05, scar=0.6, dots=0.0))]
 TS = END - 6 * F                            # last 6 frames: the scar splits back into the frame-0 cut
 K += [(TS, dict(open=1.0, stitches=10.0, cinch=10.0, out=10.0, level=1.0, cpink=1.0, scar=0.6, red=0.05)),
-      (END, dict(open=1.0, stitches=0.0, cinch=0.0, out=0.0, level=0.0, cpink=0.0, scar=0.0, red=0.0, collagen=0.0, vessels=0.0, line=0.0, pink=0.0, dots=0.0))]
+      (END, dict(open=1.0, stitches=0.0, cinch=0.0, out=0.0, level=0.0, cpink=0.0, scar=0.0, red=0.0, collagen=0.0, vessels=0.0, line=0.0, pink=0.0, dots=0.0, lwid=1.0))]
 
 YL = dict(color='yellow', size=1.2); LP = (0.5, 0.84)
 TICKS = [T2 + SP * k + 4 * F for k in range(10)] + [TC + SC * k + 0.08 for k in range(10)] + [T14 + 3 * F * k for k in range(10)]
@@ -61,6 +61,7 @@ LABELS = [('INFLAMED', W(2, 'vessels')), ('COLLAGEN', W(3, 'collagen')), ('VESSE
 for t in TICKS: ep.sound(t, 'tick', 0.35)
 ep.sound(0.0, 'thud', 0.8)
 for _, t in LABELS: ep.sound(t, 'thud', 0.6)
+# LDUR (below): every label stays on as long as 80% does today (its word -> the loop_split segment)
 ep.sound(TS, 'thud', 1.0)
 
 # ---- the 17 timeline segments (brief section 6 rows, on their words) ----------------------------------------------
@@ -69,10 +70,12 @@ SEG = [(0.0, 'cut_open'), (W(0, 'and'), 'stitch_1_5'), (W(0, 'thread'), 'stitch_
        (L(3), 'collagen_grow'), (W(3, 'a'), 'lattice'), (W(3, 'the'), 'lattice_full'), (L(4), 'vessels_sprout'),
        (W(4, 'to'), 'fill_level'), (L(5), 'stitches_out'), (W(5, 'and'), 'scar_back'), (W(5, 15), 'scar_pale'),
        (W(5, 'strength'), 'loop_split')]
+LDUR = round(SEG[-1][0] - LABELS[-1][1], 3)
 for i, (t0, nm) in enumerate(SEG):
     keys = [(t - t0, v) for t, v in K]
     fx = [KW.fx.wound(ben, keys, side='L')]
-    fx += [KW.fx.label(tx, at=round(tl - t0, 3), pos=LP, **YL) for tx, tl in LABELS if t0 <= tl < (SEG[i + 1][0] if i + 1 < len(SEG) else 99)]
+    t1 = SEG[i + 1][0] if i + 1 < len(SEG) else 99
+    fx += [KW.fx.label(tx, at=round(tl - t0, 3), pos=LP, dur=LDUR, **YL) for tx, tl in LABELS if tl < t1 and tl + LDUR > t0]   # H1: on through segment changes
     cam = KW.cam.loop() if i == len(SEG) - 1 else KW.cam.part(ben, 'calf_l', **CAMO)
     ep.shot(t0, nm, set='studio', world='sky', cast={ben: KW.pose('stand', at='centre')}, fx=fx, cam=cam)
 ep.run()

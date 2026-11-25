@@ -227,7 +227,8 @@ class Wound:
         deep = mth('MULTIPLY', g, sm(0.0, 1.0, mth('DIVIDE', mth('SUBTRACT', mth('MULTIPLY', w, 0.6), ac), 0.0008)))
         rim = mth('MULTIPLY', mth('MULTIPLY', mth('EXPONENT', mth('MULTIPLY', -1.0, mth('POWER', mth('DIVIDE', mth('SUBTRACT', ac, w), 0.0013), 2.0))), envs), mth('MAXIMUM', oe, mth('MULTIPLY', Vv['line'], 0.3)))
         rim = mth('MULTIPLY', rim, mth('SUBTRACT', 1.0, g))
-        line = mth('MULTIPLY', mth('MULTIPLY', mth('MULTIPLY', Vv['line'], Vv['level']), mth('SUBTRACT', 1.0, sm(LINE_W - 0.0004, LINE_W + 0.0002, ac))), envs)
+        lwh = mth('MULTIPLY', Vv['lwid'], LINE_W) if 'lwid' in Vv else LINE_W                                  # H2: the levelled pink band narrows to the 2 mm scar (shader only)
+        line = mth('MULTIPLY', mth('MULTIPLY', mth('MULTIPLY', Vv['line'], Vv['level']), mth('SUBTRACT', 1.0, sm(mth('SUBTRACT', lwh, 0.0004) if 'lwid' in Vv else LINE_W - 0.0004, mth('ADD', lwh, 0.0002) if 'lwid' in Vv else LINE_W + 0.0002, ac))), envs)
         depth = mth('MULTIPLY', mth('MULTIPLY', DEPTH, mth('SQRT', mth('MAXIMUM', mth('SUBTRACT', 1.0, mth('POWER', mth('DIVIDE', ac, mth('MAXIMUM', w, 1e-5)), 2.0)), 0.0))), mth('DIVIDE', w, HALF_W, clamp=True))
         depth = mth('MULTIPLY', depth, mth('DIVIDE', w, 0.0004, clamp=True))
         lw = mth('ADD', LIP_W, mth('MULTIPLY', Vv['red'], 0.002)); lh = mth('ADD', LIP_H, mth('MULTIPLY', Vv['red'], 0.001))
@@ -269,6 +270,7 @@ class Wound:
             n = N.new('ShaderNodeValue'); n.name = n.label = 'kw_w_' + name; n.outputs[0].default_value = v; return n.outputs[0]
         self.V = {k: val(k, 0.0) for k in ('open', 'stitches', 'red', 'line', 'scar', 'level')}
         self.V.update({k: val(k, 0.0) for k in ('pink', 'holes', 'hout', 'dots', 'blood')})
+        self.V['lwid'] = val('lwid', 1.0)
         tc = N.new('ShaderNodeTexCoord')
         F = self._field(nt, tc.outputs['UV'], self.V)
         mth, mixc, mulc, sm = F['_mth'], F['_mixc'], F['_mulc'], F['_sm']
@@ -599,7 +601,8 @@ class Wound:
             specks.append(self._skin([o], f'kw_speck_{i}'))
         return cells, specks
 
-    def set(self, open=0.0, stitches=0.0, out=0.0, red=0.0, collagen=0.0, vessels=0.0, line=None, scar=0.0, pink=0.0, dots=0.0, blood=None, level=0.0, cpink=0.0, cells=0.0, specks=-1.0, cinch=None, show=True):
+    def set(self, open=0.0, stitches=0.0, out=0.0, red=0.0, collagen=0.0, vessels=0.0, line=None, scar=0.0, pink=0.0, dots=0.0, blood=None, level=0.0, cpink=0.0, cells=0.0, specks=-1.0, cinch=None, show=True, lwid=1.0):
+        self.V['lwid'].default_value = lwid
         if line is None: line = min(1.0, max(0.0, stitches - 0.0) / max(1, self.N)) if stitches > 0 else 0.0
         for k, v in dict(open=open if show else 0.0, stitches=stitches if cinch is None else cinch, red=red if show else 0.0, line=line if show else 0.0, scar=scar if show else 0.0, level=level).items():
             self.V[k].default_value = v; self.gmod[self.gid[k]] = float(v)

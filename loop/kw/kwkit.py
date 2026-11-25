@@ -434,10 +434,13 @@ class fx:
         """pressure dial: needle rises 0.1 -> `to` (0..1) from local `at` over `dur`; `label` (e.g. '20x') pops beside it."""
         return FX('gauge', to=to, at=at, dur=dur, label=label, low=low, high=high, title=title, place=place, pos=pos, size=size, slam=slam)
     @staticmethod
-    def label(text, at=0.2, pos=(0.5, 0.72), near=None, size=1.0, color='red'):
-        """3D word that pops in (keep to 1-3 words or a number). pos = screen position (0..1, 0..1 from bottom-left) or near=Anchor"""
+    def label(text, at=0.2, pos=(0.5, 0.72), near=None, size=1.0, color='red', dur=None):
+        """3D word that pops in (keep to 1-3 words or a number). pos = screen position (0..1, 0..1 from bottom-left) or near=Anchor.
+        A pos label is printed on the screen: same size and place whatever the camera does, never wider than 960 px (a long word
+        is scaled down to fit). dur = seconds on screen, then it is gone (like a cut); a label may be given to several shots
+        (at < 0 in the later ones) to stay on through a segment change of one continuous camera move."""
         if color not in ('red', 'yellow', 'white', 'green', 'blue'): raise ValueError('label color: red | yellow | white | green | blue')
-        return FX('label', text=str(text), at=at, pos=pos, near=near, size=size, color=color)
+        return FX('label', text=str(text), at=at, pos=pos, near=near, size=size, color=color, dur=dur)
     @staticmethod
     def arrow(points=None, at=0.2, dur=0.6, color='yellow', width=0.012, path=None, person=None):
         """growing curved arrow along world points, or along a named organ path of a person (see flow paths)"""
