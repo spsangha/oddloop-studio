@@ -91,7 +91,7 @@ if os.environ.get('KW_CAST', '') == 'v1.1':
     FACES.update({
         'surprise': {'x_surprise': 1.0}, 'fear': {'x_fear': 1.0}, 'disgust': {'x_disgust': 1.0}, 'pain': {'x_pain': 1.0},
         'wince': {'x_wince': 1.0}, 'laugh': {'x_laugh': 1.0},
-        'speak': {'x_gap': 8.0}, 'spoon': {'x_gap': 20.0}, 'bite': {'x_gap': 32.0, 'x_lips': 0.35},
+        'speak': {'x_gap': 8.0}, 'spoon': {'x_gap': 20.0}, 'bite': {'x_gap': 32.0, 'x_lips': 0.7},
         'shock': {'x_surprise': 1.0}, 'scream': {'x_fear': 1.0, 'x_gap': 26.0}, 'nausea': {'x_disgust': 0.6, 'pressed': 0.5},
     })
 EXTRA_EXPR = {   # extra shape keys loaded on every person (MakeHuman CC0 targets)

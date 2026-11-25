@@ -21,7 +21,9 @@ CATCH = dict(size=0.16, power=6.0, off=(-0.22, 0.20, 0.0))   # disc (m), W, offs
 RED = dict(nose=0.55, cheek=0.45, ear=0.55, knuckle=0.40)    # mask strengths
 RED_TINT = (1.10, 0.80, 0.78)    # base colour multiplier at full red mask
 LIP_TINT = (0.80, 0.60, 0.60)    # base colour multiplier at full lip mask
-PORE = dict(scale=1400.0, strength=0.22, dist=0.0006)        # Voronoi cells per m (~0.7 mm), bump
+PORE = dict(scale=1600.0, strength=0.35, dist=0.0007)        # Voronoi cells per m (~0.7 mm), bump
+MOUTH_IN = (0.16, 0.07, 0.07)    # mouth-inside colour multiplier (deep)
+LASH = dict(children=8, radius=1.25, light=0.45, red=0.6)   # + lash/brow hair colour = head hair (HG had ginger 1.9/0.9)   # eyelash children per guide, thickness multiplier
 SSS_SCALE = 0.005                # m (HG 0.01 reads waxy at close range)
 
 
@@ -123,11 +125,22 @@ def skin_mask(G):
     near_mouth = g(tip + np.array([0, 0.01, -0.035]), 0.016)
     lip = np.clip((lipd - 0.35) / 0.4, 0, 1) * np.clip(near_mouth * 2.0, 0, 1)
     face = np.clip(g(tip, 0.035) + g(E + np.array([0, -0.01, -0.03]), 0.045), 0, 1)
+    # mouth inside (B2 'dark inside'): skin behind the lip line, inside the head, fading with depth
+    M = tip + np.array([0, 0.012, -0.034]); lipy = co[lip > 0.5][:, 1].mean() if (lip > 0.5).any() else M[1]
+    dep = co[:, 1] - (lipy + 0.004)
+    box = (dep > 0) & (np.abs(co[:, 0] - M[0]) < 0.032) & (np.abs(co[:, 2] - M[2]) < 0.035) & (dep < 0.09)
+    from mathutils.bvhtree import BVHTree
+    bvh = BVHTree.FromPolygons([V(c) for c in co], [tuple(pl.vertices) for pl in body.data.polygons])
+    inside = np.zeros(n, bool)
+    for i in np.nonzero(box)[0]:      # inside the mouth = the face is in front of it (a forward ray hits the body again)
+        o_ = V(co[i]) + V((0, -0.0015, 0)); hit = bvh.ray_cast(o_, V((0, -1, 0)), 0.08)
+        inside[i] = hit[0] is not None
+    inner = np.clip(dep / 0.012, 0, 1) * inside
     me = body.data
     at = me.color_attributes.get('kw11_skin') or me.color_attributes.new('kw11_skin', 'FLOAT_COLOR', 'POINT')
-    col = np.stack([red, lip, face, np.ones(n)], axis=1).ravel()
+    col = np.stack([red, lip, face, inner], axis=1).ravel()
     at.data.foreach_set('color', col)
-    print(f'cast v1.1: skin mask red max {red.max():.2f} mean {red.mean():.3f} lip verts {(lip > 0.5).sum()} face verts {(face > 0.5).sum()}')
+    print(f'cast v1.1: skin mask red max {red.max():.2f} mean {red.mean():.3f} lip verts {(lip > 0.5).sum()} face verts {(face > 0.5).sum()} inner verts {(inner > 0.5).sum()}')
 
 
 def skin(G):
@@ -144,7 +157,9 @@ def skin(G):
         L.new(sp.outputs[0], r.inputs['Factor']); L.new(src, r.inputs['A'])
         lp = N.new('ShaderNodeMix'); lp.data_type = 'RGBA'; lp.blend_type = 'MULTIPLY'; lp.inputs['B'].default_value = (*LIP_TINT, 1)
         L.new(sp.outputs[1], lp.inputs['Factor']); L.new(r.outputs['Result'], lp.inputs['A'])
-        L.new(lp.outputs['Result'], bsdf.inputs['Base Color'])
+        dk = N.new('ShaderNodeMix'); dk.data_type = 'RGBA'; dk.blend_type = 'MULTIPLY'; dk.inputs['B'].default_value = (*MOUTH_IN, 1)
+        L.new(at.outputs['Alpha'], dk.inputs['Factor']); L.new(lp.outputs['Result'], dk.inputs['A'])
+        L.new(dk.outputs['Result'], bsdf.inputs['Base Color'])
         # pores: fine Voronoi pits in object space, face only
         tc = N.new('ShaderNodeTexCoord'); vo = N.new('ShaderNodeTexVoronoi'); vo.feature = 'F1'; vo.inputs['Scale'].default_value = PORE['scale']
         vo.inputs['Randomness'].default_value = 0.9
@@ -161,8 +176,22 @@ def skin(G):
     print('cast v1.1: skin', G.p.name)
 
 
+def lashes(G):
+    for md in G.body.modifiers:
+        if md.type != 'PARTICLE_SYSTEM' or 'Eyelash' not in md.particle_system.settings.name: continue
+        st = md.particle_system.settings
+        if st.get('kw11'): continue
+        st.rendered_child_count = LASH['children']; st.child_percent = LASH['children']; st.radius_scale *= LASH['radius']
+        st['kw11'] = 1
+        for m in G.body.data.materials:
+            if m is not None and m.name.startswith('.HG_Hair_Eye'):
+                g = m.node_tree.nodes.get('HG_Hair')
+                if g: g.inputs['Lightness'].default_value = LASH['light']; g.inputs['Redness'].default_value = LASH['red']
+        print('cast v1.1: lashes', st.name, st.rendered_child_count, round(st.radius_scale, 4))
+
+
 def apply(kr, p, G):
     if not on(): return
-    eyes(G); skin(G); catch_light(kr, G)
+    eyes(G); skin(G); lashes(G)      # B1 catch-light: the kit key light already gives one per eye at the same clock position (catch_light() kept, unused)
     tl = next((o for o in G.meshes if o.name.startswith('HG_TeethLower')), None)
     G.v11_tongue = tl.data.shape_keys.key_blocks.get('tongue_down') if tl is not None and tl.data.shape_keys else None

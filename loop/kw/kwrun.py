@@ -997,6 +997,19 @@ class Runtime:
     def set_cam(self, pos, tgt, up, lens, fstop, foc):
         cd = self.CAM.data; R = L.aim(V(tgt) - V(pos), up)
         self.CAM.matrix_world = Matrix.Translation(V(pos)) @ R.to_4x4()
+        if os.environ.get('KW_CAST', '') == 'v1.1':
+            # cast v1.1: a face focus point sits inside the head (head bone + 3 cm) -> at f/2 the skin and eyes were soft.
+            # Focus on the nearer HG eye when the old focus point is inside that head.
+            best = None
+            for ra_ in self.actors.values():
+                g_ = getattr(ra_.p, 'hg', None)
+                if g_ is None: continue
+                for s_ in 'LR':
+                    pb_ = g_.rig.pose.bones.get(f'eyeball.{s_}')
+                    if pb_ is None: continue
+                    e_ = g_.rig.matrix_world @ pb_.head
+                    if (e_ - V(foc)).length < 0.15 and (best is None or (e_ - V(pos)).length < (best - V(pos)).length): best = e_
+            if best is not None: foc = best + (V(pos) - best).normalized() * 0.011
         cd.lens = lens; cd.dof.use_dof = True; cd.dof.aperture_fstop = fstop; cd.dof.focus_distance = max(0.02, (V(foc) - V(pos)).length)
 
     # ================================================================== visibility

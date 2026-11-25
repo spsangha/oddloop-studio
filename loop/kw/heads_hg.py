@@ -57,9 +57,17 @@ ARK.update({
     'x_wince': {**S2('browDown', 0.5), **S2('eyeSquint', 0.7), 'eyeBlink_L': 0.6, 'eyeBlink_R': 0.5, **S2('noseSneer', 0.35), **S2('mouthPress', 0.3)},
     'x_laugh': {**S2('mouthSmile', 0.9), **S2('cheekSquint', 0.8), **S2('eyeSquint', 0.5), 'jawOpen': 0.3, **S2('mouthUpperUp', 0.2)},
     # B2 jaw: jawOpen past 1.0 (slider raised) keeps opening linearly; lips part, lower lip down
-    'x_jaw': {'jawOpen': 1.0}, 'x_lips': {**S2('mouthLowerDown', 1.0), **S2('mouthUpperUp', 1.0)},
+    'x_jaw': {'jawOpen': 1.0}, 'x_lips': {**S2('mouthLowerDown', 0.45), **S2('mouthUpperUp', 1.0)},
 })
-JAW_FIT = {'Ben': (21.0, -2.1), 'Howard': (21.0, -3.3), '*': (21.0, -2.5)}   # gap mm = a * jawOpen + b (cast blend, jaw_cal)
+JAW_TAB = {   # jawOpen -> front-teeth gap (mm) on the cast blend (measured: /tmp/b1/jaw_cal.py); x the graft scale in the kit
+    'Ben': ((0.0, -2.1), (0.25, 3.3), (0.5, 8.7), (1.0, 18.9), (1.5, 28.1), (1.8, 33.0)),
+    'Howard': ((0.0, -3.3), (0.25, 2.1), (0.5, 7.4), (1.0, 17.7), (1.5, 27.1), (1.8, 32.1))}
+JAW_TAB['*'] = JAW_TAB['Ben']
+def jaw_for_gap(name, mm, scale=1.0):
+    t = JAW_TAB.get(name, JAW_TAB['*']); g = mm / scale
+    for (j0, g0), (j1, g1) in zip(t, t[1:]):
+        if g <= g1: return max(0.0, j0 + (j1 - j0) * (g - g0) / (g1 - g0))
+    return t[-1][0]
 JAW_MAX = 1.8                     # v1.1 jawOpen ceiling (HG key is linear past 1: ~21 mm incisor gap per unit)
 ARK_NAMES = sorted({k for d in ARK.values() for k in d})
 
@@ -130,7 +138,7 @@ class Graft:
             if v <= 0: continue
             for k, w in ARK.get(e, {}).items(): want[k] = max(want.get(k, 0.0), v * w)
         if V11 and exprs.get('x_gap', 0) > 0:      # B2: named front-teeth gap (mm) -> jawOpen on this head
-            a, b = JAW_FIT.get(self.p.name, JAW_FIT['*']); want['jawOpen'] = max(want.get('jawOpen', 0.0), (exprs['x_gap'] - b) / a)
+            want['jawOpen'] = max(want.get('jawOpen', 0.0), jaw_for_gap(self.p.name, exprs['x_gap'], getattr(self, 'scale', 1.0)))
         for kb in self.keys:
             for k in ARK_NAMES:
                 b = kb.get(k)
@@ -255,6 +263,7 @@ def graft(kr, ra, role):
              ('h:foot.L', 'h:foot.L'), ('h:foot.R', 'h:foot.R')]
     src = [list(_pt(a, rig, kr, p)) for a, b in pairs]; dstp = [list(_pt(b, None, kr, p)) for a, b in pairs]
     s, R, t = _umeyama(src, dstp)
+    G.scale = s
     # the global fit lives in the fit pose, not on the rig object (Child Of + object scale double-counts the scale)
     Sim = _sim(s, R, t) @ rig.matrix_world
     res = [(V(_pt(a, rig, kr, p, Sim)) - V(d)).length for (a, b), d in zip(pairs, dstp)]
