@@ -2,6 +2,10 @@
 import bpy, math, random, os
 from mathutils import Vector as V, Matrix
 import kwkit as KW
+# cast v1.1: kwprops item root in its carrier's frame (can: z = axis, centred; spoon: z = handle -> bowl, x = width, y = thickness)
+CARRY_OFF = {'cup': Matrix.Translation((0, 0, -0.055)),
+             'tweezers': Matrix(((0, 1, 0, 0), (0, 0, 1, 0), (1, 0, 0, 0.03), (0, 0, 0, 1))),
+             'penlight': Matrix(((0, 1, 0, 0), (0, 0, 1, 0), (1, 0, 0, 0.0), (0, 0, 0, 1)))}
 import kwlib as L
 import kwbody as B
 ramp, bump, pop = KW.ramp, KW.bump, KW.pop
@@ -291,8 +295,23 @@ class Builder:
         c = L.coll('kw_props')
         for pr in used:
             self.props[pr] = self._make_prop(pr, c)
+        # cast v1.1 grips: a kwprops item carried by the solved can / spoon (carrier mesh hidden from every ray)
+        self.carried = {}
+        for s_ in self.ep.shots:
+            for ps in s_.cast.values():
+                for _, q in ps.keys:
+                    for h in (q.left, q.right):
+                        if h is not None and h.prop in ('can', 'spoon') and h.pad and h.prop not in self.carried and h.prop in self.props:
+                            import kwprops
+                            it = kwprops.make(h.pad, c, **({'height': 0.11, 'r_bottom': 0.029, 'r_top': 0.037} if h.pad == 'cup' else {}))
+                            car = self.props[h.prop]; it.root.parent = car; it.root.matrix_parent_inverse = Matrix.Identity(4)
+                            it.root.matrix_basis = CARRY_OFF[h.pad]
+                            self.carried[h.prop] = it
 
     def _make_prop(self, pr, c):
+        if pr.startswith('g_'):      # cast v1.1 grips: a kwprops item, its root empty is what the hand carries
+            import kwprops; it = kwprops.make(pr[2:], c); it.root.name = 'kw_' + pr; self.grip_items = getattr(self, 'grip_items', {}); self.grip_items[pr] = it
+            return it.root
         if pr == 'tissue':
             me = bpy.data.meshes.new('kw_tissue'); vs = []; fs = []; N = 22; rnd = random.Random(3)
             for j in range(N + 1):
@@ -523,6 +542,15 @@ class Builder:
                 ob.matrix_world = M
         for pr, ob in self.props.items():
             if pr not in used: ob.hide_render = True
+        for pr, it in getattr(self, 'grip_items', {}).items():     # cast v1.1: the item meshes follow their root's visibility
+            for o in it.objs: o.hide_render = it.root.hide_render
+        for pr, it in getattr(self, 'carried', {}).items():
+            car = self.props[pr]; mine = set(it.objs) | {it.root}
+            for o in [car] + list(car.children_recursive):
+                if o in mine: continue
+                o.visible_camera = o.visible_shadow = o.visible_diffuse = o.visible_glossy = o.visible_transmission = o.visible_volume_scatter = False
+            for o in it.objs: o.hide_render = car.hide_render
+        if os.environ.get('KW_V11_DBG'): print('V11DBG kit props', {pr: (ob.hide_render, tuple(round(x, 3) for x in ob.matrix_world.translation)) for pr, ob in self.props.items()})
 
     def update_screen(self, shot, u, t):
         """screen-space graphics (gauge / label with pos=) placed in front of the camera after it moved"""

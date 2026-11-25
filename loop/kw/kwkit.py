@@ -217,7 +217,7 @@ class Hand:
     Objects give more control: KW.hand.touch(doc_target_person, 'neck_l', shape='press2', pulses=[0.4, 0.9])."""
     def __init__(self, kind, owner=None, part=None, shape=None, pulses=(), prop=None, at=None, rub=0.0, pad=None):
         self.kind, self.owner, self.part, self.shape, self.pulses, self.prop, self.at, self.rub, self.pad = kind, owner, part, shape, tuple(pulses), prop, at, rub, pad
-    def key(self): return (self.kind, self.owner.name if isinstance(self.owner, Actor) else None, self.part, self.shape, self.prop)
+    def key(self): return (self.kind, self.owner.name if isinstance(self.owner, Actor) else None, self.part, self.shape, self.prop, self.pad)
     def __repr__(self): return f'hand.{self.kind}({self.part}, {self.shape})'
 
 class hand:
@@ -245,6 +245,21 @@ class hand:
         _check_name('prop', prop, PROPS)
         if where not in ('chest', 'mouth', 'nose', 'ear', 'out'): raise ValueError("hold where: chest | mouth | nose | ear | out")
         return Hand('hold', None, {'mouth': 'mouth', 'nose': 'nose', 'ear': None}.get(where), 'hold', prop=prop, at=where)
+
+GRIPS = {'grip_cup': ('cup',), 'grip_tool': ('tweezers', 'penlight'), 'grip_pinch': ('pea', 'paperclip'), 'grip_burger': ('burger',), 'rest_belly': ()}
+def _grip(name, item=None, where='chest'):
+    """cast v1.1 (KW_CAST=v1.1, HG cast): a hand grip on a kwprops item - grip_cup | grip_tool (penlight, tweezers) |
+    grip_pinch (pea, paperclip) | grip_burger (two hands: give it to both hands) | rest_belly.  The item follows the hand."""
+    _check_name('grip', name, tuple(GRIPS))
+    if name == 'rest_belly': return Hand('touch', None, 'belly', 'claw')
+    item = item or GRIPS[name][0]; _check_name(name + ' item', item, GRIPS[name])
+    if where not in ('chest', 'mouth', 'out'): raise ValueError('grip where: chest | mouth | out')
+    part = {'mouth': 'mouth'}.get(where)
+    # cup / tweezers ride on the solved HG can / spoon grips (the carrier mesh is hidden, the kwprops item is shown)
+    if name == 'grip_cup': return Hand('hold', None, part, 'hold', prop='can', at=where, pad='cup')
+    if name == 'grip_tool': return Hand('hold', None, part, 'hold', prop='spoon', at=where, pad=item)
+    return Hand('hold', None, part, 'hold', prop='g_' + item, at=where)
+hand.grip = staticmethod(_grip)
 
 def _hand_spec(h):
     if h is None or isinstance(h, Hand): return h

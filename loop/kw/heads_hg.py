@@ -47,15 +47,17 @@ ARK = {   # kit expression -> HG ARKit shape keys (weight)
 # cast v1.1 (KW_CAST=v1.1, kindawild/cast/v11_brief.md part A/B2): six expressions + named jaw openings; unused on v1.0
 V11 = os.environ.get('KW_CAST', '') == 'v1.1'
 ARK.update({
-    'x_surprise': {**S2('browOuterUp', 0.8), 'browInnerUp': 0.8, **S2('eyeWide', 0.7), 'jawOpen': 0.35, 'mouthFunnel': 0.15},
-    'x_fear': {'browInnerUp': 0.9, **S2('browDown', 0.3), **S2('browOuterUp', 0.3), **S2('eyeWide', 0.8), **S2('mouthStretch', 0.6),
-               **S2('mouthLowerDown', 0.3), 'jawOpen': 0.15},
-    'x_disgust': {**S2('noseSneer', 0.9), **S2('mouthUpperUp', 0.6), 'mouthShrugLower': 0.4, **S2('browDown', 0.4), **S2('cheekSquint', 0.4),
-                  **S2('eyeSquint', 0.4)},
-    'x_pain': {**S2('browDown', 0.9), **S2('cheekSquint', 0.8), **S2('eyeSquint', 0.9), **S2('eyeBlink', 0.85), **S2('noseSneer', 0.7),
-               **S2('mouthUpperUp', 0.5), **S2('mouthStretch', 0.4), 'jawOpen': 0.05},
-    'x_wince': {**S2('browDown', 0.5), **S2('eyeSquint', 0.7), 'eyeBlink_L': 0.6, 'eyeBlink_R': 0.5, **S2('noseSneer', 0.35), **S2('mouthPress', 0.3)},
-    'x_laugh': {**S2('mouthSmile', 0.9), **S2('cheekSquint', 0.8), **S2('eyeSquint', 0.5), 'jawOpen': 0.3, **S2('mouthUpperUp', 0.2)},
+    # tuned on Ben (strip s1 -> s2): HG ARKit keys read weaker than the brief's starting weights
+    'x_surprise': {**S2('browOuterUp', 1.0), 'browInnerUp': 0.9, **S2('eyeWide', 1.0), 'jawOpen': 0.55, 'mouthFunnel': 0.3, 'mouthClose': 0.0},
+    'x_fear': {'browInnerUp': 1.0, **S2('browDown', 0.55), **S2('browOuterUp', 0.1), **S2('eyeWide', 1.0), **S2('mouthStretch', 1.0),
+               **S2('mouthLowerDown', 0.6), 'jawOpen': 0.12},
+    'x_disgust': {**S2('noseSneer', 1.0), **S2('mouthUpperUp', 1.0), 'mouthShrugLower': 0.7, **S2('browDown', 0.6), **S2('cheekSquint', 0.7),
+                  **S2('eyeSquint', 0.6), **S2('mouthFrown', 0.3)},
+    'x_pain': {**S2('browDown', 1.0), **S2('cheekSquint', 1.0), **S2('eyeSquint', 1.0), **S2('eyeBlink', 0.7), **S2('noseSneer', 1.0),
+               **S2('mouthUpperUp', 0.8), **S2('mouthStretch', 0.7), 'jawOpen': 0.05},
+    'x_wince': {**S2('browDown', 0.7), **S2('eyeSquint', 0.6), 'eyeBlink_L': 0.45, 'eyeBlink_R': 0.3, **S2('noseSneer', 0.5), **S2('mouthPress', 0.5),
+                **S2('cheekSquint', 0.3)},
+    'x_laugh': {**S2('mouthSmile', 1.0), **S2('cheekSquint', 1.0), **S2('eyeSquint', 0.7), 'jawOpen': 0.4, **S2('mouthUpperUp', 0.4), **S2('mouthDimple', 0.3)},
     # B2 jaw: jawOpen past 1.0 (slider raised) keeps opening linearly; lips part, lower lip down
     'x_jaw': {'jawOpen': 1.0}, 'x_lips': {**S2('mouthLowerDown', 0.45), **S2('mouthUpperUp', 1.0)},
 })
@@ -753,6 +755,8 @@ def _glasses(kr, p, G):
 
 # ====================================================================== contacts (by construction, on the HG mesh)
 GRIP = {'can': (0.033, 0.12), 'spoon': (0.005, 0.15)}     # kit prop radius, length (kwfx._make_prop)
+ITEM_OFF = {}
+ITEM_OFF_P = {}
 SKIN = 0.0015                                             # target skin-to-prop gap
 INV = {v[0]: k for k, v in MAP.items()}                   # MakeHuman bone -> HG bone
 
@@ -1512,9 +1516,12 @@ def _apply_contacts(self, kr, shot):
             if ob is None: continue
             rel = getattr(self, '_canrel', {}).get(side) if h.prop == 'can' else None
             ob.matrix_world = kr.wmat(p, f'wrist.{side}') @ (rel if rel is not None else self.Pl[(side, h.prop)])
+            if h.prop.startswith('g_'): ob.matrix_world = ob.matrix_world @ ITEM_OFF_P.get((p.name, h.prop), ITEM_OFF.get(h.prop, Matrix.Identity(4)))
+            if h.prop.startswith('g_') and os.environ.get('KW_V11_DBG'): print('V11DBG place', h.prop, side, tuple(round(x, 3) for x in ob.matrix_world.translation), 'wrist', tuple(round(x, 3) for x in kr.wmat(p, f'wrist.{side}').translation))
             if h.prop == 'spoon':
                 if getattr(self, '_mound', None) is None: self._mound = _build_spoon(ob)
                 st_ = getattr(self, '_bite', None); hid = not (st_ is None or st_['mound'])     # food gone from the start of the pull-out
+                hid = hid or bool(getattr(h, 'pad', None))       # cast v1.1 grip_tool: no food on a carried tool
                 self._mound.hide_render = hid; self._mound.hide_viewport = hid
     self.forearm_twist({j[1] for j in jobs})
 

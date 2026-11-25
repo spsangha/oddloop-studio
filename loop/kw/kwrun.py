@@ -3,6 +3,8 @@ import bpy, os, sys, math, random, json, time, zlib
 from mathutils import Vector, Matrix, Euler, Quaternion
 from mathutils.bvhtree import BVHTree
 import kwkit as KW
+V11 = os.environ.get('KW_CAST', '') == 'v1.1'
+LAUGH_BACK, LAUGH_BOUNCE = 4.0, 1.4      # deg head back, deg clavicle lift per bounce (~3.5 mm at the shoulder)
 import kwlib as L
 import kwlook as Q
 import person as P
@@ -423,6 +425,10 @@ class Runtime:
                     st['nod'] += HG_SWALLOW_DIP * bump(u, at + 0.62 * d, 0.13 * d)     # L4 swallow: 1 deg chin dip (no larynx control in the cast)
                 else:
                     w = ramp(u, at, at + 0.3) * (1 - ramp(u, at + d, at + d + 0.3)); st['nod'] -= 16 * w; st['neck'] -= 6 * w; F('open', 0.2 * w)
+            elif k == 'wince' and V11:
+                # cast v1.1 wince: in 4 frames, hold 6, out 8 (eased); small flinch of the head
+                f_ = (u - at) * FPS; e_ = 0.0 if f_ < 0 or f_ > 18 else min(1.0, f_ / 4) if f_ < 4 else 1.0 if f_ <= 10 else 1.0 - (f_ - 10) / 8
+                b = e_ * e_ * (3 - 2 * e_) * kw.get('hard', 1.0); st['nod'] += 4 * b; st['tilt'] += 5 * b; F('x_wince', b)
             elif k == 'wince':
                 b = bump(u, at, 0.16) * kw.get('hard', 1.0); st['nod'] += 5 * b; st['tilt'] += 6 * b; F('grimace', 0.8 * b); F('squint', 0.6 * b)
             elif k == 'nod':
@@ -533,6 +539,7 @@ class Runtime:
             hd = tuple(qa.head[i] + (qb.head[i] - qa.head[i]) * w for i in range(3))
             nod, turn, tilt = hd[0] + st['nod'], hd[1] + st['turn'], hd[2] + st['tilt']
             look = qb.look if qb.look is not None else qa.look
+            ra.cur_look = look
             if look is not None and not canonical:
                 tgt = self.look_point(look)
                 if tgt is not None:
@@ -541,6 +548,11 @@ class Runtime:
                     lw = w if qb.look is not None and qa.look is None else 1.0
                     turn += clamp(lt, -65, 65) * lw; nod += clamp(ln, -35, 40) * lw
             if st['shake']: nod += st['shake'] * 2.0 * math.sin(t * 47); tilt += st['shake'] * 1.5 * math.sin(t * 39)
+            lw_ = (qa.face.get('laugh', 0) * (1 - w) + qb.face.get('laugh', 0) * w) if V11 and isinstance(qa.face, dict) and isinstance(qb.face, dict) else 0.0
+            if lw_ > 0:      # cast v1.1 laugh: head back ~4 deg, shoulders bounce 3x at ~5/s (then a short rest), 3-4 mm
+                nod -= LAUGH_BACK * lw_; ph_l = (u % 1.4) * 5.0
+                ra.laugh_bounce = LAUGH_BOUNCE * lw_ * (math.sin(ph_l * math.pi) ** 2 if ph_l < 3 else 0.0)
+            else: ra.laugh_bounce = 0.0
             if getattr(p, 'hg', None) is not None and not canonical:
                 # L2: never a locked head; slow loop-locked drift, smaller while a rim / spoon is at the lips
                 hm = [getattr(qb, sd_, None) for sd_ in ('left', 'right')]
@@ -568,7 +580,7 @@ class Runtime:
                     h = getattr(qb, 'left' if side == 'L' else 'right')
                     raised = h is not None and h.kind in ('touch', 'point', 'hold', 'wave')
                     sign = side_sign(side)
-                    lift = 0.52 * breath + 0.44 * sign * shift + settle * (2.3 if raised else 1.05)
+                    lift = 0.52 * breath + 0.44 * sign * shift + settle * (2.3 if raised else 1.05) + getattr(ra, 'laugh_bounce', 0.0)
                     # World up axis in the bone's rest frame: avoids a rig roll-dependent shrug.
                     direction = p.rig.data.bones[bone].matrix_local.to_3x3() @ V((0, 1, 0))
                     axis = direction.cross(V((0, 0, 1)))
@@ -994,6 +1006,20 @@ class Runtime:
         f = 9.0 + 14 * bool(o.get('hits'))
         return V((math.sin(t * f * 1.3) * amp, math.sin(t * f * 0.7 + 1) * amp * 0.5, math.sin(t * f + 2) * amp))
 
+    def _v11_eyes_to_camera(self):
+        """cast v1.1 B4: with look='camera' the HG eyes aim at the lens (their targets normally sit 1.5 m ahead of the eye)"""
+        bpy.context.view_layer.update(); cp = self.CAM.matrix_world.translation.copy()
+        keep = self.__dict__.setdefault('_eyetgt0', {})
+        for ra in self.actors.values():
+            if getattr(ra.p, 'hg', None) is None: continue
+            for s_ in 'LR':
+                e = bpy.data.objects.get(f'{ra.p.name}_hg_eyetgt.{s_}')
+                if e is None: continue
+                if e.name not in keep: keep[e.name] = e.matrix_basis.copy()
+                if getattr(ra, 'cur_look', None) == 'camera': e.matrix_world = Matrix.Translation(cp)
+                else: e.matrix_basis = keep[e.name]
+        bpy.context.view_layer.update()
+
     def set_cam(self, pos, tgt, up, lens, fstop, foc):
         cd = self.CAM.data; R = L.aim(V(tgt) - V(pos), up)
         self.CAM.matrix_world = Matrix.Translation(V(pos)) @ R.to_4x4()
@@ -1131,11 +1157,17 @@ class Runtime:
                 obj.belt.hide_render = not (shot.set == 'car' and drv)
             if st == 'car' and obj is not None and hasattr(obj, 'steer'): obj.steer(math.sin(t * 0.9) * 0.07)
         self.pose_all(shot, u)
+        if V11 and any(getattr(ra, 'cur_look', None) == 'camera' for ra in self.actors.values()):
+            # cast v1.1 B4: look='camera' read last frame's camera (posing runs before the camera) -> the head turned away.
+            # Place the camera for this frame first, then pose again.
+            pos, tgt, up, lens, fs, foc = self.cam_eval(shot, u, si); self.set_cam(pos, tgt, up, lens, fs, foc)
+            bpy.context.view_layer.update(); self.pose_all(shot, u)
         self.FX.update(shot, u, t)
         for ra in self.actors.values():
             if getattr(ra.p, 'hg', None) is not None: ra.p.hg.frame(self, shot)
         pos, tgt, up, lens, fs, foc = self.cam_eval(shot, u, si)
         self.set_cam(pos, tgt, up, lens, fs, foc)
+        if V11: self._v11_eyes_to_camera()
         self.cam_walls(shot, V(pos))
         self.rim_light(shot, pos)
         self.backdrop(shot, pos, tgt)
