@@ -1,3 +1,4 @@
+import math
 """kwkit - the Kinda Wild Films episode kit.  An episode is a short, mostly declarative file:
 
     import kwkit as KW
@@ -108,7 +109,7 @@ PROPS = ('tissue', 'cup', 'apple', 'pill', 'phone', 'pen', 'spoon', 'bottle', 'c
 ORGANS = ('airway', 'lungs', 'esophagus', 'stomach', 'heart', 'brain', 'intestines', 'sinus', 'eyes', 'skull', 'vessels', 'kidneys', 'bladder', 'liver')
 MACRO_KINDS = ('windpipe', 'esophagus', 'artery', 'vein', 'intestine', 'stomach', 'bone', 'nerve', 'sinus')
 BANNED_SOUNDS = ('whoosh', 'swoosh', 'woosh', 'swish')
-FX_FALLBACK = ('bounce', 'bubbles', 'crackle', 'engine', 'heal', 'inhale', 'pinch', 'pressure', 'puff', 'rip', 'rush', 'sneeze', 'sniff', 'thud')
+FX_FALLBACK = ('bounce', 'bubbles', 'crackle', 'engine', 'heal', 'inhale', 'pinch', 'pressure', 'puff', 'rip', 'rush', 'sneeze', 'sniff', 'thud', 'tick')
 
 HG_AGE = {'kid': 'young', 'teen': 'young', 'young': 'young', 'middle': 'young', 'old': 'old'}
 
@@ -304,6 +305,25 @@ def _face_dict(face):
     return out
 
 # ===================================================================================== cameras
+def glide_eval(keys, t):
+    """ONE continuous camera move: keys = [(t, value), ...]; monotone cubic (Fritsch-Carlson) in log space, so the move
+    eases through the keys without stopping dead (flat only at the first / last key and at turning points)."""
+    ks = sorted(keys)
+    if t <= ks[0][0]: return ks[0][1]
+    if t >= ks[-1][0]: return ks[-1][1]
+    xs = [k[0] for k in ks]; ys = [math.log(max(k[1], 1e-6)) for k in ks]; n = len(xs)
+    d = [(ys[i + 1] - ys[i]) / (xs[i + 1] - xs[i]) for i in range(n - 1)]
+    m = [0.0] * n
+    for i in range(1, n - 1): m[i] = (d[i - 1] + d[i]) / 2 if d[i - 1] * d[i] > 0 else 0.0
+    for i in range(n - 1):
+        if d[i] == 0: m[i] = m[i + 1] = 0.0
+        else:
+            al, be = m[i] / d[i], m[i + 1] / d[i]; q = al * al + be * be
+            if q > 9: tau = 3 / math.sqrt(q); m[i] = tau * al * d[i]; m[i + 1] = tau * be * d[i]
+    i = max(j for j in range(n - 1) if xs[j] <= t); h = xs[i + 1] - xs[i]; u = (t - xs[i]) / h
+    h00 = 2 * u ** 3 - 3 * u ** 2 + 1; h10 = u ** 3 - 2 * u ** 2 + u; h01 = -2 * u ** 3 + 3 * u ** 2; h11 = u ** 3 - u ** 2
+    return math.exp(h00 * ys[i] + h10 * h * m[i] + h01 * ys[i + 1] + h11 * h * m[i + 1])
+
 class Cam:
     def __init__(self, kind, subj=None, **o):
         self.kind, self.subj, self.o = kind, subj, o
@@ -339,7 +359,7 @@ class cam:
     @staticmethod
     def part(p, part, **o):
         """close-up of one body part (neck_l, eye_l, belly, wrist_r ...), seen from outside the body"""
-        _check_name('part', part, PARTS); return Cam('part', p, part=part, **o)
+        _check_name('part', part, PARTS + ('calf_r', 'calf_l')); return Cam('part', p, part=part, **o)
     @staticmethod
     def plunge(p, into='nose', **o):
         """fly into the nose / mouth / ear_l / ear_r / eye_l / eye_r: the transition into the body (next shot = xray/macro)"""
@@ -386,7 +406,7 @@ class FX:
         if k == 'crackle': return [(t, 'crackle', 1.0) for t in o.get('times', (0.4,))]
         if k == 'swell_air': return [(o.get('at', 0.2), 'bubbles', 0.6)]
         return []
-    def is_prop(self): return self.kind in ('calendar', 'scan', 'skin_block') or (self.kind == 'gauge' and self.o.get('place') == 'station')
+    def is_prop(self): return self.kind in ('calendar', 'scan', 'skin_block', 'earth') or (self.kind == 'gauge' and self.o.get('place') == 'station')
 
 class fx:
     """Effects attached to a shot (all times local).  Graphics: gauge, label, arrow, bracket, calendar, scan, skin_block, crackle.
@@ -409,6 +429,19 @@ class fx:
     def bracket(p0, p1, text, at=0.2, macro=None):
         """measuring bracket between two world points (or on a macro set's hole when macro= given and p0/p1 None)"""
         return FX('bracket', p0=p0, p1=p1, text=text, at=at, macro=macro)
+    @staticmethod
+    def earth(mode='wrap2', at=0.1, dur=1.2, spin=8.0, lon=10.0, lat=15.0, pulse_at=None, cam_raise=0.0):
+        """NASA Blue Marble globe with a growing red vessel line (own station: set='graphic', cam=KW.cam.prop()).
+        mode 'wrap2': two laps from the front-centre (2nd lap 6 deg beside the 1st); 'half': left limb -> 0.22 lap solid ->
+        0.47 lap pale, white tick at 0.50 on the right limb.  spin deg/s eastward (0 = still).  lon/lat = centre of the view.
+        cam_raise: camera elevation (deg) used by cam.prop for this station."""
+        if mode not in ('wrap2', 'half'): raise ValueError("earth mode: 'wrap2' | 'half'")
+        return FX('earth', mode=mode, at=at, dur=dur, spin=spin, lon=lon, lat=lat, pulse_at=pulse_at, cam_raise=cam_raise)
+    @staticmethod
+    def wound(person, keys, side='R'):
+        """a healing cut on the person's own calf skin (kwwound).  keys = [(local_t, {open, stitches, out, red, collagen, vessels, line, scar}), ...]
+        values ease (smoothstep) from key to key; missing names keep the previous key's value.  Camera: KW.cam.part(p, 'calf_r')."""
+        return FX('wound', person=person, keys=[(float(t), dict(v)) for t, v in keys], side=side)
     @staticmethod
     def calendar(weeks=3, at=0.1, dur=1.0):
         """wall calendar flips from WEEK 1 to WEEK `weeks` (1..5). Own station: use set='graphic', cam=KW.cam.prop()"""
@@ -679,6 +712,10 @@ class Episode:
             for a in sorted({a for s in self.shots for a in s.cast if isinstance(a, Actor)}, key=lambda a: a.name):
                 sl = hg_slot(a.role)
                 if not os.path.isfile(os.path.join(lib, sl + '.blend')): E.append(f'KW_HEADS=humgen: {a.name} needs cast slot {sl}.blend, missing in {lib}')
+        wv = getattr(self, 'waive', None) or {}     # ep.waive = {'error text start': 'who ruled it and why'} (lead rulings only)
+        for e in list(E):
+            k = next((k for k in wv if e.startswith(k)), None)
+            if k is not None: E.remove(e); W.append(f'WAIVED ({wv[k]}): {e}')
         for e in E: print('CHECK ERROR:', e)
         for w in W: print('check warning:', w)
         self.errors, self.warnings = E, W

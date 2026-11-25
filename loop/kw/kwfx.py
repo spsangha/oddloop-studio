@@ -6,8 +6,8 @@ import kwlib as L
 import kwbody as B
 ramp, bump, pop = KW.ramp, KW.bump, KW.pop
 LABEL_COL = {'red': (1.0, 0.06, 0.04), 'yellow': (1.0, 0.82, 0.02), 'white': (1.0, 1.0, 1.0), 'green': (0.1, 0.9, 0.2), 'blue': (0.1, 0.45, 1.0)}
-STATIONS = {'skin_block': V((100, 0, 1.0)), 'gauge': V((110, 0, 1.0)), 'calendar': V((120, 0, 1.5)), 'scan': V((130, 0, 1.2))}
-PROP_LIGHT = {'skin_block': (0.45, 0.8), 'gauge': (0.3, 0.5), 'calendar': (0.4, 0.5), 'scan': (0.4, 0.25)}
+STATIONS = {'skin_block': V((100, 0, 1.0)), 'gauge': V((110, 0, 1.0)), 'calendar': V((120, 0, 1.5)), 'scan': V((130, 0, 1.2)), 'earth': V((140, 0, 1.5))}
+PROP_LIGHT = {'skin_block': (0.45, 0.8), 'gauge': (0.3, 0.5), 'calendar': (0.4, 0.5), 'scan': (0.4, 0.25), 'earth': (0.5, 0.55)}
 RX90 = Matrix.Rotation(math.radians(-90), 3, 'X')
 
 class Builder:
@@ -56,6 +56,8 @@ class Builder:
         elif kind == 'calendar':
             st['obj'] = G.Calendar(O, c) if G else None
             L.box('kw_cal_wall', (6, 0.02, 6), O + V((0, 0.04, 0)), wall, c, 0)
+        elif kind == 'earth':
+            import kwearth; st['obj'] = kwearth.EarthStation(O, c)
         elif kind == 'scan':
             st['obj'] = G.ScanMonitor(O, c, width=0.5) if G else None
             L.box('kw_scan_wall', (6, 0.02, 6), O + V((0, 1.2, 0.3)), wall, c, 0)
@@ -140,6 +142,16 @@ class Builder:
             if o.get('title'):
                 pass
             return dict(gauge=g, label=lab)
+        if k == 'wound':
+            ws = self.__dict__.setdefault('wounds', {}); a = o['person']
+            if a not in ws:
+                import kwwound; ra = rt.actors[a]; w = kwwound.Wound(rt, ra, side=o.get('side', 'R')); ws[a] = w
+                bn = 'lowerleg01.' + o.get('side', 'R'); M = rt.wmat(ra.p, bn)
+                ra.parts['calf_' + o.get('side', 'R').lower()] = (bn, M.inverted() @ w.C, (M.to_3x3().inverted() @ w.Nn).normalized())
+            return dict(w=ws[a])
+        if k == 'earth':
+            st = self.stations['earth']; key = f'{s.name}'
+            st['obj'].add_line(key, o['mode'], o['lon'], o['lat']); return dict(key=key)
         if k == 'label':
             if not G: return dict(label=None)
             return dict(label=G.Label3D(o['text'], V((0, 0, 0)), c, size=0.06, color=LABEL_COL[o['color']]))
@@ -316,9 +328,19 @@ class Builder:
     def update(self, shot, u, t):
         rt = self.rt
         for b in self.bodies.values(): b.reset_fx()
+        if shot.set == 'xray' and shot.xray in self.bodies and 'heart' in (shot.organs or ()): self.bodies[shot.xray].beat(t)
         # macro
         if shot.set == 'macro' and shot.macro in self.macros:
             mm = self.macros[shot.macro]; mm.update(shot, u, t, self.ep.shots); rt.prop_lights(mm.M0, 1.0, gain=0.42)
+        # wounds (kwwound): stage values from the shot's keys, hidden in shots without one
+        ws = self.__dict__.get('wounds', {})
+        if ws:
+            act = {}
+            for f in shot.fx:
+                if f.kind == 'wound': act[f.o['person']] = f.o['keys']
+            for a, w in ws.items():
+                if a in act: w.set(**_wound_vals(act[a], u))
+                else: w.set(show=False)
         # stations
         for f in shot.fx:
             o = f.o; it = self.items.get(f)
@@ -326,6 +348,9 @@ class Builder:
                 k = 'gauge' if f.kind == 'gauge' else f.kind; st = self.stations[k]; sc, gain = PROP_LIGHT[k]; rt.prop_lights(st['origin'], sc, gain=gain); ob = st['obj']
                 if ob is None: continue
                 if k == 'calendar': ob.set(ramp(u, o['at'], o['at'] + o['dur']) * (o['weeks'] - 1) / 4.0)
+                elif k == 'earth':
+                    g = ramp(u, o['at'], o['at'] + o['dur']); pa = o.get('pulse_at') if o.get('pulse_at') is not None else o['at'] + o['dur']
+                    ob.update(it['key'] if it else shot.name, g, o['spin'] * u, bump(u, pa + 0.15, 0.3))
                 elif k == 'scan':
                     self._set_scan_kind(st, o['kind'], o.get('title') or 'CT / ' + o['kind'].upper())
                     hl = ramp(u, o['heal_at'], o['heal_at'] + 0.85) if o['heal'] else 0.0
@@ -349,7 +374,7 @@ class Builder:
             elif f.kind == 'pressure':
                 b = self.bodies[o['person']]; k = ramp(u, o['at'], o['at'] + o['dur'] * 0.8); b.heat(o['organ'], k, 0.5 + 0.5 * math.sin(t * 16), o['swell'])
             elif f.kind == 'glow':
-                b = self.bodies[o['person']]; k = ramp(u, o['at'], o['at'] + 0.2) * (1 - 0.5 * ramp(u, o['at'] + o['dur'], o['at'] + o['dur'] + 0.4)); b.heat(o['organ'], k, 0.5 + 0.5 * math.sin(t * 10), 0.0)
+                b = self.bodies[o['person']]; k = ramp(u, o['at'], o['at'] + 0.2) * (1 - 0.5 * ramp(u, o['at'] + o['dur'], o['at'] + o['dur'] + 0.4)); b.heat(o['organ'], k, 0.5 + 0.5 * math.sin(t * 10), 0.0, color=(LABEL_COL.get(o.get('color')) if o.get('color') not in (None, 'red') else None))
             elif f.kind == 'seal':
                 hit = ramp(u, o['at'], o['at'] + 0.12); sp = hit * (1.0 + 0.25 * math.sin(t * 20))
                 for ob, bs in zip(it['objs'], it['base']): ob.scale = tuple(x * max(sp, 1e-4) for x in bs); ob.hide_render = hit <= 0
@@ -449,3 +474,20 @@ class Builder:
                     lab.root.matrix_world = Matrix.Translation(w) @ (Rc @ RX90).to_4x4() @ Matrix.Scale(dd / 0.55 * o['size'], 4)
                 else: place(lab.root, o['pos'], o['size'])
                 ka = pop((u - o['at']) / 0.3) if u > o['at'] else 0.0; lab.set(scale=max(ka, 1e-5))
+
+
+def _wound_vals(keys, u):
+    """smoothstep between wound keys; names carry forward"""
+    names = ('open', 'stitches', 'out', 'red', 'collagen', 'vessels', 'line', 'scar', 'pink', 'dots', 'level', 'cpink', 'cells', 'specks', 'cinch')
+    full = []; cur = dict.fromkeys(names, 0.0); cur['line'] = None; cur['specks'] = -1.0; cur['cinch'] = None     # specks -1 = hidden
+    for t, v in sorted(keys, key=lambda x: x[0]):
+        cur = dict(cur); cur.update(v); full.append((t, cur))
+    if u <= full[0][0]: return {k: v for k, v in full[0][1].items() if v is not None}
+    for (t0, a), (t1, b) in zip(full, full[1:]):
+        if u <= t1:
+            x = (u - t0) / max(1e-6, t1 - t0); x = x * x * (3 - 2 * x); r = {}
+            for k in names:
+                if a[k] is None or b[k] is None: r[k] = b[k] if b[k] is not None else a[k]
+                else: r[k] = a[k] + (b[k] - a[k]) * x
+            return {k: v for k, v in r.items() if v is not None}
+    return {k: v for k, v in full[-1][1].items() if v is not None}

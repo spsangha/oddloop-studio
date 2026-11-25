@@ -54,7 +54,7 @@ jobs:
         env: {KW_ASSETS_KEY: '${{ secrets.KW_ASSETS_KEY }}'}
         run: |
           K="$RUNNER_TEMP/kwk"; ( umask 077; printf '%s\n' "$KW_ASSETS_KEY" > "$K" )
-          GIT_SSH_COMMAND="ssh -i $K -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new" git clone -q --depth 1 git@github.com:spsangha/kw-assets.git "$RUNNER_TEMP/kw-assets"
+          GIT_SSH_COMMAND="ssh -i $K -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new" git clone -q --depth 1 --branch v1.0 git@github.com:spsangha/kw-assets.git "$RUNNER_TEMP/kw-assets"
           rm -f "$K"
           test -d "$RUNNER_TEMP/kw-assets/humgen/cast"; echo "cast files: $(ls "$RUNNER_TEMP/kw-assets/humgen/cast" | wc -l)"
           echo "KW_HEADS=humgen" >> "$GITHUB_ENV"; echo "KW_HG_LIB=$RUNNER_TEMP/kw-assets/humgen/cast" >> "$GITHUB_ENV"

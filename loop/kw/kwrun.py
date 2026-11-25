@@ -323,10 +323,11 @@ class Runtime:
         self.render_budget_set = None
 
     def render_budget(self, kind):
-        if self.render_budget_set == kind or not Q.enabled('PATH2'): return
+        light = kind == 'studio' and os.environ.get('KW_LIGHT') == '1'     # ep07: light-render settings on the studio set (approved by the lead)
+        if self.render_budget_set == kind or not (Q.enabled('PATH2') or light): return
         self.render_budget_set = kind
         opts = self.path_defaults.copy()
-        if kind in ('room', 'hospital'):
+        if kind in ('room', 'hospital') or light:
             opts.update(max_bounces=4, diffuse_bounces=1, glossy_bounces=2,
                         caustics_reflective=False)
             if self.SAMPLES >= 16:
@@ -870,6 +871,21 @@ class Runtime:
                     A = pt; pos = A + V((0, 0, 1)) * d * (1 - push * mv); fwd_ = -V((0, 0, 1)); upv = C0['up'] if abs(C0['up'].z) < 0.8 else C0['fwd']
                     pos = pos + self._shake(t, o, u)
                     fstop = fstop or 4.0; return pos, A, upv, lens, fstop, A
+                if kind == 'part' and o.get('glide'):
+                    # ONE continuous camera move over the whole film (ep07): visible height at the subject plane from absolute time
+                    ta = o['at'] + u if o.get('at') is not None else t
+                    lens = lens or 50; vis = KW.glide_eval(o['glide'], ta); d = vis * lens / 36.0
+                    y0, y1, T_ = o.get('yaw', (0.0, 0.0, 1.0)); yaw = y0 + (y1 - y0) * (0.5 - 0.5 * math.cos(2 * math.pi * clamp(ta / T_)))   # y0 -> y1 at mid-film -> back to y0 (the loop)
+                    s0, s1, sm_ = o.get('slide', (0.0, 1.0, 0.0)); k_ = clamp((ta - s0) / max(s1 - s0, 1e-6)); k_ = k_ * k_ * (3 - 2 * k_)
+                    sl_ = o.get('slide', ())
+                    if len(sl_) == 5: kb_ = clamp((ta - sl_[3]) / max(sl_[4] - sl_[3], 1e-6)); k_ *= 1.0 - kb_ * kb_ * (3 - 2 * kb_)   # (t0, t1, m, t2, t3): slide back to 0 over t2-t3 (the loop)
+                    bk = -C0['body_fwd']; bk = Vector((bk.x, bk.y, 0)).normalized()
+                    try: cap = self.wmat(ra.p, o.get('cap_bone', 'lowerleg01.R')).translation.z - pt.z + o.get('cap_dz', 0.0)
+                    except Exception: cap = 9.0
+                    tgt = pt - Vector((0, 0, 1)) * (sm_ * k_) + Vector((0, 0, 1)) * (o.get('aim_dz', 0.0) + min(0.0, cap - vis / 2))   # frame top never above the knee crease
+                    pos = tgt + (Matrix.Rotation(math.radians(yaw), 3, Vector((0, 0, 1))) @ bk) * d
+                    fs = fstop or min(22.0, 5.6 * (0.69 / max(d, 0.01)) ** 0.6)
+                    return pos, tgt, Vector((0, 0, 1)), lens, fs, tgt
                 if kind == 'part':
                     lens = lens or 50; d = dist or 0.36; sd0 = o.get('side', 0.0)
                     pt = pt + V((0, 0, 1)) * o.get('aim_dz', 0.0)     # aim below/above the part (cast sheet: the hanging hand under the wrist)
@@ -950,6 +966,10 @@ class Runtime:
             off = {'calendar': V((0.0, -1.22 + 0.1 * mv + push * 0.4 * mv, 0.0)), 'scan': V((-0.22 + 0.12 * mv, -1.15 + 0.3 * mv + push * 0.3 * mv, 0.06)),
                    'skin_block': V((0.55 - 0.1 * mv, -1.0 + 0.12 * mv, 0.55 - 0.05 * mv)), 'gauge': V((0.1, -0.55 + 0.1 * mv, 0.04))}.get(kindp, V((0, -1, 0)))
             tgt = org + (V((0, 0, 0.02)) if kindp == 'skin_block' else V((0, 0, 0)))
+            if kindp == 'earth':   # globe width ~80 % of the 9:16 frame (w1 = half-width at 1 m), slow push, optional raised angle
+                import kwearth; lens = o.get('lens', 42); w1 = (18.0 / lens) * 9 / 16; fr = o.get('fill', 0.80)
+                d = kwearth.R * math.sqrt(1 + 1 / (fr * w1) ** 2) * (1 + 0.5 * push * 0.12) * (1 - push * 0.12 * mv)
+                rz = math.radians(f.o.get('cam_raise', 0.0)); off = V((0, -d * math.cos(rz), d * math.sin(rz)))
             pos = org + off + self._shake(t, o, u) * 3
             return pos, tgt, up, lens, fstop or (8.0 if kindp == 'skin_block' else 5.6), tgt
         if kind == 'at':

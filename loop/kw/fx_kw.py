@@ -56,5 +56,8 @@ def sneeze():  # "choo": vocal-ish noise burst
     x = T(0.6); s = bp(noise(len(x)), 1200, 7000) * env(x, 0.004, 0.12) + 0.4 * np.sin(2 * np.pi * 180 * x) * env(x, 0.004, 0.08)
     return 0.8 * s / max(1e-6, np.max(np.abs(s)))
 
-FX = dict(engine=engine, rip=rip, thud=thud, sniff=sniff, pinch=pinch, puff=puff, rush=rush, bounce=bounce, pressure=pressure,
+def tick():  # soft dry suture tick: ~40 ms band-passed click, no ring
+    x = T(0.045); s = bp(noise(len(x)), 1800, 5200) * env(x, 0.0015, 0.012) + 0.25 * np.sin(2 * np.pi * 2400 * x) * env(x, 0.001, 0.006)
+    return 0.8 * s / max(1e-6, np.max(np.abs(s)))
+FX = dict(tick=tick, engine=engine, rip=rip, thud=thud, sniff=sniff, pinch=pinch, puff=puff, rush=rush, bounce=bounce, pressure=pressure,
           bubbles=bubbles, crackle=crackle, heal=heal, inhale=inhale, sneeze=sneeze)

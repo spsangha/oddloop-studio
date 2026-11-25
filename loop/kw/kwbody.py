@@ -10,7 +10,7 @@ import kwlook as Q
 import kwscan as Scan
 
 XRAY_BODY = ((0.15, 0.75, 1.0), 2.2, 0.03, 0.42)     # ep_sneeze glass-body look
-PATHS = ('air_out_nose', 'air_out_mouth', 'air_in', 'nose_to_sinus', 'sinus_to_eye', 'food_down', 'blood_heart', 'brain_blood')
+PATHS = ('air_out_nose', 'air_out_mouth', 'air_in', 'nose_to_sinus', 'sinus_to_eye', 'food_down', 'blood_heart', 'brain_blood', 'blood_neck_r', 'blood_arm_L', 'blood_arm_R', 'blood_down', 'blood_leg_L', 'blood_leg_R')
 COLORS = {'green': (0.55, 1.0, 0.05), 'red': (1.0, 0.08, 0.03), 'blue': (0.1, 0.45, 1.0), 'yellow': (1.0, 0.85, 0.05),
           'white': (0.9, 0.95, 1.0), 'orange': (1.0, 0.42, 0.02)}
 
@@ -148,6 +148,41 @@ class Body:
             self.add('vessels', L.tube(f'x_jugular{sx}', [hc + V((sx * 0.03, 0.0, 0.05)), a1 + V((sx * 0.02, 0.005, 0)), a2 + V((sx * 0.024, 0.006, 0)), a3 + V((sx * 0.02, 0.01, 0))], 0.005, vb), 'neck01')
         self.add('vessels', L.tube('x_aorta', [hc, arch, arch + V((-0.01, 0.03, 0)), s3 + V((-0.01, -0.02, 0)), s5 + V((0, -0.03, 0))], 0.008, vm), 'spine02')
         self.set_anchor('vessels', 'neck01', n1 + F * 0.01); P['carotid'] = car
+        # ep06: one connected tree into both shoulders and upper arms + chest branches (subclavian -> axillary -> brachial)
+        arms = {}
+        for sd in ('L', 'R'):
+            try:
+                cl = self.bw('clavicle.' + sd); sh_ = self.bw('upperarm01.' + sd); el = self.bw('lowerarm01.' + sd); wr = self.bw('wrist.' + sd)
+            except Exception: continue
+            ox = 1 if sh_.x > hc.x else -1
+            sub = [arch, arch.lerp(cl, 0.5) + U * 0.02 + F * 0.01, cl + F * 0.012 + U * 0.004, sh_ + F * 0.01 - U * 0.01]
+            self.add('vessels', L.tube('x_subclav' + sd, sub, 0.005, vm), 'clavicle.' + sd)
+            bra = [sh_ + F * 0.01 - U * 0.01, sh_.lerp(el, 0.35) + F * 0.012 - V((ox * 0.012, 0, 0)), sh_.lerp(el, 0.7) + F * 0.014 - V((ox * 0.01, 0, 0)), el + F * 0.012]
+            self.add('vessels', L.tube('x_brachial' + sd, bra, 0.0042, vm), 'upperarm01.' + sd)
+            rad = [el + F * 0.012, el.lerp(wr, 0.5) + F * 0.01, wr + F * 0.006]
+            self.add('vessels', L.tube('x_radial' + sd, rad, 0.0032, vm), 'lowerarm01.' + sd)
+            ith = [sub[1], s3 + F * 0.0 + V((ox * 0.035, 0, 0)) + (chest - s3) * 0.85, s4 + V((ox * 0.04, 0, 0)) + (chest - s3) * 0.75]
+            self.add('vessels', L.tube('x_thoracic' + sd, ith, 0.0028, vm), 'spine02')
+            for k, sp_ in enumerate((s2, s3, s4)):
+                a = sp_ + (chest - s2) * 0.2; b = sp_ + V((ox * 0.09, 0, 0)) + (chest - s2) * 0.7; c2 = sp_ + V((ox * 0.12, 0, -0.01)) + (chest - s2) * 1.05
+                self.add('vessels', L.tube(f'x_icost{sd}{k}', [a, b, c2], 0.0022, vm), 'spine02')
+            arms[sd] = (sub, bra, rad)
+        P['arms'] = arms
+        legs = {}
+        aend = s5 + V((0, -0.03, 0))
+        for sd in ('L', 'R'):
+            try:
+                hp = self.bw('upperleg01.' + sd); kn = self.bw('lowerleg01.' + sd); an = self.bw('foot.' + sd); toe = self.bw('foot.' + sd, True)
+            except Exception: continue
+            ox = 1 if hp.x > aend.x else -1
+            il = [aend, aend.lerp(hp, 0.5) + F * 0.02, hp + F * 0.03 - V((ox * 0.02, 0, 0))]
+            self.add('vessels', L.tube('x_iliac' + sd, il, 0.0055, vm), 'spine05' if 'spine05' in self.p.rig.data.bones else 'spine04')
+            fem = [hp + F * 0.03 - V((ox * 0.02, 0, 0)), hp.lerp(kn, 0.4) + F * 0.035 - V((ox * 0.03, 0, 0)), hp.lerp(kn, 0.8) + F * 0.01 - V((ox * 0.02, 0, 0)), kn + F * 0.0]
+            self.add('vessels', L.tube('x_femoral' + sd, fem, 0.0048, vm), 'upperleg01.' + sd)
+            tib = [kn, kn.lerp(an, 0.5) + F * 0.015, an + F * 0.01, an.lerp(toe, 0.7) - V((0, 0, 0.01))]
+            self.add('vessels', L.tube('x_tibial' + sd, tib, 0.0035, vm), 'lowerleg01.' + sd)
+            legs[sd] = (il, fem, tib)
+        P['legs'] = legs
         # --- brain + skull + orbits + eyes + sinus
         bc = head + U * 0.085 + V((0, 0.005, 0))
         bm = self.reg_mat('brain', organ_mat('kw_brain', (.76, .19, .18) if self.scan2 else (1., .55, .65),
@@ -257,6 +292,14 @@ class Body:
         self.path('sinus_to_eye_r', [(H, P['ethR']), (H, P['wallR']), (H, eyeR + V((-0.004, -0.004, -0.012))), (H, P['lidR'])])
         self.path('food_down', [(H, lips), (H, ph.lerp(lips, 0.5)), (H, ph)] + [(S2, q) for q in es_pts[1:]] + [(S2, st_c)])
         self.path('blood_heart', [(S2, hc)] + [(N1, q) for q in car[1][1:]])
+        self.path('blood_neck_r', [(S2, hc)] + [(N1, q) for q in car[-1][1:]])
+        for sd, (sub, bra, rad) in P.get('arms', {}).items():
+            self.path('blood_arm_' + sd, [(S2, hc), (S2, sub[0])] + [('clavicle.' + sd, q) for q in sub[1:]] + [('upperarm01.' + sd, q) for q in bra[1:]] + [('lowerarm01.' + sd, q) for q in rad[1:]])
+        lg = P.get('legs', {})
+        for sd, (il, fem, tib) in lg.items():
+            bb = 'spine05' if 'spine05' in self.p.rig.data.bones else 'spine04'
+            self.path('blood_leg_' + sd, [(S2, hc), (S2, arch), (S2, s3 + V((-0.01, -0.02, 0)))] + [(bb, q) for q in il] + [('upperleg01.' + sd, q) for q in fem[1:]] + [('lowerleg01.' + sd, q) for q in tib[1:]])
+        self.path('blood_down', [(S2, hc), (S2, arch), (S2, arch + V((-0.01, 0.03, 0))), ('spine02', s3 + V((-0.01, -0.02, 0))), ('spine02', s5 + V((0, -0.03, 0)))])
         self.path('brain_blood', [(N1, q) for q in car[1][2:]] + [(H, bc + V((0.02, 0, 0))), (H, bc + V((0.0, -0.04, 0.03))), (H, bc + V((-0.03, 0.03, 0.02)))])
         # orbit-wall crack points (for fx.crack_line): zigzag on the medial wall of each socket, facing the camera side
         for nm in 'LR':
@@ -293,10 +336,22 @@ class Body:
             if bev is not None: o.data.bevel_depth = bev
         for nm, lst in self.mats.items():
             for sock, base, col in lst: sock.default_value = base
+        for col, c0 in self.__dict__.get('_colbase', {}).items(): col.default_value = c0
+    def beat(self, t, bpm=70.0, amp=0.09):
+        """heartbeat: a quick double squeeze (lub-dub) of the heart, bpm beats a minute"""
+        ph = (t * bpm / 60.0) % 1.0; k = math.exp(-((ph - 0.08) / 0.05) ** 2) + 0.6 * math.exp(-((ph - 0.24) / 0.05) ** 2)
+        for o in self.organs.get('heart', []):
+            sc, bev = self.base[o]; o.scale = tuple(x * (1 + amp * k) for x in sc)
+        for sock, base, col in self.mats.get('heart', []): sock.default_value = base + 1.5 * k
+        return k
     def heat(self, organ, k, pulse, swell, color=None):
-        """organ glows hotter / swells; k 0..1"""
+        """organ glows hotter / swells; k 0..1; color = glow colour (restored by reset_fx)"""
+        cb = self.__dict__.setdefault('_colbase', {})
         for sock, base, col in self.mats.get(organ, []):
             sock.default_value = base + k * (2.5 + 2.0 * pulse)
+            if color is not None and col is not None:
+                cb.setdefault(col, tuple(col.default_value)); w = min(1.0, k * 1.4); c0 = cb[col]
+                col.default_value = tuple(c0[i] + (v - c0[i]) * w for i, v in enumerate((*color, 1.0)))
         for o in self.organs.get(organ, []):
             sc, bev = self.base[o]; f = 1 + swell * k * (0.6 + 0.4 * pulse)
             if bev is not None: o.data.bevel_depth = bev * f
