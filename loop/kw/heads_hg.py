@@ -628,6 +628,38 @@ def _hide_under(p, G):
             o.modifiers.move(o.modifiers.find('kw_collar'), o.modifiers.find('kw_layer') + 1)
             print(f'humgen collar offset {p.name} {o.name}: {1000 * COLLAR_OFF:+.1f} mm within {100 * COLLAR_R:.0f} cm of the shirt openings')
 
+    if coat is not None and tee is not None: _cuff_fix(p, tee, coat)
+
+
+CUFF_KEEP = 0.3      # A3: share of a coat vert's hand-bone weight kept on the hand (the rest moves to the forearm)
+CUFF_HIDE_W = 0.02   # A3: shirt verts with more hand-bone weight than this are masked (they sit inside the coat cuff)
+
+
+def _cuff_fix(p, tee, coat):
+    """A3 (round 2): the white shirt cuff tore out through the coat cuff on a strong wrist turn (cup grip) because its
+    end verts follow the hand bones. Under a coat the shirt cuff is never seen -> mask it; the coat cuff keeps only
+    CUFF_KEEP of its hand weight so it rides the forearm instead of folding with the wrist."""
+    is_hand = lambda nm: nm.startswith(('hand', 'palm', 'f_', 'thumb'))
+    gi = {g.index for g in tee.vertex_groups if is_hand(g.name)}
+    hid = [v.index for v in tee.data.vertices if sum(g.weight for g in v.groups if g.group in gi) > CUFF_HIDE_W]
+    vg = tee.vertex_groups.get('kw_cuffhide') or tee.vertex_groups.new(name='kw_cuffhide'); vg.add(hid, 1.0, 'REPLACE')
+    m = tee.modifiers.new('kw_cuffhide', 'MASK'); m.vertex_group = 'kw_cuffhide'; m.invert_vertex_group = True
+    tee.modifiers.move(tee.modifiers.find('kw_cuffhide'), 0)
+    moved = 0
+    for side in ('L', 'R'):
+        fa = coat.vertex_groups.get(f'forearm.{side}')
+        if fa is None: continue
+        hg = [g for g in coat.vertex_groups if is_hand(g.name) and g.name.endswith('.' + side)]
+        hidx = {g.index: g for g in hg}
+        for v in coat.data.vertices:
+            tot = 0.0
+            for g in v.groups:
+                if g.group in hidx and g.weight > 0:
+                    tot += g.weight * (1 - CUFF_KEEP); hidx[g.group].add([v.index], g.weight * CUFF_KEEP, 'REPLACE')
+            if tot > 0:
+                cur = next((g.weight for g in v.groups if g.group == fa.index), 0.0); fa.add([v.index], cur + tot, 'REPLACE'); moved += 1
+    print(f'humgen cuff fix {p.name}: {len(hid)} shirt cuff verts masked, {moved} coat verts moved {100 * (1 - CUFF_KEEP):.0f}% onto the forearm')
+
 
 ARM_SHIFT = {('Ben', 'L'): 0.025}
 ARM_CHAIN = ('upper_arm', 'forearm', 'hand', 'palm', 'f_index', 'f_middle', 'f_ring', 'f_pinky', 'thumb')

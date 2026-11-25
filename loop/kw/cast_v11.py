@@ -221,6 +221,44 @@ def skin(G):
         L.new(nsrc, bp.inputs['Normal']); L.new(bp.outputs['Normal'], bsdf.inputs['Normal'])
         bsdf.inputs['Subsurface Scale'].default_value = SSS_SCALE
     print('cast v1.1: skin', G.p.name)
+    if os.environ.get('KW_V11_DBG'): _skin_dbg(G)
+
+
+def _skin_dbg(G):
+    """A3: hand vs face - mask values and every skin image sampled at the hand / face UVs"""
+    body = G.body; me = body.data
+    hg_ = {g.index for g in body.vertex_groups if g.name.startswith(('hand', 'palm', 'f_', 'thumb'))}
+    hand = np.array([any(g.group in hg_ and g.weight > 0.5 for g in v.groups) for v in me.vertices])
+    at = me.color_attributes.get('kw11_skin'); c = np.empty(len(me.vertices) * 4); at.data.foreach_get('color', c); c = c.reshape(-1, 4)
+    face = c[:, 2] > 0.5
+    print(f'V11DBG skin {G.p.name} hand verts {hand.sum()} red {c[hand,0].mean():.3f} lip {c[hand,1].mean():.3f} inner {c[hand,3].mean():.3f} | face verts {face.sum()} red {c[face,0].mean():.3f} lip {c[face,1].mean():.3f} inner {c[face,3].mean():.3f}')
+    sc = me.attributes.get('kw11_scalp')
+    if sc is not None:
+        w = np.empty(len(me.vertices)); sc.data.foreach_get('value', w); print(f'V11DBG scalp {G.p.name} hand {w[hand].mean():.3f} max {w[hand].max():.3f} face {w[face].mean():.3f}')
+    uvl = me.uv_layers.active; uvs = {0: [], 1: []}
+    for pl in me.polygons:
+        for li in pl.loop_indices:
+            vi = me.loops[li].vertex_index
+            if hand[vi]: uvs[0].append(uvl.data[li].uv[:])
+            elif face[vi]: uvs[1].append(uvl.data[li].uv[:])
+    vg_ = {g.index: g.name for g in body.vertex_groups}
+    print('V11DBG body materials', [(i, m.name if m else None) for i, m in enumerate(me.materials)],
+          'hand faces by mat', np.bincount([pl.material_index for pl in me.polygons if all(hand[v] for v in pl.vertices)]).tolist(),
+          'face faces by mat', np.bincount([pl.material_index for pl in me.polygons if all(face[v] for v in pl.vertices)]).tolist())
+    for m in me.materials:
+        if m is None or not m.use_nodes: continue
+        for nd in m.node_tree.nodes:
+            if nd.type != 'TEX_IMAGE' or nd.image is None: continue
+            im = nd.image; W, H = im.size
+            if W == 0: continue
+            px = np.array(im.pixels[:]).reshape(H, W, -1)
+            out = []
+            for k in (0, 1):
+                u = np.array(uvs[k]) % 1.0
+                if not len(u): out.append(None); continue
+                sel = u[:: max(1, len(u) // 400)]
+                out.append(np.round(px[(sel[:, 1] * (H - 1)).astype(int), (sel[:, 0] * (W - 1)).astype(int), :3].mean(0), 3).tolist())
+            print('V11DBG tex', m.name, nd.name, im.name, im.colorspace_settings.name, 'hand', out[0], 'face', out[1])
 
 
 # B4: Howard's grey hair read dark brown from behind in the wide street tile (shadow side + salt-and-pepper dark strands)
