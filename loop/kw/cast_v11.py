@@ -11,7 +11,7 @@ import os, math
 import bpy, numpy as np
 from mathutils import Vector as V, Matrix
 
-def on(): return os.environ.get('KW_CAST', '') == 'v1.1'
+def on(): return os.environ.get('KW_CAST', 'v1.1') == 'v1.1'
 
 SCLERA = (0.86, 0.83, 0.79)      # sclera tint (HG = pure white)
 SCLERA_VEIN = 0.18               # share of the HG eye colour map (veins) kept in the white

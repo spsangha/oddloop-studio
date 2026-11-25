@@ -3,7 +3,7 @@ import bpy, os, sys, math, random, json, time, zlib
 from mathutils import Vector, Matrix, Euler, Quaternion
 from mathutils.bvhtree import BVHTree
 import kwkit as KW
-V11 = os.environ.get('KW_CAST', '') == 'v1.1'
+V11 = os.environ.get('KW_CAST', 'v1.1') == 'v1.1'
 BURGER_HALF = 0.051           # m wrist out from the midline for grip_burger
 LAUGH_BACK, LAUGH_BOUNCE = 4.0, 1.4      # deg head back, deg clavicle lift per bounce (~3.5 mm at the shoulder)
 import kwlib as L
@@ -1042,7 +1042,7 @@ class Runtime:
     def set_cam(self, pos, tgt, up, lens, fstop, foc):
         cd = self.CAM.data; R = L.aim(V(tgt) - V(pos), up)
         self.CAM.matrix_world = Matrix.Translation(V(pos)) @ R.to_4x4()
-        if os.environ.get('KW_CAST', '') == 'v1.1':
+        if os.environ.get('KW_CAST', 'v1.1') == 'v1.1':
             # cast v1.1: a face focus point sits inside the head (head bone + 3 cm) -> at f/2 the skin and eyes were soft.
             # Focus on the nearer HG eye when the old focus point is inside that head.
             best = None

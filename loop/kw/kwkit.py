@@ -85,7 +85,7 @@ FACES = {
     'focus': {'frown': 0.35, 'squint': 0.15}, 'scream': {'open': 1.0, 'wide': 0.8, 'worry': 0.5}, 'nausea': {'pressed': 0.7, 'worry': 0.6, 'squint': 0.3, 'puff': 0.4},
     'sniff': {'twitch': 0.9, 'squint': 0.3}, 'blow': {'puff': 0.9, 'pressed': 0.6, 'squint': 0.6, 'bulge': 0.4},
 }
-if os.environ.get('KW_CAST', '') == 'v1.1':
+if os.environ.get('KW_CAST', 'v1.1') == 'v1.1':
     # cast v1.1 (kit/kw_api.md "Faces v1.1"): six tuned expressions + three named jaw openings (front-teeth gap in mm,
     # per-character calibrated in heads_hg). Old names that meant the same thing now use them.
     FACES.update({

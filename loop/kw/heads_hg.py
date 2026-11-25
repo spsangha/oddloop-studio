@@ -45,7 +45,7 @@ ARK = {   # kit expression -> HG ARKit shape keys (weight)
     'jaw': {'jawOpen': 1.0}, 'lipsclose': {'mouthClose': 1.0},     # humgen spoon bite (ruling d): jaw open + lips closed on the handle
 }
 # cast v1.1 (KW_CAST=v1.1, kindawild/cast/v11_brief.md part A/B2): six expressions + named jaw openings; unused on v1.0
-V11 = os.environ.get('KW_CAST', '') == 'v1.1'
+V11 = os.environ.get('KW_CAST', 'v1.1') == 'v1.1'
 ARK.update({
     # tuned on Ben (strip s1 -> s2): HG ARKit keys read weaker than the brief's starting weights
     'x_surprise': {**S2('browOuterUp', 1.4), 'browInnerUp': 1.2, **S2('eyeWide', 1.0), 'jawOpen': 0.6, 'mouthFunnel': 0.3, 'mouthClose': 0.0},
