@@ -1562,6 +1562,13 @@ def _v11_authored(self, kr, jobs):
                 bpy.context.view_layer.update()
                 print('V11DBG near burger', sorted({o.name for o in bpy.data.objects if o.type in ('MESH', 'CURVE') and not o.hide_render and 'seed' not in o.name and
                                                     o.visible_camera and o not in ob.children_recursive and (o.matrix_world.translation - c).length < 0.6})[:60])
+                bb_ = []
+                for o in bpy.data.objects:
+                    if o.type not in ('MESH', 'CURVE') or o.hide_render or not o.visible_camera or 'seed' in o.name: continue
+                    cs = [o.matrix_world @ V(q) for q in o.bound_box]; lo = V([min(q[i] for q in cs) for i in range(3)]); hi = V([max(q[i] for q in cs) for i in range(3)])
+                    cl = V([min(max(P[i], lo[i]), hi[i]) for i in range(3)])
+                    if (cl - P).length < 0.08 and (hi - lo).length < 1.0: bb_.append((o.name, o.parent.name if o.parent else None, tuple(round(x, 3) for x in (hi - lo))))
+                print('V11DBG bbox near right palm', bb_[:30])
             if os.environ.get('KW_V11_DBG'):
                 for o_ in [ob] + list(ob.children_recursive)[:6]:
                     print('V11DBG burger obj', o_.name, 'z', tuple(round(x, 2) for x in o_.matrix_world.col[2][:3]), 'scale', tuple(round(x, 3) for x in o_.matrix_world.to_scale()),

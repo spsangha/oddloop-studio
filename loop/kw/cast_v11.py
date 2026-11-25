@@ -143,6 +143,47 @@ def skin_mask(G):
     print(f'cast v1.1: skin mask red max {red.max():.2f} mean {red.mean():.3f} lip verts {(lip > 0.5).sum()} face verts {(face > 0.5).sum()} inner verts {(inner > 0.5).sum()}')
 
 
+SCALP = {'Howard': ((0.50, 0.50, 0.50), 0.9)}     # (colour, amount) of the scalp tint under the head hair
+
+
+def _scalp_mask(G):
+    """float point attribute kw11_scalp = the head-hair density vertex group (where HG grows head hair)"""
+    body = G.body; me = body.data
+    if me.attributes.get('kw11_scalp') is not None: return True
+    vgn = None
+    for md in body.modifiers:
+        if md.type == 'PARTICLE_SYSTEM' and 'Eye' not in md.particle_system.settings.name and 'brow' not in md.particle_system.settings.name.lower():
+            vgn = md.particle_system.vertex_group_density or vgn
+            if vgn: break
+    vg = body.vertex_groups.get(vgn) if vgn else None
+    if vg is None: print('cast v1.1: no head-hair density group for', G.p.name); return False
+    w = np.zeros(len(me.vertices)); gi = vg.index
+    for v in me.vertices:
+        for g in v.groups:
+            if g.group == gi: w[v.index] = g.weight
+    at = me.attributes.new('kw11_scalp', 'FLOAT', 'POINT'); at.data.foreach_set('value', w.astype(np.float32))
+    print(f'cast v1.1: scalp mask {G.p.name} group {vgn} verts {(w > 0.3).sum()}'); return True
+
+
+def coat_inside(G):
+    """B4: the coat's inside faces (seen through the side vents) went black in the shade -> a little self light on back faces"""
+    for o in G.meshes:
+        if 'Coat' not in o.name: continue
+        for m in o.data.materials:
+            if m is None or not m.use_nodes or m.get('kw11_in'): continue
+            N, L = _nodes(m); bsdf = next((n for n in N if n.type == 'BSDF_PRINCIPLED'), None)
+            if bsdf is None: continue
+            gm = N.new('ShaderNodeNewGeometry'); bc = bsdf.inputs['Base Color']
+            if bc.links: L.new(bc.links[0].from_socket, bsdf.inputs['Emission Color'])
+            else: bsdf.inputs['Emission Color'].default_value = bc.default_value
+            mul = N.new('ShaderNodeMath'); mul.operation = 'MULTIPLY'; mul.inputs[1].default_value = COAT_IN
+            L.new(gm.outputs['Backfacing'], mul.inputs[0]); L.new(mul.outputs[0], bsdf.inputs['Emission Strength'])
+            m['kw11_in'] = 1; print('cast v1.1: coat inside', G.p.name, m.name)
+
+
+COAT_IN = 0.35
+
+
 def skin(G):
     skin_mask(G)
     for m in G.body.data.materials:
@@ -160,6 +201,12 @@ def skin(G):
         dk = N.new('ShaderNodeMix'); dk.data_type = 'RGBA'; dk.blend_type = 'MULTIPLY'; dk.inputs['B'].default_value = (*MOUTH_IN, 1)
         L.new(at.outputs['Alpha'], dk.inputs['Factor']); L.new(lp.outputs['Result'], dk.inputs['A'])
         L.new(dk.outputs['Result'], bsdf.inputs['Base Color'])
+        sc_ = SCALP.get(G.p.name)
+        if sc_ and _scalp_mask(G):     # B4: the skin under the head hair takes the hair colour (Howard read brown-headed in wide shots)
+            sa = N.new('ShaderNodeAttribute'); sa.attribute_name = 'kw11_scalp'; sa.attribute_type = 'GEOMETRY'
+            sm = N.new('ShaderNodeMath'); sm.operation = 'MULTIPLY'; sm.inputs[1].default_value = sc_[1]; L.new(sa.outputs['Fac'], sm.inputs[0])
+            mx = N.new('ShaderNodeMix'); mx.data_type = 'RGBA'; mx.blend_type = 'MIX'; mx.inputs['B'].default_value = (*sc_[0], 1)
+            L.new(sm.outputs[0], mx.inputs['Factor']); L.new(dk.outputs['Result'], mx.inputs['A']); L.new(mx.outputs['Result'], bsdf.inputs['Base Color'])
         # pores: fine Voronoi pits in object space, face only
         tc = N.new('ShaderNodeTexCoord'); vo = N.new('ShaderNodeTexVoronoi'); vo.feature = 'F1'; vo.inputs['Scale'].default_value = PORE['scale']
         vo.inputs['Randomness'].default_value = 0.9
@@ -176,6 +223,42 @@ def skin(G):
     print('cast v1.1: skin', G.p.name)
 
 
+# B4: Howard's grey hair read dark brown from behind in the wide street tile (shadow side + salt-and-pepper dark strands)
+HAIR = {'Howard': {'Lightness': 3.0, 'Pepper & Salt': 0.35, 'Fast/Accurate': 1.0, 'Roughness': 0.6}}
+UNDER_COAT = dict(near=0.015, push=0.006)     # trousers within 1.5 cm of the coat are pushed 6 mm in (B4: dark patches at the coat hem)
+
+
+def hair(G):
+    want = HAIR.get(G.p.name)
+    if not want: return
+    for m in G.body.data.materials:
+        if m is not None and m.name.startswith('.HG_Hair_Head') and m.node_tree:
+            g = m.node_tree.nodes.get('HG_Hair')
+            if g:
+                for k, v in want.items():
+                    if k in g.inputs: g.inputs[k].default_value = v
+                print('cast v1.1: hair', G.p.name, want)
+                # the nape strands (ps_ponytail_strands_thin) shade with .HG_Hair_Face, which HG left brown (0.78) on Howard:
+                # that was the dark brown back of the head in T4 -> face/nape hair takes the head hair colour
+                for m2 in G.body.data.materials:
+                    if m2 is not None and m2.name.startswith('.HG_Hair_Face') and m2.node_tree and m2.node_tree.nodes.get('HG_Hair'):
+                        g2 = m2.node_tree.nodes['HG_Hair']
+                        for k in ('Lightness', 'Redness', 'Pepper & Salt', 'Hue', 'Roughness', 'Fast/Accurate'):
+                            if k in g2.inputs and k in g.inputs: g2.inputs[k].default_value = g.inputs[k].default_value
+
+
+def under_coat(G):
+    coat = next((o for o in G.meshes if 'Coat' in o.name), None)
+    if coat is None: return
+    for o in G.meshes:
+        if not any(k in o.name for k in ('Jeans', 'Trousers', 'Pants', 'Chino')) or o.get('kw11_uc'): continue
+        vg = o.vertex_groups.new(name='kw11_prox'); vg.add(list(range(len(o.data.vertices))), 0.0, 'REPLACE')
+        mp = o.modifiers.new('kw11_prox', 'VERTEX_WEIGHT_PROXIMITY'); mp.vertex_group = vg.name; mp.target = coat
+        mp.proximity_mode = 'GEOMETRY'; mp.proximity_geometry = {'FACE'}; mp.min_dist = UNDER_COAT['near']; mp.max_dist = 0.0
+        md = o.modifiers.new('kw11_push', 'DISPLACE'); md.vertex_group = vg.name; md.direction = 'NORMAL'; md.mid_level = 0.0; md.strength = -UNDER_COAT['push']
+        o['kw11_uc'] = 1; print('cast v1.1: under coat', G.p.name, o.name)
+
+
 def lashes(G):
     for md in G.body.modifiers:
         if md.type != 'PARTICLE_SYSTEM' or 'Eyelash' not in md.particle_system.settings.name: continue
@@ -183,15 +266,49 @@ def lashes(G):
         if st.get('kw11'): continue
         st.rendered_child_count = LASH['children']; st.child_percent = LASH['children']; st.radius_scale *= LASH['radius']
         st['kw11'] = 1
+        head = next((m.node_tree.nodes.get('HG_Hair') for m in G.body.data.materials if m is not None and m.name.startswith('.HG_Hair_Head')
+                     and m.node_tree and m.node_tree.nodes.get('HG_Hair')), None)
         for m in G.body.data.materials:
             if m is not None and m.name.startswith('.HG_Hair_Eye'):
                 g = m.node_tree.nodes.get('HG_Hair')
-                if g: g.inputs['Lightness'].default_value = LASH['light']; g.inputs['Redness'].default_value = LASH['red']
+                if not g: continue
+                if head is not None:      # brows and lashes take the head hair colour (Ben brown, Howard grey); HG gave every cast member ginger brows
+                    for k in ('Lightness', 'Redness', 'Pepper & Salt', 'Hue'):
+                        if k in g.inputs and k in head.inputs: g.inputs[k].default_value = head.inputs[k].default_value * (LASH['light'] / 0.45 if k == 'Lightness' else 1.0)
+                else:
+                    g.inputs['Lightness'].default_value = LASH['light']; g.inputs['Redness'].default_value = LASH['red']
         print('cast v1.1: lashes', st.name, st.rendered_child_count, round(st.radius_scale, 4))
+
+
+def _dump(G):
+    import os
+    if not os.environ.get('KW_V11_DBG'): return
+    for m in G.body.data.materials:
+        if m is None or not m.node_tree: continue
+        for n in m.node_tree.nodes:
+            if n.type == 'GROUP' and ('Hair' in n.name or 'Hair' in (n.node_tree.name if n.node_tree else '')):
+                print('V11DBG hairmat', G.p.name, m.name, n.name, {i.name: (round(i.default_value, 3) if isinstance(i.default_value, float) else None)
+                                                                 for i in n.inputs if hasattr(i, 'default_value')})
+    hm = next((m for m in G.body.data.materials if m and m.name.startswith('.HG_Hair_Head')), None)
+    if hm:
+        g = hm.node_tree.nodes.get('HG_Hair')
+        if g and g.node_tree:
+            for n in g.node_tree.nodes:
+                print('V11DBG hairgrp node', n.name, n.type, {i.name: (tuple(round(x, 3) for x in i.default_value) if hasattr(i.default_value, '__len__') else round(i.default_value, 3))
+                                                         for i in n.inputs if hasattr(i, 'default_value') and not i.is_linked and i.type in ('VALUE', 'RGBA')})
+            for l in g.node_tree.links: print('V11DBG hairgrp link', l.from_node.name, l.from_socket.name, '->', l.to_node.name, l.to_socket.name)
+    mine = set(G.meshes) | {G.body}
+    print('V11DBG other visible', G.p.name, sorted(o.name for o in bpy.data.objects if o.type == 'MESH' and not o.hide_render and o not in mine and
+                                                  (o.matrix_world.translation - G.body.matrix_world.translation).length < 1.5)[:60])
+    for o in G.meshes:
+        print('V11DBG mesh', G.p.name, o.name, [m.name for m in o.data.materials if m][:4])
+    for md in G.body.modifiers:
+        if md.type == 'PARTICLE_SYSTEM': st = md.particle_system.settings; print('V11DBG psys', G.p.name, st.name, st.count, st.rendered_child_count, st.material_slot)
 
 
 def apply(kr, p, G):
     if not on(): return
-    eyes(G); skin(G); lashes(G)      # B1 catch-light: the kit key light already gives one per eye at the same clock position (catch_light() kept, unused)
+    _dump(G)
+    eyes(G); skin(G); hair(G); lashes(G); under_coat(G); coat_inside(G)      # B1 catch-light: the kit key light already gives one per eye at the same clock position (catch_light() kept, unused)
     tl = next((o for o in G.meshes if o.name.startswith('HG_TeethLower')), None)
     G.v11_tongue = tl.data.shape_keys.key_blocks.get('tongue_down') if tl is not None and tl.data.shape_keys else None
