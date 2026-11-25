@@ -225,7 +225,7 @@ def skin(G):
 
 # B4: Howard's grey hair read dark brown from behind in the wide street tile (shadow side + salt-and-pepper dark strands)
 HAIR = {'Howard': {'Lightness': 3.0, 'Pepper & Salt': 0.35, 'Fast/Accurate': 1.0, 'Roughness': 0.6}}
-UNDER_COAT = dict(near=0.015, push=0.006)     # trousers within 1.5 cm of the coat are pushed 6 mm in (B4: dark patches at the coat hem)
+UNDER_COAT = dict(near=0.015, push=0.006, hide=0.6)     # trousers within 1.5 cm of the coat are pushed 6 mm in, and within 6 mm hidden (B4: dark patches at the coat hem)
 
 
 def hair(G):
@@ -256,6 +256,7 @@ def under_coat(G):
         mp = o.modifiers.new('kw11_prox', 'VERTEX_WEIGHT_PROXIMITY'); mp.vertex_group = vg.name; mp.target = coat
         mp.proximity_mode = 'GEOMETRY'; mp.proximity_geometry = {'FACE'}; mp.min_dist = UNDER_COAT['near']; mp.max_dist = 0.0
         md = o.modifiers.new('kw11_push', 'DISPLACE'); md.vertex_group = vg.name; md.direction = 'NORMAL'; md.mid_level = 0.0; md.strength = -UNDER_COAT['push']
+        mk = o.modifiers.new('kw11_hide', 'MASK'); mk.mode = 'VERTEX_GROUP'; mk.vertex_group = vg.name; mk.invert_vertex_group = True; mk.threshold = UNDER_COAT['hide']
         o['kw11_uc'] = 1; print('cast v1.1: under coat', G.p.name, o.name)
 
 

@@ -88,3 +88,12 @@ Enabled by default; set a variable to `0` to isolate or revert that class of cha
 ## Hook template values that pass the gate (from ep_blownose)
 - shot 1 `KW.cam.face(p, push=0.12, side=14, dist=0.7, shake=0.4)`; shot 2 at 1.0 s `KW.cam.xray(p, organ, view='34', push=0.55, orbit=30, dist=0.62)`
   (a small push fails 9a: x-ray frames at 1 s and 2 s look the same); shot 3 at 2.2 s `KW.cam.macro(m, view='wide', push=0.3, hits=[0.15])`.
+
+## Cast v1.1 (KW_CAST=v1.1, HG cast; default cast stays v1.0)
+- new faces: `surprise fear disgust pain wince laugh` (also `shock`=surprise, `scream`=fear + 26 mm jaw, `nausea`=0.6 disgust + pressed lips).
+  Strength works at 1.0 and 0.6: `face={'fear': 0.6}`. Laugh adds head back ~4° and 3 shoulder bounces; `KW.act.wince(at)` runs in 4 / hold 6 / out 8 frames, left eye stronger.
+- named jaw openings (front-teeth gap): `speak` 8 mm, `spoon` 20 mm, `bite` 32 mm (+ lips apart); per-character table in heads_hg.JAW_TAB.
+- `look='camera'` aims head and eyes at the lens.
+- grips (the item follows the hand): `KW.hand.grip('grip_cup')`, `grip('grip_tool', 'tweezers'|'penlight')`, `grip('grip_pinch', 'pea'|'paperclip')`,
+  `grip('grip_burger')` given to BOTH hands, `grip('rest_belly')`. Pinch, tool and burger are fixed hand-authored finger tables (heads_hg.AUTH) for one prop size.
+  Known limits (Nov 25): rest_belly standing lands on the chest/forearm (use `clutch('belly')` seated); grip_burger reads as held but the fingers do not wrap the bun.
