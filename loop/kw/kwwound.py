@@ -601,7 +601,7 @@ class Wound:
             specks.append(self._skin([o], f'kw_speck_{i}'))
         return cells, specks
 
-    def set(self, open=0.0, stitches=0.0, out=0.0, red=0.0, collagen=0.0, vessels=0.0, line=None, scar=0.0, pink=0.0, dots=0.0, blood=None, level=0.0, cpink=0.0, cells=0.0, specks=-1.0, cinch=None, show=True, lwid=1.0):
+    def set(self, open=0.0, stitches=0.0, out=0.0, red=0.0, collagen=0.0, vessels=0.0, line=None, scar=0.0, pink=0.0, dots=0.0, blood=None, level=0.0, cpink=0.0, cells=0.0, specks=-1.0, cinch=None, show=True, lwid=1.0, sink=0.0):
         self.V['lwid'].default_value = lwid
         if line is None: line = min(1.0, max(0.0, stitches - 0.0) / max(1, self.N)) if stitches > 0 else 0.0
         for k, v in dict(open=open if show else 0.0, stitches=stitches if cinch is None else cinch, red=red if show else 0.0, line=line if show else 0.0, scar=scar if show else 0.0, level=level).items():
@@ -637,4 +637,9 @@ class Wound:
         for grp, val in ((self.collagen, collagen), (self.vessels, vessels)):
             for i, o in enumerate(grp):
                 kk = min(1.0, max(0.0, val * 1.6 - (i / max(1, len(grp))) * 0.6))
-                o.hide_render = not (show and kk > 0.01); o['kw_grow'] = 1.001 if kk >= 1 else kk; o.update_tag()
+                # H2 sink 0..1: the strands sink one after another under the levelled pink surface (2 mm down, then hidden; no pop)
+                sk = min(1.0, max(0.0, sink * 1.6 - ((i * 7) % max(1, len(grp))) / max(1, len(grp)) * 0.6)) if sink > 0 else 0.0
+                sk = sk * sk * (3 - 2 * sk)
+                o.hide_render = not (show and kk > 0.01) or sk >= 0.999; o['kw_grow'] = 1.001 if kk >= 1 else kk
+                if sink > 0 or o.get('kw_sunk'): o.location = -self.Nn * (0.002 * sk); o['kw_sunk'] = 1 if sk > 0 else 0
+                o.update_tag()

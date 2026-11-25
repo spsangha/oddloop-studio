@@ -592,7 +592,7 @@ def _key_vals(keys, u):
 
 def _wound_vals(keys, u):
     """smoothstep between wound keys; names carry forward"""
-    names = ('open', 'stitches', 'out', 'red', 'collagen', 'vessels', 'line', 'scar', 'pink', 'dots', 'level', 'cpink', 'cells', 'specks', 'cinch', 'lwid')
+    names = ('open', 'stitches', 'out', 'red', 'collagen', 'vessels', 'line', 'scar', 'pink', 'dots', 'level', 'cpink', 'cells', 'specks', 'cinch', 'lwid', 'sink')
     full = []; cur = dict.fromkeys(names, 0.0); cur['line'] = None; cur['specks'] = -1.0; cur['cinch'] = None; cur['lwid'] = 1.0     # specks -1 = hidden
     for t, v in sorted(keys, key=lambda x: x[0]):
         cur = dict(cur); cur.update(v); full.append((t, cur))
