@@ -14,6 +14,9 @@ STATIONS = {'skin_block': V((100, 0, 1.0)), 'gauge': V((110, 0, 1.0)), 'calendar
 PROP_LIGHT = {'skin_block': (0.45, 0.8), 'gauge': (0.3, 0.5), 'calendar': (0.4, 0.5), 'scan': (0.4, 0.25), 'earth': (0.5, 0.55)}
 RX90 = Matrix.Rotation(math.radians(-90), 3, 'X')
 
+# cast v1.1 grip items: the burger is bitten from the person's side (-y of the grip frame), cheese corner droops toward the camera
+GRIP_ITEM_KW = {'burger': dict(bite_side=270.0, cheese_at=75.0)}
+
 class Builder:
     def __init__(self, rt):
         self.rt = rt; self.ep = rt.ep; self.G = rt.G; self.bodies = {}; self.macros = {}; self.stations = {}; self.items = {}
@@ -310,7 +313,7 @@ class Builder:
 
     def _make_prop(self, pr, c):
         if pr.startswith('g_'):      # cast v1.1 grips: a kwprops item, its root empty is what the hand carries
-            import kwprops; it = kwprops.make(pr[2:], c); it.root.name = 'kw_' + pr; self.grip_items = getattr(self, 'grip_items', {}); self.grip_items[pr] = it
+            import kwprops; it = kwprops.make(pr[2:], c, **GRIP_ITEM_KW.get(pr[2:], {})); it.root.name = 'kw_' + pr; self.grip_items = getattr(self, 'grip_items', {}); self.grip_items[pr] = it
             return it.root
         if pr == 'tissue':
             me = bpy.data.meshes.new('kw_tissue'); vs = []; fs = []; N = 22; rnd = random.Random(3)

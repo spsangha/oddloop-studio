@@ -542,7 +542,12 @@ class Runtime:
             look = qb.look if qb.look is not None else qa.look
             ra.cur_look = look
             if look is not None and not canonical:
-                tgt = self.look_point(look)
+                tgt = self.look_point(look) if look != 'held' else None
+                if look == 'held':       # cast v1.1: head dips half way toward a burger held at the chest (eyes do the rest); none at the mouth
+                    hs_ = [getattr(qb, sd_, None) for sd_ in ('left', 'right')]
+                    if not any(h_ is not None and h_.at == 'mouth' for h_ in hs_):
+                        R3 = M.to_3x3().normalized(); hp0 = M @ p.rig.data.bones['head'].head_local
+                        tgt = hp0 + (R3 @ V((0, -1, 0))) * 0.6 - (R3 @ V((0, 0, 1))) * 0.17
                 if tgt is not None:
                     hp = M @ p.rig.data.bones['head'].head_local; Ri = M.to_3x3().inverted(); d = Ri @ (tgt - hp)
                     lt = math.degrees(math.atan2(d.x, -d.y)); ln = -math.degrees(math.atan2(d.z, math.hypot(d.x, d.y)))
@@ -611,8 +616,6 @@ class Runtime:
         if isinstance(look, (tuple, list)): return V(look)
         if isinstance(look, KW.FX) and look.obj is not None: return self.FX.world_of(look)
         if look == 'camera': return self.CAM.matrix_world.translation.copy()
-        if look == 'held' and getattr(self, 'FX', None) is not None and self.FX.props.get('g_burger') is not None:   # cast v1.1: eyes on the held burger
-            return self.FX.props['g_burger'].matrix_world @ V((0, 0, 0.03))
         return None
     def anchor_world(self, an):
         ra = self.actors[an.actor]
@@ -1029,6 +1032,10 @@ class Runtime:
                 if e is None: continue
                 if e.name not in keep: keep[e.name] = e.matrix_basis.copy()
                 if getattr(ra, 'cur_look', None) == 'camera': e.matrix_world = Matrix.Translation(cp)
+                elif getattr(ra, 'cur_look', None) == 'held' and self.FX.props.get('g_burger') is not None:
+                    # aim along the eye->burger ray but 1.2 m out: the same gaze direction without the cross-eyed near convergence
+                    bc_ = self.FX.props['g_burger'].matrix_world @ V((0, 0, 0.04)); eo_ = self.bw(ra.p, 'head') + (ra.p.rig.matrix_world.to_3x3().normalized() @ V((0, -0.08, 0.08)))
+                    e.matrix_world = Matrix.Translation(eo_ + (bc_ - eo_).normalized() * 1.2)
                 else: e.matrix_basis = keep[e.name]
         bpy.context.view_layer.update()
 

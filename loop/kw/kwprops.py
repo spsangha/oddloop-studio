@@ -209,7 +209,7 @@ def tray(c, K=None, style='meal', w=None, d=None, h=None, r=None, color=None, li
 
 
 # ===================================================================================== A2 food
-def burger(c, K=None, width=0.11, height=0.06, bite_side=225.0, **_):
+def burger(c, K=None, width=0.11, height=0.06, bite_side=225.0, cheese_at=None, **_):
     """cheeseburger 11 x 6 cm: Poly Haven bun (cut in two), rough patty, cheese with one drooping corner, lettuce frill,
     sesame seeds.  eaten 0..1: round 3.5 cm bites from one side (bite_side, deg from +X; 225 = front-left), gone at 0.96."""
     pr = Prop('burger', c)
@@ -239,7 +239,8 @@ def burger(c, K=None, width=0.11, height=0.06, bite_side=225.0, **_):
     for j in range(N):
         for i in range(N): fs.append((j * (N + 1) + i, j * (N + 1) + i + 1, (j + 1) * (N + 1) + i + 1, (j + 1) * (N + 1) + i))
     ch = _mesh('kwp_cheese', vs, fs, L.mat('kwp_cheese_m', (0.95, 0.55, 0.06), 0.35, sss=0.2, coat=0.2))
-    ch.rotation_euler = (0, 0, math.radians(bite_side + 20))   # drooping corner ~65 deg round from the bitten side; ch.location = (0, 0, z + hc * 0.5); so = ch.modifiers.new('t', 'SOLIDIFY'); so.thickness = hc
+    ch.rotation_euler = (0, 0, math.radians(bite_side + 20 if cheese_at is None else cheese_at - 45))   # drooping corner ~65 deg round from the bitten side (or at cheese_at deg from +X)
+    ch.location = (0, 0, z + hc * 0.5); so = ch.modifiers.new('t', 'SOLIDIFY'); so.thickness = hc
     z += hc
     lv = []; lf = []; NA, NR = 96, 4
     for j in range(NR + 1):
