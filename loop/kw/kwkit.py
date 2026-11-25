@@ -255,9 +255,9 @@ def _grip(name, item=None, where='chest'):
     item = item or GRIPS[name][0]; _check_name(name + ' item', item, GRIPS[name])
     if where not in ('chest', 'mouth', 'out'): raise ValueError('grip where: chest | mouth | out')
     part = {'mouth': 'mouth'}.get(where)
-    # cup / tweezers ride on the solved HG can / spoon grips (the carrier mesh is hidden, the kwprops item is shown)
+    # the cup rides on the solved HG can grip (the carrier mesh is hidden, the kwprops item is shown); tools, pinch and burger
+    # are fixed hand-authored finger tables (heads_hg.AUTH) with the item put on the hand
     if name == 'grip_cup': return Hand('hold', None, part, 'hold', prop='can', at=where, pad='cup')
-    if name == 'grip_tool': return Hand('hold', None, part, 'hold', prop='spoon', at=where, pad=item)
     return Hand('hold', None, part, 'hold', prop='g_' + item, at=where)
 hand.grip = staticmethod(_grip)
 

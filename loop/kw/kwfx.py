@@ -4,7 +4,7 @@ from mathutils import Vector as V, Matrix
 import kwkit as KW
 # cast v1.1: kwprops item root in its carrier's frame (can: z = axis, centred; spoon: z = handle -> bowl, x = width, y = thickness)
 CARRY_OFF = {'cup': Matrix.Translation((0, 0, -0.055)),
-             'tweezers': Matrix(((0, 1, 0, 0), (0, 0, 1, 0), (1, 0, 0, 0.03), (0, 0, 0, 1))),
+             'tweezers': Matrix(((0, 1, 0, 0), (0, 0, 1, 0), (1, 0, 0, 0.075), (0, 0, 0, 1))),
              'penlight': Matrix(((0, 1, 0, 0), (0, 0, 1, 0), (1, 0, 0, 0.0), (0, 0, 0, 1)))}
 import kwlib as L
 import kwbody as B
@@ -550,6 +550,13 @@ class Builder:
                 if o in mine: continue
                 o.visible_camera = o.visible_shadow = o.visible_diffuse = o.visible_glossy = o.visible_transmission = o.visible_volume_scatter = False
             for o in it.objs: o.hide_render = car.hide_render
+        if os.environ.get('KW_V11_DBG'):
+            for pr, it in getattr(self, 'carried', {}).items():
+                M_ = it.root.matrix_world; print('V11DBG carried', pr, 'hide', [o.hide_render for o in it.objs][:3], 'pos', tuple(round(x, 3) for x in M_.translation),
+                                               'z', tuple(round(x, 2) for x in M_.col[2][:3]), 'x', tuple(round(x, 2) for x in M_.col[0][:3]), 'scale', tuple(round(x, 3) for x in M_.to_scale()))
+            vis = [o.name for o in bpy.data.objects if o.type in ('MESH', 'CURVE') and not o.hide_render and o.visible_camera and
+                   any((o.matrix_world.translation - rt.wmat(ra.p, 'wrist.R').translation).length < 0.25 for ra in rt.actors.values())]
+            print('V11DBG near wrist.R', vis[:40])
         if os.environ.get('KW_V11_DBG'): print('V11DBG kit props', {pr: (ob.hide_render, tuple(round(x, 3) for x in ob.matrix_world.translation)) for pr, ob in self.props.items()})
 
     def update_screen(self, shot, u, t):

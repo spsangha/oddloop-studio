@@ -766,12 +766,17 @@ ITEM_OFF_P = {}
 # bones: finger k (1 thumb .. 5 pinky) -> (joint1, joint2, joint3) flex about x; thumb also 'z' on joint 1. Per character
 # override AUTH_P[(name, prop)]. Offsets (m) are in the grip frame named in AUTH_AT.
 AUTH = {
-    'g_pea': {1: ((30, 25, 25), -30), 2: ((38, 48, 38), 0), 3: ((55, 70, 50), 0), 4: ((62, 75, 50), 0), 5: ((68, 75, 50), 0)},
-    'g_paperclip': {1: ((32, 28, 28), -30), 2: ((42, 52, 40), 0), 3: ((55, 70, 50), 0), 4: ((62, 75, 50), 0), 5: ((68, 75, 50), 0)},
+    'g_pea': {1: ((42, 35, 35), -20), 2: ((42.75, 54, 42.75), 0), 3: ((45, 55, 40), 0), 4: ((50, 60, 40), 0), 5: ((55, 62, 40), 0)},
+    'g_paperclip': {1: ((35.7, 29.75, 29.75), -10), 2: ((47.5, 60, 47.5), 0), 3: ((45, 55, 40), 0), 4: ((50, 60, 40), 0), 5: ((55, 62, 40), 0)},
+    'g_tweezers': {1: ((42, 35, 35), -30), 2: ((47.5, 60, 47.5), 0), 3: ((45, 55, 40), 0), 4: ((50, 60, 40), 0), 5: ((55, 62, 40), 0)},
+    'g_penlight': {1: ((48.3, 40.25, 40.25), -30), 2: ((47.5, 60, 47.5), 0), 3: ((45, 55, 40), 0), 4: ((50, 60, 40), 0), 5: ((55, 62, 40), 0)},
     'g_burger': {1: ((5, 10, 10), -55), 2: ((25, 35, 25), 0), 3: ((28, 38, 25), 0), 4: ((30, 40, 25), 0), 5: ((32, 42, 25), 0)},
 }
 AUTH_P = {}
-AUTH_OFF = {'g_pea': (0.0, 0.0, 0.0), 'g_paperclip': (0.0, 0.0, 0.0), 'g_burger': (0.0, 0.0, 0.0)}
+AUTH_OFF = {'g_pea': (0.0006, 0.0016, 0.0146), 'g_paperclip': (0.0067, -0.0014, 0.011), 'g_burger': (0.0, 0.0, 0.0),
+            'g_tweezers': (-0.0001, 0.0008, 0.0139), 'g_penlight': (-0.0027, 0.003, 0.0128)}
+# tools: (grip point along the item's +X from its origin, item axis height above its origin) -> the pads close on the grip point
+TOOL_AT = {'g_tweezers': (0.02, 0.0012), 'g_penlight': (-0.02, 0.0065)}
 BURGER = dict(width=0.11, height=0.06, squash=0.96, tilt=12.0)     # bun dent = (1 - squash) * height ~ 2.4 mm; tilt toward the face
 SKIN = 0.0015                                             # target skin-to-prop gap
 INV = {v[0]: k for k, v in MAP.items()}                   # MakeHuman bone -> HG bone
@@ -1053,6 +1058,10 @@ def _goal(self, kr, ra, side, h, g, u, t):
     D, tip, shape, Rw, pole = g
     if not isinstance(D, V) or Rw is None: return g
     tl = ra.hand[side][shape][tip]
+    if V11 and h is not None and h.kind == 'hold' and h.prop == 'can' and h.pad == 'cup' and h.at != 'mouth' and (side, 'can') in self.Pl:
+        a_ = (Rw @ self.Pl[(side, 'can')].to_3x3()).col[2].normalized()       # cast v1.1 grip_cup: turn the wrist so the cup stands upright
+        Rw = (a_.rotation_difference(V((0, 0, 1))).to_matrix() @ Rw.to_3x3()) if Rw.__len__() == 3 else a_.rotation_difference(V((0, 0, 1))).to_matrix().to_4x4() @ Rw
+        g = (D, tip, shape, Rw, pole)
     W = Matrix.Translation(D - Rw @ tl) @ Rw.to_4x4()
     can_ = h is not None and h.kind == 'hold' and h.prop == 'can' and h.at == 'mouth' and shape == 'hold' and (side, 'can') in getattr(self, 'cangrip', {})
     # the kit IK chain is 4 bones (upperarm01/02, lowerarm01/02): the 02 twist bones may only TWIST while the can is held,
@@ -1473,6 +1482,37 @@ Graft._solve_can = _solve_can
 Graft.drink_w = _drink_w
 
 
+def _v11_author(self, kr, side, prop, tab):
+    """authoring aid only (KW_V11_AUTHOR=1): prints the thumb/index pad gap for scaled tables; the chosen numbers go into AUTH"""
+    p = self.p; vg = {g.name: g.index for g in self.body.vertex_groups}
+    def grp(n):
+        gi = vg[n]; return np.array([v.index for v in self.body.data.vertices if any(g.group == gi and g.weight > 0.5 for g in v.groups)])
+    it, ii = grp(f'thumb.03.{side}'), grp(f'f_index.03.{side}')
+    RW = self.rig.matrix_world
+    mk = [m for m in self.body.modifiers if m.type == 'MASK' and m.show_viewport]
+    for m in mk: m.show_viewport = False
+    for ti in (0.85, 1.0, 1.15):
+        for ix in (0.9, 1.0, 1.1):
+            for tz in (-10, -20, -30):
+                for k, (ang, tz0) in tab.items():
+                    if k not in (1, 2): continue
+                    for jj in (1, 2, 3):
+                        e = p.pb(f'finger{k}-{jj}.{side}').rotation_euler
+                        sc = ti if k == 1 else ix
+                        e.x = math.radians(ang[jj - 1] * sc); e.z = math.radians(tz if (k == 1 and jj == 1) else 0.0) * (1 if side == 'R' else -1)
+                bpy.context.view_layer.update(); W = _verts_world(self.body)
+                A, B = W[it], W[ii]; d = np.linalg.norm(A[:, None, :] - B[None, :, :], axis=2); a, b = np.unravel_index(np.argmin(d), d.shape)
+                T = RW @ self.rig.pose.bones[f'thumb.03.{side}'].tail; I = RW @ self.rig.pose.bones[f'f_index.03.{side}'].tail
+                Mw = kr.wmat(p, f'wrist.{side}'); mid = V(((A[a] + B[b]) / 2).tolist()); off = Mw.to_3x3().inverted() @ (mid - (T + I) / 2)
+                print(f'V11AUTH {prop} thumb x{ti} index x{ix} tz {tz}: pad gap {1000 * d[a, b]:.1f} mm  bone tips {1000 * (T - I).length:.1f} mm  '
+                      f'pad-mid off {tuple(round(c, 4) for c in off)}')
+    for m in mk: m.show_viewport = True
+    for k, (ang, tz0) in tab.items():
+        for jj in (1, 2, 3):
+            e = p.pb(f'finger{k}-{jj}.{side}').rotation_euler
+            e.x = math.radians(ang[jj - 1]); e.z = math.radians(tz0 if jj == 1 else 0.0) * (1 if side == 'R' else -1)
+
+
 def _v11_authored(self, kr, jobs):
     """cast v1.1 grip_pinch / grip_burger: fixed finger tables, then the item is put on the hand (it never moves the hand)"""
     p = self.p; RW = self.rig.matrix_world; moved = []
@@ -1485,6 +1525,8 @@ def _v11_authored(self, kr, jobs):
                 e = p.pb(f'finger{k}-{jj}.{side}').rotation_euler
                 e.x = math.radians(ang[jj - 1]); e.y = 0.0; e.z = math.radians(tz if jj == 1 else 0.0) * (1 if side == 'R' else -1)
         moved.append((side, h))
+        if os.environ.get('KW_V11_AUTHOR') and h.prop in ('g_pea', 'g_paperclip') and not getattr(self, '_v11_auth_done', {}).get(h.prop):
+            self.__dict__.setdefault('_v11_auth_done', {})[h.prop] = 1; self._v11_author(kr, side, h.prop, tab)
     if not moved: return
     bpy.context.view_layer.update()
     tip = lambda b: RW @ self.rig.pose.bones[b].tail
@@ -1503,6 +1545,11 @@ def _v11_authored(self, kr, jobs):
             if os.environ.get('KW_V11_DBG') or not getattr(self, '_v11_said', {}).get(h.prop):
                 self.__dict__.setdefault('_v11_said', {})[h.prop] = 1
                 print(f'cast v1.1 grip {p.name} {side}{h.prop}: tip-to-tip bone ends {1000 * (I - T).length:.1f} mm')
+        elif h.prop in TOOL_AT:
+            T, I = tip(f'thumb.03.{side}'), tip(f'f_index.03.{side}'); c = (T + I) / 2 + Mw.to_3x3() @ off
+            Y = (I - T).normalized(); X = (f - Y * f.dot(Y)).normalized(); Z = X.cross(Y)
+            gx, zc = TOOL_AT[h.prop]; M = Matrix((X, Y, Z)).transposed().to_4x4(); M.translation = c - X * gx - Z * zc
+            ob.matrix_world = M
         elif h.prop == 'g_burger' and side == 'R':
             P = Mw @ self.palm[side]; L_ = kr.wmat(p, 'wrist.L'); PL = L_ @ self.palm['L']
             c = (P + PL) / 2 + Mw.to_3x3() @ off
@@ -1511,6 +1558,14 @@ def _v11_authored(self, kr, jobs):
             R = Matrix.Rotation(math.radians(-BURGER['tilt']), 3, x) @ Matrix((x, fw, z)).transposed()
             M = R.to_4x4(); M.translation = c - (R @ V((0, 0, BURGER['height'] * BURGER['squash'] / 2)))
             ob.matrix_world = M @ Matrix.Diagonal((1, 1, BURGER['squash'], 1))
+            if os.environ.get('KW_V11_DBG'):
+                bpy.context.view_layer.update()
+                print('V11DBG near burger', sorted({o.name for o in bpy.data.objects if o.type in ('MESH', 'CURVE') and not o.hide_render and 'seed' not in o.name and
+                                                    o.visible_camera and o not in ob.children_recursive and (o.matrix_world.translation - c).length < 0.6})[:60])
+            if os.environ.get('KW_V11_DBG'):
+                for o_ in [ob] + list(ob.children_recursive)[:6]:
+                    print('V11DBG burger obj', o_.name, 'z', tuple(round(x, 2) for x in o_.matrix_world.col[2][:3]), 'scale', tuple(round(x, 3) for x in o_.matrix_world.to_scale()),
+                          'loc', tuple(round(x, 3) for x in o_.matrix_world.translation), 'mats', [m.name for m in getattr(o_.data, 'materials', [])][:2] if o_.data else None)
             if not getattr(self, '_v11_bsaid', False):
                 self._v11_bsaid = True
                 print(f'cast v1.1 grip {p.name} burger: palms {1000 * (PL - P).length:.1f} mm apart (bun {1000 * BURGER["width"]:.0f})')
@@ -1611,6 +1666,7 @@ def _forearm_twist(self, sides='LR'):
 
 Graft.apply_contacts = _apply_contacts
 Graft.v11_authored = _v11_authored
+Graft._v11_author = _v11_author
 Graft.forearm_twist = _forearm_twist
 
 
