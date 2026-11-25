@@ -1187,6 +1187,14 @@ class Runtime:
         pos, tgt, up, lens, fs, foc = self.cam_eval(shot, u, si)
         self.set_cam(pos, tgt, up, lens, fs, foc)
         if V11: self._v11_eyes_to_camera()
+        if V11 and os.environ.get('KW_V11_DBG'):      # what the camera sees at each HG person's lips (hand in front of the mouth?)
+            dg_ = bpy.context.evaluated_depsgraph_get(); cp_ = V(pos)
+            for ra in self.actors.values():
+                hg_ = getattr(ra.p, 'hg', None)
+                if hg_ is None or not hasattr(hg_, 'lip_local'): continue
+                for dz_ in (0.0, 0.012):
+                    L_ = self.wmat(ra.p, 'head') @ hg_.lip_local + V((0, 0, dz_)); d_ = (L_ - cp_); hit_ = bpy.context.scene.ray_cast(dg_, cp_, d_.normalized(), distance=d_.length + 0.01)
+                    print('V11DBG lipview', shot.name, 'dz', dz_, 'hit', hit_[4].name if hit_[0] else None, 'at', round((hit_[1] - L_).length * 1000) if hit_[0] else None, 'mm from the lip')
         self.cam_walls(shot, V(pos))
         self.rim_light(shot, pos)
         self.backdrop(shot, pos, tgt)

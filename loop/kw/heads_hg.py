@@ -1582,7 +1582,7 @@ def _v11_authored(self, kr, jobs):
 
 
 # ============================================================ cast v1.1 round 2: finger closer (A1) + two-hand burger (A2)
-BURGER2 = dict(width=0.11, height=0.06, front=0.24, tilt=20.0, lean=0.0, bite_in=0.012, bite_z=0.85, bite_tilt=30.0)
+BURGER2 = dict(width=0.11, height=0.06, front=0.24, tilt=20.0, lean=0.0, bite_in=0.012, bite_z=0.85, bite_tilt=30.0, bite_yaw=-15.0)
 BURGER_HAND = dict(z=0.006, y=0.0)        # palm skin point in the burger frame: height above the bun bottom, front-back offset
 BURGER_TIP_IN = 0.030                      # m: fingertips this far in from the crown edge
 FINGER_ROM = {1: (60.0, 70.0, 80.0), 2: (90.0, 105.0, 80.0)}   # deg flex limits (MCP, PIP, DIP); thumb row 1, fingers row 2 (k >= 2)
@@ -1782,8 +1782,16 @@ def _burger_Pl(self, kr, ra, side):
     return Pl
 
 
+def _burger_yaw(side, at):
+    """biting: both hands slide round the bun toward its front (bite_yaw, about the bun axis, so the contacts hold) and the
+    index finger leaves the lips"""
+    if at != 'mouth': return Matrix.Identity(4)
+    yw = float(os.environ.get('KW_BITE_YAW', BURGER2['bite_yaw']))
+    return Matrix.Rotation(math.radians(yw) * (1 if side == 'R' else -1), 4, 'Z')
+
+
 def _burger_goal(self, kr, ra, side, h, tip, shape):
-    tl = ra.hand[side][shape][tip]; B = _burger_B(self, kr, ra, h.at); Wd = B @ _burger_Pl(self, kr, ra, side).inverted()
+    tl = ra.hand[side][shape][tip]; B = _burger_B(self, kr, ra, h.at); Wd = B @ _burger_yaw(side, h.at) @ _burger_Pl(self, kr, ra, side).inverted()
     R = ra.p.rig.matrix_world.to_3x3().normalized(); Up = R @ V((0, 0, 1)); sh = kr.bw(ra.p, f'upperarm01.{side}')
     out = _side_out(kr, ra, side); Fp = R @ V((0, -1, 0))
     pole = sh + out * 0.35 - Up * 0.6 - Fp * 0.1          # elbows down, ~30 deg out
@@ -1801,11 +1809,11 @@ def _burger_hold(self, kr, jobs):
             for jj in (1, 2, 3):
                 e = p.pb(f'finger{k}-{jj}.{side}').rotation_euler
                 e.x = math.radians(a[jj - 1]); e.y = 0.0; e.z = math.radians(z if jj == 1 else 0.0) * (1 if side == 'R' else -1)
-    side0 = js[0][1]; ob.matrix_world = kr.wmat(p, f'wrist.{side0}') @ _burger_Pl(self, kr, self.ra, side0)
+    side0 = js[0][1]; ob.matrix_world = kr.wmat(p, f'wrist.{side0}') @ _burger_Pl(self, kr, self.ra, side0) @ _burger_yaw(side0, js[0][8].at).inverted()
     if os.environ.get('KW_V11_DBG'):
         bpy.context.view_layer.update(); Bt = _burger_B(self, kr, self.ra, js[0][8].at)
         for j in js:
-            Wd = Bt @ _burger_Pl(self, kr, self.ra, j[1]).inverted(); Wa = kr.wmat(p, f'wrist.{j[1]}')
+            Wd = Bt @ _burger_yaw(j[1], j[8].at) @ _burger_Pl(self, kr, self.ra, j[1]).inverted(); Wa = kr.wmat(p, f'wrist.{j[1]}')
             print('V11DBG burger', j[1], 'wrist pos err mm', round(1000 * (Wa.translation - Wd.translation).length, 1),
                   'rot err deg', round(math.degrees(Wa.to_quaternion().rotation_difference(Wd.to_quaternion()).angle), 1))
     return True
