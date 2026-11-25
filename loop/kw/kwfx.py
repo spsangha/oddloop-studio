@@ -543,13 +543,13 @@ class Builder:
         for pr, ob in self.props.items():
             if pr not in used: ob.hide_render = True
         for pr, it in getattr(self, 'grip_items', {}).items():     # cast v1.1: the item meshes follow their root's visibility
-            for o in it.objs: o.hide_render = it.root.hide_render
+            for o in it.objs: o.hide_render = it.root.hide_render or o.display_type == 'WIRE'   # boolean cutters (burger bites) stay hidden
         for pr, it in getattr(self, 'carried', {}).items():
             car = self.props[pr]; mine = set(it.objs) | {it.root}
             for o in [car] + list(car.children_recursive):
                 if o in mine: continue
                 o.visible_camera = o.visible_shadow = o.visible_diffuse = o.visible_glossy = o.visible_transmission = o.visible_volume_scatter = False
-            for o in it.objs: o.hide_render = car.hide_render
+            for o in it.objs: o.hide_render = car.hide_render or o.display_type == 'WIRE'
         if os.environ.get('KW_V11_DBG'):
             for pr, it in getattr(self, 'carried', {}).items():
                 M_ = it.root.matrix_world; print('V11DBG carried', pr, 'hide', [o.hide_render for o in it.objs][:3], 'pos', tuple(round(x, 3) for x in M_.translation),
