@@ -171,8 +171,8 @@ class Builder:
                     bpy.context.view_layer.update(); hp = host['prop']; nm = o.get('point') or ('floor' if 'floor' in hp.pts else 'top')
                     base = hp.point(nm) + base
             pr.root.location = base; pr.root.rotation_euler = (0, math.radians(o.get('tilt', 0.0)), math.radians(o['rz'])); bpy.context.view_layer.update()
-            if o['keys']: pr.set(**_key_vals(o['keys'], 0.0))
-            return dict(prop=pr)
+            if o['keys']: pr.set(**{k_: v_ for k_, v_ in _key_vals(o['keys'], 0.0).items() if k_ not in ('dx', 'dy')})
+            return dict(prop=pr, base=V(base))
         if k == 'counter':
             if not G: return dict(label=None)
             return dict(label=G.Label3D(_counter_text(o, o['v1']), V((0, 0, 0)), c, size=0.06, color=LABEL_COL[o['color']]))
@@ -313,7 +313,7 @@ class Builder:
 
     def _make_prop(self, pr, c):
         if pr.startswith('g_'):      # cast v1.1 grips: a kwprops item, its root empty is what the hand carries
-            import kwprops; it = kwprops.make(pr[2:], c, **GRIP_ITEM_KW.get(pr[2:], {})); it.root.name = 'kw_' + pr; self.grip_items = getattr(self, 'grip_items', {}); self.grip_items[pr] = it
+            import kwprops; it = kwprops.make(pr[2:], c, **{**GRIP_ITEM_KW.get(pr[2:], {}), **getattr(self.rt.ep, 'grip_kw', {}).get(pr[2:], {})}); it.root.name = 'kw_' + pr; self.grip_items = getattr(self, 'grip_items', {}); self.grip_items[pr] = it
             return it.root
         if pr == 'tissue':
             me = bpy.data.meshes.new('kw_tissue'); vs = []; fs = []; N = 22; rnd = random.Random(3)
@@ -419,7 +419,13 @@ class Builder:
         # table-top items, beams, counters' lights (kwprops)
         items = [(f, self.items.get(f)) for f in shot.fx if f.kind == 'item' and self.items.get(f)]
         for f, it in items:
-            if f.o['keys']: it['prop'].set(**_key_vals(f.o['keys'], u))
+            if f.o['keys']:
+                kv = _key_vals(f.o['keys'], u); it['off'] = V((kv.pop('dx', 0.0), kv.pop('dy', 0.0), 0.0))
+                if kv: it['prop'].set(**kv)
+        for f, it in items:      # ep08: moving items (a tray sliding in) carry the items standing on them
+            off = it.get('off', V((0, 0, 0))); hst = self.items.get(f.o.get('on')) if f.o.get('on') is not None else None
+            if hst: off = off + hst.get('off', V((0, 0, 0)))
+            if off.length > 0 or 'off' in it: it['prop'].root.location = it['base'] + off
         if items and not shot.cast:
             pts = [it['prop'].root.matrix_world.translation for f, it in items if f.o['item'] != 'bench']
             if not pts: pts = [it['prop'].point('top') for f, it in items]
@@ -546,7 +552,7 @@ class Builder:
         for pr, ob in self.props.items():
             if pr not in used: ob.hide_render = True
         for pr, it in getattr(self, 'grip_items', {}).items():     # cast v1.1: the item meshes follow their root's visibility
-            for o in it.objs: o.hide_render = it.root.hide_render or o.display_type == 'WIRE'   # boolean cutters (burger bites) stay hidden
+            for o in it.objs: o.hide_render = it.root.hide_render or o.display_type == 'WIRE' or o.get('kw_off', False)   # boolean cutters (burger bites) stay hidden; so do parts the prop itself turned off
         for pr, it in getattr(self, 'carried', {}).items():
             car = self.props[pr]; mine = set(it.objs) | {it.root}
             for o in [car] + list(car.children_recursive):
@@ -595,9 +601,15 @@ class Builder:
                         Mo = lab.root.matrix_world @ lab.object.matrix_parent_inverse @ lab.object.matrix_basis; RcT = Rc.transposed(); xs = []
                         for q in lab.object.bound_box:
                             cq = RcT @ ((Mo @ V(q)) - P0); xs.append(cq.x / max(1e-6, -cq.z) / (th * 9 / 16) * 540 + 540)
-                        wpx = max(xs) - min(xs); it['fit'] = min(1.0, 945.0 / max(1.0, wpx)); it['wpx'] = wpx * it['fit']
+                        wpx = max(xs) - min(xs); it['fit'] = min(1.0, 945.0 / max(1.0, wpx)); it['wpx'] = wpx * it['fit']; it['lens0'] = cd.lens
                         print(f"KW label '{o['text']}' width {wpx:.0f} px -> {it['wpx']:.0f} px at 1080 (fit {it['fit']:.3f})", flush=True)
-                    place(lab.root, o['pos'], o['size'] * it['fit'])
+                    lf_ = it['lens0'] / cd.lens if getattr(rt.ep, 'label_lens_fix', False) else 1.0     # ep08: constant screen size while the lens changes (opt-in; ep07 unchanged)
+                    if o.get('keys'):       # ep08 (g): eased screen place / width cap; un-keyed labels unchanged
+                        kv = _key_vals([(0.0, {'pos_x': o['pos'][0], 'pos_y': o['pos'][1], 'width': it['wpx']})] +
+                                       [(t, {**({'pos_x': v['pos'][0], 'pos_y': v['pos'][1]} if 'pos' in v else {}), **({'width': v['width']} if 'width' in v else {})}) for t, v in o['keys']], u)
+                        wk = min(it['wpx'], kv.get('width', it['wpx'])); place(lab.root, (kv['pos_x'], kv['pos_y']), o['size'] * it['fit'] * lf_ * wk / max(1.0, it['wpx']))
+                    else:
+                        place(lab.root, o['pos'], o['size'] * it['fit'] * lf_)
                 ka = pop((u - o['at']) / 0.3) if u > o['at'] else 0.0
                 if o.get('dur') is not None and u > o['at'] + o['dur']: ka = 0.0
                 lab.set(scale=max(ka, 1e-5))

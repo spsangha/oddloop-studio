@@ -38,14 +38,15 @@ def _area(c, name, loc, e, size, col, tgt, sy=None):
     o = bpy.data.objects.new(name, Ld); c.objects.link(o); o.location = loc
     o.rotation_euler = (V(tgt) - V(loc)).to_track_quat('-Z', 'Y').to_euler(); return o
 
-def wood(name, base=(0.42, 0.24, 0.12), scale=6.0, planks=True):
+def wood(name, base=(0.42, 0.24, 0.12), scale=6.0, planks=True, contrast=None):
     """procedural varnished wood (planks along X)"""
     m = L.mat(name, base, 0.35, coat=0.25); nt = m.node_tree; b = nt.nodes['Principled BSDF']
     tc = nt.nodes.new('ShaderNodeTexCoord'); mp = nt.nodes.new('ShaderNodeMapping'); mp.inputs['Scale'].default_value = (0.25 * scale, 4.0 * scale, 1)
     nt.links.new(tc.outputs['Object'], mp.inputs['Vector'])
     wv = nt.nodes.new('ShaderNodeTexWave'); wv.inputs['Scale'].default_value = 1.2; wv.inputs['Distortion'].default_value = 6; wv.inputs['Detail'].default_value = 3
     nt.links.new(mp.outputs['Vector'], wv.inputs['Vector'])
-    cr = nt.nodes.new('ShaderNodeValToRGB'); cr.color_ramp.elements[0].color = (*[x * 0.55 for x in base], 1); cr.color_ramp.elements[1].color = (*[min(1, x * 1.35) for x in base], 1)
+    cr = nt.nodes.new('ShaderNodeValToRGB'); c0_, c1_ = contrast or (0.55, 1.35)
+    cr.color_ramp.elements[0].color = (*[x * c0_ for x in base], 1); cr.color_ramp.elements[1].color = (*[min(1, x * c1_) for x in base], 1)
     nt.links.new(wv.outputs['Fac'], cr.inputs['Fac'])
     if planks:
         br = nt.nodes.new('ShaderNodeTexBrick'); br.inputs['Scale'].default_value = 1.0; br.offset = 0.5

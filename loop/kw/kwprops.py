@@ -12,7 +12,7 @@ from mathutils import Vector as V, Matrix
 import kwlib as L
 
 KINDS = ('tray', 'burger', 'fries', 'salmon', 'wedges', 'salad', 'cup', 'penlight', 'tweezers', 'probe', 'magnifier',
-         'paperclip', 'pea', 'ball', 'bulb', 'bench')
+         'paperclip', 'pea', 'ball', 'bulb', 'bench', 'sweet_potato', 'beans', 'ketchup', 'fork', 'bar')
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 
@@ -146,6 +146,7 @@ def _bool_cut(objs, cutter, name):
 def _show(o, on):
     h = not on
     if o.hide_render != h: o.hide_render = h
+    if o.get('kw_off', False) != h: o['kw_off'] = h      # read by kwfx for hand-carried items (their visibility follows the root)
 
 
 def _noise_disp(o, strength, scale, name='kwp_disp'):
@@ -177,12 +178,13 @@ TRAY = {'meal': dict(w=0.45, d=0.35, h=0.015, r=0.03, mat='plastic', col=(0.30, 
         'clinic': dict(w=0.30, d=0.20, h=0.02, r=0.02, mat='steel', col=(0.78, 0.79, 0.8))}
 
 
-def tray(c, K=None, style='meal', w=None, d=None, h=None, r=None, color=None, liner=None, **_):
+def tray(c, K=None, style='meal', w=None, d=None, h=None, r=None, color=None, liner=None, ao=False, **_):
     """meal tray 45x35 cm, rim 1.5 cm, corner r 3 cm, matte plastic (color) | clinic tray 30x20x2 cm brushed steel, rolled rim.
     liner: None | 'paper' | 'cloth' (Fabric030) lying inside.  Point 'floor' = top of the tray floor (place food there)."""
     P = TRAY[style]; w = w or P['w']; d = d or P['d']; h = h or P['h']; r = r or P['r']; col = color or P['col']
     pr = Prop('tray_' + style, c)
     m = plastic('kwp_tray_' + style, col, 0.5) if P['mat'] == 'plastic' else brushed('kwp_tray_steel')
+    if ao: m = m.copy(); m.name = f'kwp_tray_{style}_{len(bpy.data.materials)}'; _contact_ao(m, 0.02, 0.5)
     t = 0.003 if style == 'meal' else 0.0009; flare = 0.008 if style == 'meal' else 0.012; n = 7
     bot = rrect(w - 2 * flare, d - 2 * flare, r - flare * 0.5, n); top = rrect(w, d, r, n)
     body = pr.add(loft('kwp_tray_body', [(bot, 0.0), (top, h)], m))
@@ -209,7 +211,8 @@ def tray(c, K=None, style='meal', w=None, d=None, h=None, r=None, color=None, li
 
 
 # ===================================================================================== A2 food
-def burger(c, K=None, width=0.11, height=0.06, bite_side=225.0, cheese_at=None, **_):
+def burger(c, K=None, width=0.11, height=0.06, bite_side=225.0, cheese_at=None, bites=None, bite_r=0.021, sym=False, droop2=False, lettuce=None,
+           proud=0.0, nseeds=46, **_):
     """cheeseburger 11 x 6 cm: Poly Haven bun (cut in two), rough patty, cheese with one drooping corner, lettuce frill,
     sesame seeds.  eaten 0..1: round 3.5 cm bites from one side (bite_side, deg from +X; 225 = front-left), gone at 0.96."""
     pr = Prop('burger', c)
@@ -228,6 +231,8 @@ def burger(c, K=None, width=0.11, height=0.06, bite_side=225.0, cheese_at=None, 
     z = zb * kz
     patty_m = two_tone('kwp_patty', (0.16, 0.07, 0.035), (0.05, 0.022, 0.012), 90, 0.55, bump=0.6)
     pat = L.cyl('kwp_patty', width * 0.5 * 0.98, hp, (0, 0, z + hp / 2), patty_m, None, verts=48)
+    if proud:      # ep08: patty proud of the bun front and back (x stays at the bun edge: the palms sit there)
+        pat.scale = ((width / 2 + 0.001) / (width * 0.49), (width / 2 + proud) / (width * 0.49), 1.0)
     ss = pat.modifiers.new('s', 'SUBSURF'); ss.levels = ss.render_levels = 2; _noise_disp(pat, 0.0025, 0.012, 'kwp_patty_n'); z += hp
     # cheese: square slice rotated 45, corners droop (one more), lettuce frill under it
     N = 16; s = width * 0.42; vs = []; fs = []
@@ -235,6 +240,7 @@ def burger(c, K=None, width=0.11, height=0.06, bite_side=225.0, cheese_at=None, 
         for i in range(N + 1):
             x = -s + 2 * s * i / N; y = -s + 2 * s * j / N; rr = math.hypot(x, y); dz = -max(0.0, rr - width * 0.48) * 0.5
             if x > s * 0.55 and y > s * 0.55: dz -= ((x - s * 0.55) + (y - s * 0.55)) * 0.55     # the drooping corner
+            if droop2 and x < -s * 0.55 and y < -s * 0.55: dz -= ((-x - s * 0.55) + (-y - s * 0.55)) * 0.55     # ep08: the opposite corner too (180-deg symmetric)
             vs.append((x, y, dz))
     for j in range(N):
         for i in range(N): fs.append((j * (N + 1) + i, j * (N + 1) + i + 1, (j + 1) * (N + 1) + i + 1, (j + 1) * (N + 1) + i))
@@ -246,19 +252,27 @@ def burger(c, K=None, width=0.11, height=0.06, bite_side=225.0, cheese_at=None, 
     for j in range(NR + 1):
         rr = width * (0.40 + 0.17 * j / NR)
         for i in range(NA):
-            a = 2 * math.pi * i / NA; wv = math.sin(a * 13) * 0.6 + math.sin(a * 7 + 1) * 0.4
+            a = 2 * math.pi * i / NA; wv = (math.sin(a * 14) * 0.6 + math.sin(a * 8 + 1) * 0.4) if sym else (math.sin(a * 13) * 0.6 + math.sin(a * 7 + 1) * 0.4)
             lv.append((rr * math.cos(a) * (1 + 0.04 * wv * j / NR), rr * math.sin(a) * (1 + 0.04 * wv * j / NR), 0.0025 * wv * (j / NR) - 0.006 * (j / NR) ** 2))
     for j in range(NR):
         for i in range(NA): lf.append((j * NA + i, j * NA + (i + 1) % NA, (j + 1) * NA + (i + 1) % NA, (j + 1) * NA + i))
-    let = _mesh('kwp_lettuce', lv, lf, two_tone('kwp_lettuce_m', (0.25, 0.6, 0.1), (0.55, 0.8, 0.25), 60, 0.45, sss=0.2, bump=0.3))
+    lc0, lc1 = lettuce or ((0.25, 0.6, 0.1), (0.55, 0.8, 0.25))
+    let = _mesh('kwp_lettuce', lv, lf, two_tone('kwp_lettuce_m' + ('_g' if lettuce else ''), lc0, lc1, 60, 0.45, sss=0.2, bump=0.3))
     let.location = (0, 0, z - hc - 0.0005); so = let.modifiers.new('t', 'SOLIDIFY'); so.thickness = 0.0008
     z += hl
     top.scale = (sx, sx, kz); top.location = (0, 0, z - zt * kz)
     # sesame seeds on the crown (ray cast down onto the evaluated crown)
     bpy.context.view_layer.update(); seed_m = L.mat('kwp_sesame', (0.93, 0.85, 0.62), 0.5); rnd = random.Random(11)
     dg = bpy.context.evaluated_depsgraph_get(); Mi = top.matrix_world.inverted(); seeds = []
-    for k in range(46):
-        a = rnd.uniform(0, 2 * math.pi); rr = width * 0.40 * math.sqrt(rnd.random())
+    if sym:      # ep08: whole-burger 180-deg symmetry (the return turns it in the hands; last frame = frame 0)
+        for o in (bun, top, pat):
+            mm = o.modifiers.new('sym', 'MIRROR'); mm.use_axis = (True, True, False); mm.use_bisect_axis = (True, True, False); mm.use_clip = True
+        bpy.context.view_layer.update(); dg = bpy.context.evaluated_depsgraph_get()
+    seedpts = []
+    for k in range(nseeds):
+        a = rnd.uniform(0, 2 * math.pi); rr = width * 0.40 * math.sqrt(rnd.random()); seedpts.append((a, rr))
+        if sym: seedpts.append((a + math.pi, rr))
+    for a, rr in seedpts:
         p0 = V((rr * math.cos(a), rr * math.sin(a), 0.2))
         hit, loc, nor, idx = top.evaluated_get(dg).ray_cast(Mi @ p0, (Mi.to_3x3() @ V((0, 0, -1))).normalized())
         if not hit: continue
@@ -269,7 +283,32 @@ def burger(c, K=None, width=0.11, height=0.06, bite_side=225.0, cheese_at=None, 
     for o in parts + seeds: pr.add(o)
     for o in seeds: o.parent = top; o.matrix_parent_inverse = top.matrix_world.inverted()
     # bites: (angle offset deg, centre distance as a fraction of the radius)
-    R = width / 2; rb = 0.0185; cuts = []
+    R = width / 2; cuts = []
+    if bites is not None:
+        # ep08: crescent bites (bite_r) side by side along one arc; every part gets its own cutter carrying its own cut-face
+        # material (TRANSFER), so the cut shows bun crumb / lettuce / cheese / patty layers, never a flat grey face
+        cutm = {id(bun): crumb, id(top): crumb, id(pat): patty_m, id(ch): ch.data.materials[0], id(let): let.data.materials[0]}
+        for k, (da, fr) in enumerate(bites):
+            a = math.radians(bite_side + da); mods = []; cus = []
+            for o in parts:
+                cu = L.cyl(f'kwp_bite{k}_{o.name}', bite_r, height * 3, (R * fr * math.cos(a), R * fr * math.sin(a), height / 2), cutm[id(o)], None, verts=40)
+                pr.add(cu); md = _bool_cut([o], cu, f'bite{k}')[0]
+                try: md.material_mode = 'TRANSFER'
+                except Exception: pass
+                mods.append(md); cus.append(cu)
+            cuts.append((mods, cus, cu.location.copy()))
+        sxy = [(sd, sd.location.copy()) for sd in seeds]     # seed positions at build = prop-local (root at the origin)
+        def _s(eaten=0.0, gone=None, **_):
+            g = gone if gone is not None else eaten * len(cuts) / 0.96
+            act = []
+            for k, (mods, cus, ctr) in enumerate(cuts):
+                pk = max(0.0, min(1.0, g - k)); pk = pk * pk * (3 - 2 * pk)
+                for md in mods: md.show_render = md.show_viewport = pk > 1e-3
+                for cu in cus: cu.scale = (max(pk, 1e-3), max(pk, 1e-3), 1.0)
+                if pk > 1e-3: act.append((ctr, bite_r * pk + 0.001))
+            for sd, q in sxy: _show(sd, not any(math.hypot(q.x - c_.x, q.y - c_.y) < bite_r + 0.002 for _m, _c, c_ in cuts))   # ep08: no seeds on any bite area, ever (the whole-bun swap changes no seed)
+        pr._set = _s; _s(0.0); return pr
+    rb = 0.0185
     for k, (da, fr) in enumerate(((0, 1.14), (-30, 1.08), (30, 1.08), (0, 0.78), (-28, 0.62), (28, 0.62), (0, 0.36), (-35, 0.2), (35, 0.2))):
         a = math.radians(bite_side + da); cu = L.cyl(f'kwp_bite{k}', rb + 0.002 * (k % 2), height * 3, (R * fr * math.cos(a), R * fr * math.sin(a), height / 2), None, None, verts=28)
         pr.add(cu); cuts.append(_bool_cut(parts, cu, f'bite{k}'))
@@ -296,40 +335,59 @@ def fries(c, K=None, count=14, sleeve=True, **_):
         b = _box(f'kwp_fry{i}', (0.0085, 0.0085, ln), (x, y, ln / 2 + 0.01), fm, None, 0.0015)
         b.rotation_euler = (rnd.uniform(-0.18, 0.18), rnd.uniform(-0.25, 0.25) + x * 3.0, rnd.uniform(0, 3.14)); sticks.append(pr.add(b))
     order = sorted(range(count), key=lambda i: -sticks[i].location.z - sticks[i].dimensions.z * 0.5 + rnd.uniform(0, 0.01))
-    def _s(eaten=0.0, **_):
-        gone = int(round(eaten * count))
-        for k, i in enumerate(order): _show(sticks[i], k >= gone)
+    _fadeable(fm)
+    def _s(eaten=0.0, gone=None, **_):
+        if gone is None:
+            gone = int(round(eaten * count))
+            for k, i in enumerate(order): _show(sticks[i], k >= gone)
+            return
+        for k, i in enumerate(order): _fade_piece(sticks[i], gone - k)
     pr._set = _s; return pr
 
 
-def salmon(c, K=None, size=(0.12, 0.06, 0.025), **_):
+def salmon(c, K=None, size=(0.12, 0.06, 0.025), brown=False, lemon=False, **_):
     """salmon fillet 12 x 6 x 2.5 cm: orange-pink, pale fat lines, glossy top; eaten 0..1 = forkfuls from the +X end"""
     pr = Prop('salmon', c); lx, ly, lz = size; NU, NV = 32, 10; vs = []; fs = []
     for j in range(NV + 1):
-        v = j / NV; sc = 1 - 0.38 * v ** 2.2                      # domed: the outline pulls in toward the top
+        v = j / NV; sc = 1 - (0.12 if brown else 0.38) * v ** 2.2  # domed: the outline pulls in toward the top (ep08 fillet: flat-topped slab)
         for i in range(NU):
-            a = 2 * math.pi * i / NU; u = math.cos(a); x = lx / 2 * u * sc
-            y = ly / 2 * math.sin(a) * sc * (1 - 0.35 * max(0.0, u) ** 2)      # tail end (+X) narrower
+            a = 2 * math.pi * i / NU; ca, sa = math.cos(a), math.sin(a)
+            if brown: ca, sa = math.copysign(abs(ca) ** 0.45, ca), math.copysign(abs(sa) ** 0.45, sa)   # boxy outline (superellipse), a cut fillet
+            u = ca; x = lx / 2 * u * sc
+            y = ly / 2 * sa * sc * (1 - (0.15 if brown else 0.35) * max(0.0, u) ** 2)      # tail end (+X) narrower
             hz = lz * (1 - 0.45 * max(0.0, u) ** 2)                         # and thinner
             vs.append((x, y, hz * math.sin(v * math.pi / 2)))
     for j in range(NV):
         for i in range(NU): fs.append((j * NU + i, j * NU + (i + 1) % NU, (j + 1) * NU + (i + 1) % NU, (j + 1) * NU + i))
     fs.append(tuple(reversed(range(NU)))); fs.append(tuple(range(NV * NU, (NV + 1) * NU)))
-    m = L.mat('kwp_salmon', (0.85, 0.30, 0.16), 0.3, coat=0.45, sss=0.15); nt, N, Lk, b = _nodes(m)
+    m = L.mat('kwp_salmon', (0.87, 0.23, 0.10) if brown else (0.85, 0.30, 0.16), 0.42 if brown else 0.35, coat=0.08 if brown else 0.45, sss=0.05 if brown else 0.15); nt, N, Lk, b = _nodes(m)
     tc = N.new('ShaderNodeTexCoord'); wv = N.new('ShaderNodeTexWave'); wv.inputs['Scale'].default_value = 9.0; wv.inputs['Distortion'].default_value = 2.0
     mp = N.new('ShaderNodeMapping'); mp.inputs['Rotation'].default_value = (0, 0, 0.6); mp.inputs['Scale'].default_value = (14, 14, 14); Lk(tc.outputs['Object'], mp.inputs['Vector']); Lk(mp.outputs[0], wv.inputs['Vector'])
-    cr = N.new('ShaderNodeValToRGB'); cr.color_ramp.elements[0].position = 0.86; cr.color_ramp.elements[0].color = (0.85, 0.30, 0.16, 1); cr.color_ramp.elements[1].position = 0.95; cr.color_ramp.elements[1].color = (0.98, 0.72, 0.58, 1)
+    cr = N.new('ShaderNodeValToRGB'); cr.color_ramp.elements[0].position = 0.93 if brown else 0.86; cr.color_ramp.elements[0].color = ((0.98, 0.33, 0.07, 1) if brown else (0.85, 0.30, 0.16, 1)); cr.color_ramp.elements[1].position = 0.975 if brown else 0.95; cr.color_ramp.elements[1].color = (0.98, 0.72, 0.58, 1)
     Lk(wv.outputs['Fac'], cr.inputs['Fac']); Lk(cr.outputs['Color'], b.inputs['Base Color'])
     o = _mesh('kwp_salmon', vs, fs, m); ss = o.modifiers.new('s', 'SUBSURF'); ss.levels = ss.render_levels = 1
     _noise_disp(o, 0.0012, 0.01, 'kwp_salmon_n'); pr.add(o)
+    if brown:      # ep08 (CHECK 2 fix 3): clear salmon orange-pink (#F0845C) with 4 thin pale diagonal fat lines across the top
+        so_ = N.new('ShaderNodeSeparateXYZ'); Lk(tc.outputs['Object'], so_.inputs[0])
+        d1 = N.new('ShaderNodeMath'); d1.operation = 'MULTIPLY_ADD'; Lk(so_.outputs['X'], d1.inputs[0]); d1.inputs[1].default_value = 0.8; Lk(so_.outputs['Y'], d1.inputs[2])
+        d2 = N.new('ShaderNodeMath'); d2.operation = 'MULTIPLY'; Lk(d1.outputs[0], d2.inputs[0]); d2.inputs[1].default_value = 1.0 / 0.034   # a line every 3.4 cm
+        fr = N.new('ShaderNodeMath'); fr.operation = 'PINGPONG'; Lk(d2.outputs[0], fr.inputs[0]); fr.inputs[1].default_value = 0.5
+        ln = N.new('ShaderNodeMapRange'); ln.inputs[1].default_value = 0.035; ln.inputs[2].default_value = 0.075; ln.inputs[3].default_value = 1.0; ln.inputs[4].default_value = 0.0; Lk(fr.outputs[0], ln.inputs['Value'])
+        mx = N.new('ShaderNodeMix'); mx.data_type = 'RGBA'; Lk(ln.outputs[0], mx.inputs['Factor']); mx.inputs[6].default_value = (0.87, 0.23, 0.10, 1); mx.inputs[7].default_value = (0.96, 0.66, 0.52, 1)
+        Lk(mx.outputs[2], b.inputs['Base Color'])
     rnd = random.Random(8); cuts = []
     for k in range(6):
         x = lx / 2 + 0.006 - k * lx * 0.15; cu = L.sphere(f'kwp_fork{k}', 0.016 + 0.003 * rnd.random(), (x, rnd.uniform(-0.01, 0.01), lz * 1.05), None, None, 20, 10)
         cu.scale = (0.9, 1.6, 1.0); pr.add(cu); cuts.append(_bool_cut([o], cu, f'fork{k}'))
-    def _s(eaten=0.0, **_):
+    if lemon:
+        _lemon(pr, (-lx * 0.18, ly * 0.05, lz * 0.98))
+    sc0 = [cu.scale.copy() for cu in [m_.object for m_s in cuts for m_ in m_s]]
+    def _s(eaten=0.0, gone=None, **_):
         for k, mods in enumerate(cuts):
-            for md in mods: on = eaten >= 0.05 + 0.15 * k; md.show_render = md.show_viewport = on
-        _show(o, eaten < 0.96)
+            if gone is None: pk = 1.0 if eaten >= 0.05 + 0.15 * k else 0.0
+            else: pk = max(0.0, min(1.0, gone - k)); pk = pk * pk * (3 - 2 * pk)
+            for md in mods: md.show_render = md.show_viewport = pk > 1e-3; md.object.scale = sc0[k] * max(pk, 1e-3)
+        _show(o, (eaten if gone is None else 0.0) < 0.96)
     pr._set = _s; _s(0.0); return pr
 
 
@@ -532,13 +590,14 @@ def bulb(c, K=None, length=0.09, color=(0.07, 0.07, 0.075), **_):
 
 
 # ===================================================================================== B3 bench / tabletop
-def bench(c, K=None, top=(1.2, 0.6), h=0.9, style='grey', floor=True, **_):
+def bench(c, K=None, top=(1.2, 0.6), h=0.9, style='grey', floor=True, soft=False, wood=None, **_):
     """plain demo bench: top 120 x 60 cm at 90 cm, matte light grey, 1 cm rounded edge, slight grain (style='grey');
     style='table': varnished wood (ep08 dining table, use h=0.75).  floor=True adds a shadow-catcher floor (no floating legs).
     Point 'top' = centre of the top surface."""
     pr = Prop('bench_' + style, c); w, d = top; tt = 0.035
     if style == 'table':
-        import kwsets; m = kwsets.wood('kwp_table', (0.5, 0.31, 0.16), 6.0, planks=True); legm = m
+        import kwsets; m = kwsets.wood('kwp_table', wood or (0.5, 0.31, 0.16), 6.0, planks=True, contrast=(0.82, 1.12) if soft else None); legm = m
+        if soft: _contact_ao(m, 0.035, 0.45)
     else:
         m = L.mat('kwp_bench', (0.48, 0.49, 0.5), 0.7); nt, N, Lk, b = _nodes(m)
         tc = N.new('ShaderNodeTexCoord'); mp = N.new('ShaderNodeMapping'); mp.inputs['Scale'].default_value = (4, 60, 60); Lk(tc.outputs['Object'], mp.inputs['Vector'])
@@ -555,6 +614,153 @@ def bench(c, K=None, top=(1.2, 0.6), h=0.9, style='grey', floor=True, **_):
     pr.pts['top'] = (0, 0, h)
     return pr
 
+
+# ===================================================================================== ep08: fades, new food, bars
+def _contact_ao(m, dist=0.03, dark=0.5):
+    """contact shadow: base colour darkened by Cycles AO within `dist` (a soft dark line where things meet the surface)"""
+    nt = m.node_tree; N = nt.nodes; b = N['Principled BSDF']; sock = b.inputs['Base Color']
+    ao = N.new('ShaderNodeAmbientOcclusion'); ao.inputs['Distance'].default_value = dist; ao.samples = 8
+    mr = N.new('ShaderNodeMapRange'); mr.inputs[3].default_value = dark; mr.inputs[4].default_value = 1.0; nt.links.new(ao.outputs['AO'], mr.inputs['Value'])
+    mul = N.new('ShaderNodeMix'); mul.data_type = 'RGBA'; mul.blend_type = 'MULTIPLY'; mul.inputs['Factor'].default_value = 1.0
+    if sock.links: nt.links.new(sock.links[0].from_socket, mul.inputs[6])
+    else: mul.inputs[6].default_value = sock.default_value
+    nt.links.new(mr.outputs[0], mul.inputs[7]); nt.links.new(mul.outputs[2], sock); return m
+
+
+def _fadeable(m):
+    """mix the material toward transparent by the object's colour alpha (obj.color[3]): per-piece 3-frame fade-outs"""
+    if m.get('kw_fade'): return m
+    nt = m.node_tree; N = nt.nodes; out = next(n for n in N if n.type == 'OUTPUT_MATERIAL'); src = out.inputs['Surface'].links[0].from_socket
+    oi = N.new('ShaderNodeObjectInfo'); tr = N.new('ShaderNodeBsdfTransparent'); mx = N.new('ShaderNodeMixShader')
+    nt.links.new(oi.outputs['Alpha'], mx.inputs[0]); nt.links.new(tr.outputs[0], mx.inputs[1]); nt.links.new(src, mx.inputs[2]); nt.links.new(mx.outputs[0], out.inputs['Surface'])
+    m['kw_fade'] = 1; return m
+
+
+def _fade_piece(o, p):
+    """p = 0 (whole) .. 1 (gone): 3-frame fade with a 10 % shrink (never a hard pop)"""
+    p = max(0.0, min(1.0, p)); e = p * p * (3 - 2 * p)
+    if 's0' not in o: o['s0'] = tuple(o.scale)
+    s0 = o['s0']; k = 1.0 - 0.1 * e; o.scale = (s0[0] * k, s0[1] * k, s0[2] * k)
+    o.color = (1.0, 1.0, 1.0, 1.0 - e); _show(o, p < 0.999)
+
+
+def _lemon(pr, loc):
+    """lemon wedge ~6 cm lying on its peel: pale yellow flesh face up, bright peel"""
+    peel = L.mat('kwp_lemon_peel', (0.95, 0.78, 0.08), 0.4, coat=0.3); flesh = two_tone('kwp_lemon', (0.98, 0.9, 0.45), (0.92, 0.82, 0.3), 90, 0.35, sss=0.3, bump=0.2)
+    NU = 16; vs = []; fs = []; ln, r = 0.06, 0.016
+    for i in range(NU + 1):
+        u = i / NU; x = ln * (u - 0.5); rr = r * math.sin(math.pi * u) ** 0.7 + 0.001
+        for j in range(9):
+            a = math.pi * (j / 8); vs.append((x, rr * math.cos(a), rr * math.sin(a) * 0.9))
+    for i in range(NU):
+        for j in range(8): fs.append((i * 9 + j, (i + 1) * 9 + j, (i + 1) * 9 + j + 1, i * 9 + j + 1))
+    o = _mesh('kwp_lemon', vs, fs, peel); fl = []
+    for i in range(NU): fl.append((i * 9, i * 9 + 8, (i + 1) * 9 + 8, (i + 1) * 9))
+    o.data.materials.append(flesh); bm = bmesh.new(); bm.from_mesh(o.data); bm.verts.ensure_lookup_table()
+    for f in fl:
+        try: nf = bm.faces.new([bm.verts[k] for k in f]); nf.material_index = 1
+        except ValueError: pass
+    bm.to_mesh(o.data); bm.free()
+    o.rotation_euler = (math.radians(180), 0, math.radians(25)); o.location = (loc[0], loc[1], loc[2] + r * 0.9); pr.add(o); return o
+
+
+def sweet_potato(c, K=None, length=0.14, **_):
+    """baked sweet potato 14 cm: brown wrinkled skin, split open along the top showing bright orange flesh; gone = forkful notches"""
+    pr = Prop('sweet_potato', c); rnd = random.Random(41); NU, NV = 40, 20; vs = []; fs = []; R0 = 0.03
+    skin = two_tone('kwp_spot_skin', (0.20, 0.055, 0.025), (0.27, 0.075, 0.035), 40, 0.6, bump=0.5)     # #8A4B32 (ep08 CHECK 2 fix 3)
+    for j in range(NV + 1):
+        v = j / NV; x = length * (v - 0.5); prof = math.sin(math.pi * (0.04 + 0.92 * v)) ** 0.75
+        for i in range(NU):
+            a = 2 * math.pi * i / NU; w = 1 + 0.05 * math.sin(3 * a + 5 * v) + 0.04 * math.sin(7 * v + 2 * a)
+            vs.append((x, R0 * prof * w * math.cos(a), R0 * 0.85 * prof * w * math.sin(a) + R0 * 0.8 * prof))
+    for j in range(NV):
+        for i in range(NU): fs.append((j * NU + i, j * NU + (i + 1) % NU, (j + 1) * NU + (i + 1) % NU, (j + 1) * NU + i))
+    o = _mesh('kwp_spot', vs, fs, skin); ss = o.modifiers.new('s', 'SUBSURF'); ss.levels = ss.render_levels = 1; pr.add(o)
+    flesh = two_tone('kwp_spot_flesh', (0.85, 0.20, 0.008), (0.89, 0.26, 0.015), 60, 0.5, bump=0.3)   # #F28C28
+    # the split: a groove box cut along the top, the flesh mound fills it and bulges out
+    gv = L.cyl('kwp_spot_split', 1, 1, (0, 0, 0), None, None, verts=24); gv.scale = (0.045, 0.010, 0.03); gv.location = (0, 0, 0.048 + 0.015 - 0.007)    # narrow 9 x 2 cm slit (ep08 lead spec)
+    pr.add(gv); _bool_cut([o], gv, 'split')[0].show_render = True; o.modifiers['split'].show_viewport = True
+    fm = L.sphere('kwp_spot_mash', 1, (0, 0, 0.046 - 0.012), flesh, None, 32, 16); fm.scale = (0.044, 0.0098, 0.012); _noise_disp(fm, 0.001, 0.008, 'kwp_spot_n')   # flesh top ~2 mm below the skin edge; pr.add(fm)
+    cuts = []
+    for k in range(4):
+        x = length * 0.22 - k * length * 0.11; cu = L.sphere(f'kwp_spotfork{k}', 1, (x, 0.004 * (-1) ** k, R0 * 1.75), None, None, 20, 10); cu.scale = (0.015, 0.012, 0.014)
+        pr.add(cu); cuts.append(_bool_cut([fm, o], cu, f'spf{k}'))
+    sc0 = [m_[0].object.scale.copy() for m_ in cuts]
+    def _s(gone=0.0, **_):
+        for k, mods in enumerate(cuts):
+            pk = max(0.0, min(1.0, gone - k)); pk = pk * pk * (3 - 2 * pk)
+            for md in mods: md.show_render = md.show_viewport = pk > 1e-3
+            mods[0].object.scale = sc0[k] * max(pk, 1e-3)
+    pr._set = _s; _s(0.0); return pr
+
+
+def beans(c, K=None, count=14, **_):
+    """a heap of green beans 10-12 cm, saturated glossy green; gone = pairs of beans faded out (top first)"""
+    pr = Prop('beans', c); rnd = random.Random(51); items = []
+    m = _fadeable(two_tone('kwp_bean', (0.10, 0.42, 0.04), (0.18, 0.55, 0.06), 70, 0.32, coat=0.35, sss=0.1, bump=0.15))
+    for k in range(count):
+        ln = rnd.uniform(0.10, 0.12); bend = rnd.uniform(-0.012, 0.012); pts = []
+        for i in range(7):
+            u = i / 6; pts.append((ln * (u - 0.5), bend * math.sin(math.pi * u), 0.0))
+        o = L.tube(f'kwp_bean{k}', pts, 0.0042, m, None, 4, radii=[0.45, 0.9, 1, 1, 1, 0.9, 0.4])
+        layer = k // 5; o.location = (rnd.uniform(-0.012, 0.012), -0.022 + 0.011 * (k % 5) + rnd.uniform(-0.003, 0.003), 0.0042 + 0.0075 * layer)
+        o.rotation_euler = (0, rnd.uniform(-0.05, 0.05), math.radians(rnd.uniform(-14, 14))); items.append(pr.add(o))
+    order = list(reversed(items))
+    def _s(gone=0.0, **_):
+        for k, o in enumerate(order): _fade_piece(o, gone - k // 2)
+    pr._set = _s; _s(0.0); return pr
+
+
+def ketchup(c, K=None, d=0.05, **_):
+    """5 cm white pleated paper cup with a glossy red fill"""
+    pr = Prop('ketchup', c); n = 48; h = 0.03
+    ring = lambda r, f: [(r * (1 + f * math.cos(16 * 2 * math.pi * i / n)) * math.cos(2 * math.pi * i / n), r * (1 + f * math.cos(16 * 2 * math.pi * i / n)) * math.sin(2 * math.pi * i / n)) for i in range(n)]
+    pm = L.mat('kwp_kcup', (0.93, 0.93, 0.9), 0.75, sss=0.05)
+    cu = pr.add(loft('kwp_kcup', [(ring(d * 0.38, 0.012), 0.0), (ring(d / 2, 0.02), h)], pm)); so = cu.modifiers.new('t', 'SOLIDIFY'); so.thickness = 0.0005
+    fill = pr.add(L.cyl('kwp_kfill', d * 0.47, 0.004, (0, 0, h - 0.005), L.mat('kwp_ketchup', (0.55, 0.02, 0.01), 0.12, coat=0.8), None, verts=40))
+    sp = pr.add(L.sphere('kwp_kdome', 1, (0, 0, h - 0.003), fill.data.materials[0], None, 24, 8)); sp.scale = (d * 0.46, d * 0.46, 0.003)
+    return pr
+
+
+def fork(c, K=None, length=0.19, **_):
+    """steel table fork lying flat (handle toward -X)"""
+    pr = Prop('fork', c); m = brushed('kwp_fork', (0.8, 0.81, 0.83), 0.22)
+    h = pr.add(_box('kwp_fork_handle', (0.12, 0.014, 0.003), (-0.035, 0, 0.004), m, None, 0.0012)); h.rotation_euler = (0, math.radians(-3), 0)
+    pr.add(_box('kwp_fork_neck', (0.03, 0.008, 0.0025), (0.04, 0, 0.007), m, None, 0.001))
+    pr.add(_box('kwp_fork_head', (0.02, 0.024, 0.002), (0.062, 0, 0.0085), m, None, 0.0008))
+    for k in range(4):
+        pr.add(_box(f'kwp_fork_tine{k}', (0.028, 0.0032, 0.0018), (0.084, -0.0105 + 0.007 * k, 0.0095), m, None, 0.0006))
+    return pr
+
+
+def bar(c, K=None, w=0.04, h=0.34, notches=16, color=(1.0, 0.82, 0.02), bracket=None, **_):
+    """ep08: plain upright bar frame standing on the table (a drawing of 'more', never a number): thin dark outline,
+    yellow fill from the bottom.  fill = notches filled (float; one notch = h / notches); alpha 0..1 fades the whole bar.
+    bracket = (dx, n_hi, n_lo): yellow bracket from this bar's top at n_hi notches toward the other bar dx metres away
+    along +X (its top at n_lo): a line from each bar top to the middle joined by a vertical stroke; br 0..1 draws it."""
+    pr = Prop('bar', c); t = 0.003; dpt = 0.012
+    dk = _fadeable(L.mat('kwp_bar_frame', (0.04, 0.04, 0.05), 0.5)); fm = _fadeable(L.mat('kwp_bar_fill', color, 0.45, emit=color, es=0.35))
+    bk = _fadeable(L.mat('kwp_bar_back', (0.5, 0.52, 0.55), 0.7))
+    for nm, sz, lc in (('l', (t, dpt, h), (-w / 2 + t / 2, 0, h / 2)), ('r', (t, dpt, h), (w / 2 - t / 2, 0, h / 2)),
+                       ('t', (w, dpt, t), (0, 0, h - t / 2)), ('b', (w, dpt, t), (0, 0, t / 2))):
+        pr.add(_box('kwp_bar_' + nm, sz, lc, dk, None, 0.0008))
+    pr.add(_box('kwp_bar_back', (w - 2 * t, 0.002, h - 2 * t), (0, dpt / 2 - 0.001, h / 2), bk, None, 0))
+    fl = pr.add(_box('kwp_bar_fill', (w - 2 * t - 0.001, dpt - 0.002, 1.0), (0, 0, 0), fm, None, 0)); fl.location = (0, 0, t)
+    hin = h - 2 * t; segs = []
+    if bracket:
+        dx, nh, nl = bracket; zh = t + hin * nh / notches; zl = t + hin * nl / notches; xm = dx / 2; bt = 0.004
+        for nm, (x0, z0, x1, z1) in (('a', (w / 2 + 0.01, zh, xm, zh)), ('v', (xm, zh, xm, zl)), ('b', (dx - w / 2 - 0.01, zl, xm, zl))):
+            o = pr.add(_box('kwp_brk_' + nm, (1.0, 0.004, 1.0), (0, 0, 0), fm, None, 0)); segs.append((o, V((x0, 0, z0)), V((x1, 0, z1)), bt))
+    def _s(fill=0.0, alpha=1.0, br=0.0, **_):
+        z = max(1e-4, hin * min(notches, max(0.0, fill)) / notches); fl.scale = (1, 1, z); fl.location = (0, 0, t + z / 2)
+        for o in pr.objs:
+            o.color = (1, 1, 1, alpha); _show(o, alpha > 0.01 and (o is not fl or fill > 1e-3))
+        for k_, (o, a, b, th) in enumerate(segs):       # drawn in order: both horizontals together, then the vertical
+            pk = max(0.0, min(1.0, br * 2 if k_ != 1 else br * 2 - 1)); e = b if pk >= 1 else a.lerp(b, pk)
+            d = e - a; L_ = max(1e-4, d.length); o.location = (a + e) / 2
+            o.scale = (L_ + (th if pk > 0 else 0), 1, th) if abs(d.z) < 1e-6 else (th, 1, L_ + th)
+            _show(o, alpha > 0.01 and pk > 1e-3)
+    pr._set = _s; _s(0.0); return pr
 
 def make(kind, c, K=None, **params):
     if kind not in KINDS: raise ValueError(f'item kind {kind!r}: one of {", ".join(KINDS)}')

@@ -39,6 +39,7 @@ FACE_PARTS = ('nose', 'mouth', 'chin', 'forehead', 'eye_l', 'eye_r', 'cheek_l', 
 DRINK_HG = (13.5, 5.5, 0.45)
 HG_SWALLOW_DIP = 1.0             # deg
 HG_DRIFT = (0.7, 0.8, 0.3)       # alive head drift: pitch, turn amplitude (deg), amplitude while a rim/spoon is at the lips (L2)
+CHEW_SEAL, CHEW_SIDE = 0.35, 0.25     # ep08 chew: mouthClose per 7 mm of jaw gap (lips stay sealed), jawLeft at the close
 SP_HEAD_FWD, SP_TRUNK_FWD = 10.0, 3.0   # humgen spoon bite: head forward / trunk forward at the spoon (deg, R4 8-12 / 2-4)
 HG_SP_EYE = (-22.0, 0.65, 0.0)    # F4 spoon gaze (rendered check: +x on the HG eye bone looks UP): eye pitch deg at the low point, fraction lost by the lips, yaw toward the hand
 HG_BREATH_SPINE = (-0.40, -0.40, 0.0)   # humgen breath: spine03/02/01 pitch per unit breath (deg; negative = extension, chest rises)
@@ -412,6 +413,20 @@ class Runtime:
                 bs = self.actors[a].p.hg.bite_state(self, self.actors[a], u, acts)
                 st['nod'] += kw.get('nod', SP_HEAD_FWD) * bs['lean']; st['lean'] += kw.get('trunk', SP_TRUNK_FWD) * bs['lean']
                 F('jaw', bs['jaw']); F('lipsclose', bs['lips'])
+            elif k == 'chew':
+                # ep08: lips shut, jaw 6-8 mm, chin to his left on each close, cheek bulge; one swallow = 10-frame pause + 1 deg dip
+                u0, u1 = at, kw.get('until', at + 3.0); env = ramp(u, u0, u0 + 0.12) * (1 - ramp(u, u1 - 0.15, u1))
+                sw = kw.get('swallow'); ph_ = (u - u0) * kw.get('rate', 1.5)
+                if sw is not None:
+                    pz = 10.0 / FPS
+                    if u > sw + pz: ph_ -= pz * kw.get('rate', 1.5)
+                    elif u > sw: ph_ = (sw - u0) * kw.get('rate', 1.5); env = 0.0
+                    st['nod'] += 1.0 * bump(u, sw + 0.2, 0.15)
+                if env > 0:
+                    c_ = 0.5 - 0.5 * math.cos(2 * math.pi * ph_); gp = kw.get('gap', 7.0) * c_ * env
+                    F('x_gap', gp); F('lipsclose', CHEW_SEAL * gp / 7.0)
+                    F('chewside', CHEW_SIDE * kw.get('side', 1.0) * env * max(0.0, -math.sin(2 * math.pi * ph_)))
+                    F('cheekfull', kw.get('bulge', 0.35) * env * (1.0 if ph_ < 6 else 0.6) * (0.75 + 0.25 * c_))
             elif k == 'eat':
                 for i in range(int(kw.get('bites', 2))):
                     c = at + i * 0.6; F('open', 0.55 * bump(u, c, 0.1)); F('open', 0.18 * max(0, math.sin((u - c) * 14)) * window_(u, c + 0.15, c + 0.55))
@@ -514,7 +529,7 @@ class Runtime:
 
     def pose_all(self, shot, u, canonical=False):
         """bodies (not hands) for every cast member; then hands. canonical = no acts / no time effects (camera reference)"""
-        t = shot.t + u
+        t = shot.t + u; self._t_now = t       # read by the humgen burger track (ep08)
         self._cur = []
         for a, ps in shot.cast.items():
             ra = self.actors[a]; p = ra.p; qa, qb, w = ps.at_time(u)
@@ -545,7 +560,8 @@ class Runtime:
                 tgt = self.look_point(look) if look != 'held' else None
                 if look == 'held':       # cast v1.1: head dips half way toward a burger held at the chest (eyes do the rest); none at the mouth
                     hs_ = [getattr(qb, sd_, None) for sd_ in ('left', 'right')]
-                    if not any(h_ is not None and h_.at == 'mouth' for h_ in hs_):
+                    if any(h_ is not None and h_.at == 'track' for h_ in hs_): pass     # ep08 track: head from the pose keys, eyes on the burger
+                    elif not any(h_ is not None and h_.at == 'mouth' for h_ in hs_):
                         R3 = M.to_3x3().normalized(); hp0 = M @ p.rig.data.bones['head'].head_local
                         tgt = hp0 + (R3 @ V((0, -1, 0))) * 0.6 - (R3 @ V((0, 0, 1))) * 0.17
                     else:      # biting (bite_fix 1): chin down toward the bite point, the eyes do the rest
@@ -1003,6 +1019,16 @@ class Runtime:
                 rz = math.radians(f.o.get('cam_raise', 0.0)); off = V((0, -d * math.cos(rz), d * math.sin(rz)))
             pos = org + off + self._shake(t, o, u) * 3
             return pos, tgt, up, lens, fstop or (8.0 if kindp == 'skin_block' else 5.6), tgt
+        if kind == 'path':
+            ks = o['keys']; k1 = next((i for i, k in enumerate(ks) if k[0] >= u), len(ks) - 1); k0 = max(0, k1 - 1)
+            x = 0.0 if k0 == k1 or u <= ks[k0][0] else min(1.0, (u - ks[k0][0]) / max(1e-6, ks[k1][0] - ks[k0][0])); x = x * x * (3 - 2 * x)
+            def kv_(k):
+                if isinstance(k[1], KW.Cam):
+                    p_, t_, _, l_, _, _ = self.cam_eval_kind(shot, k[1], un, si, live, at_t); return V(p_), V(t_), l_
+                return V(k[1]), V(k[2]), k[3]
+            (pa, ta, la), (pb, tb, lb) = kv_(ks[k0]), kv_(ks[k1]); pos = pa.lerp(pb, x); tgt = ta.lerp(tb, x); ln = la + (lb - la) * x
+            if o.get('shake') or o.get('hits'): pos = pos + self._shake(t, o, u)     # no base drift: the loop's last frame = frame 0
+            return pos, tgt, up, ln, fstop or 4.0, tgt
         if kind == 'at':
             pos = V(o['pos']); tgt = V(o['look']); pos = pos.lerp(tgt, push * mv * 0.5) + self._shake(t, o, u)
             return pos, tgt, up, o.get('lens', 40), fstop or 4.0, tgt
@@ -1048,6 +1074,7 @@ class Runtime:
         bpy.context.view_layer.update()
 
     def set_cam(self, pos, tgt, up, lens, fstop, foc):
+        if os.environ.get('KW_CAMPRINT'): print('CAMPRINT', bpy.context.scene.frame_current, tuple(round(x, 4) for x in pos), tuple(round(x, 4) for x in tgt), round(lens, 2), flush=True)
         cd = self.CAM.data; R = L.aim(V(tgt) - V(pos), up)
         self.CAM.matrix_world = Matrix.Translation(V(pos)) @ R.to_4x4()
         if os.environ.get('KW_CAST', 'v1.1') == 'v1.1':
@@ -1087,6 +1114,17 @@ class Runtime:
         scan = shot.set == 'xray' and Q.enabled('XRAY')
         scan2 = scan and Q.enabled('SCAN2')
         lights_on = lights_on or scan
+        self._pl_args = (subj, lights_on, scan, scan2)
+        self.place_lights(*self._pl_args)
+        w = shot.world or KW.SET_WORLD[shot.set]
+        if scan2 and shot.world is None: w = 'scan2'
+        if shot.set == 'macro' and shot.world is None and Q.enabled('MACRO') and Q.enabled('MACRO2'): w = 'macro2'
+        self.world(w)
+        # Zack look: every set lands at frame luma ~0.5-0.65 (room rendered 0.72, hospital 0.43 before; audit 2026-11-22)
+        self.S.view_settings.exposure = {'room': -0.5, 'hospital': 0.1}.get(shot.set, 0.0)   # round 2: brighter flat walls -> hospital +0.4 -> +0.1
+
+    def place_lights(self, subj, lights_on, scan, scan2):
+        """key/rim/fill follow the subject's head; called again after posing (the first frame of a run saw the unposed rig at the origin)"""
         hb = self.bw(self.actors[subj].p, 'head') if subj is not None else V((0, 0, 1.5))
         R = self.actors[subj].p.rig.matrix_world.to_3x3().normalized() if subj is not None else Matrix.Identity(3)
         for o, off, e in self.PL:
@@ -1100,12 +1138,6 @@ class Runtime:
                 elif o is self.PL[2][0] and stage: e = 19
             o.rotation_euler = (hb - o.location).to_track_quat('-Z', 'Y').to_euler()
             o.data.energy = e * (.49 if scan2 else .84 if scan else 1.)
-        w = shot.world or KW.SET_WORLD[shot.set]
-        if scan2 and shot.world is None: w = 'scan2'
-        if shot.set == 'macro' and shot.world is None and Q.enabled('MACRO') and Q.enabled('MACRO2'): w = 'macro2'
-        self.world(w)
-        # Zack look: every set lands at frame luma ~0.5-0.65 (room rendered 0.72, hospital 0.43 before; audit 2026-11-22)
-        self.S.view_settings.exposure = {'room': -0.5, 'hospital': 0.1}.get(shot.set, 0.0)   # round 2: brighter flat walls -> hospital +0.4 -> +0.1
 
     BACKDROP = {'room', 'hospital'}          # round 3: sets whose hold shots get Zack's full-frame sky-blue studio gradient
     BD_KINDS = ('face', 'medium', 'two_shot', 'over_shoulder', 'profile', 'low_hero', 'part')
@@ -1179,6 +1211,12 @@ class Runtime:
         self.render_budget(shot.set)
         self.prop_lights((0, 0, 0), on=False)
         self.visibility(shot)
+        ek = getattr(ep, 'exposure_keys', None)      # ep08: [(t, stops)] eased exposure offset on top of the set's (one-shot episodes whose camera moves from a face to a table top)
+        if ek:
+            v = ek[0][1] if t <= ek[0][0] else ek[-1][1]
+            for (t0, v0), (t1, v1) in zip(ek, ek[1:]):
+                if t0 <= t <= t1: x = (t - t0) / max(t1 - t0, 1e-6); v = v0 + (v1 - v0) * x * x * (3 - 2 * x); break
+            self.S.view_settings.exposure += v
         for st, obj in self.set_obj.items():
             if obj is not None and hasattr(obj, 'update') and st == shot.set:
                 try: obj.update(t)
@@ -1219,8 +1257,34 @@ class Runtime:
                     nmh_ = hit_[4].name if hit_[0] else None; gap_ = round((hit_[1] - L_).length * 1000) if hit_[0] else None
                     print('V11DBG lipview', shot.name, nm_, 'hit', nmh_, gap_, 'mm', 'BLOCKED' if hit_[0] and gap_ > 15 else 'ok')
         self.cam_walls(shot, V(pos))
+        if getattr(self, '_pl_args', None) and getattr(self.ep, 'relight_after_pose', False): self.place_lights(*self._pl_args)
+        if os.environ.get('KW_SWAPTEST'):      # ep08 dev: is every point of the bitten arc hidden from the camera (by the hands)?
+            dg_ = bpy.context.evaluated_depsgraph_get(); cp_ = V(pos); cut_ = [o_ for o_ in self.S.objects if o_.name.startswith('kwp_bite') and o_.scale.length > 0.01]
+            nvis_ = ntot_ = 0; hits_ = {}; vis_px_ = []
+            for o_ in self.S.objects:
+                if o_.type != 'MESH' or o_.hide_render or not o_.name.startswith(('hamburger_buns', 'kwp_patty', 'kwp_cheese', 'kwp_lettuce')): continue
+                ev_ = o_.evaluated_get(dg_); Mw_ = ev_.matrix_world
+                for v_ in list(ev_.data.vertices)[::3]:
+                    P_ = Mw_ @ v_.co
+                    def _in(c_):
+                        ax_ = (c_.matrix_world.to_3x3() @ V((0, 0, 1))).normalized(); d0_ = P_ - c_.matrix_world.translation
+                        return (d0_ - ax_ * d0_.dot(ax_)).length < c_.dimensions.x / 2 + 0.003
+                    if not any(_in(c_) for c_ in cut_): continue
+                    ntot_ += 1; d_ = P_ - cp_; dn_ = d_.normalized(); o0_ = cp_.copy(); left_ = d_.length - 0.002
+                    for _k in range(6):
+                        h_ = self.S.ray_cast(dg_, o0_, dn_, distance=left_)
+                        if not h_[0] or not (h_[4].hide_render or any(c.hide_render for c in h_[4].users_collection)): break
+                        step_ = (h_[1] - o0_).length + 0.0005; o0_ = o0_ + dn_ * step_; left_ -= step_
+                    if not h_[0]:
+                        nvis_ += 1; import bpy_extras as _bx; sc_ = _bx.object_utils.world_to_camera_view(self.S, self.S.camera, P_)
+                        vis_px_.append((round(sc_.x * 1080), round((1 - sc_.y) * 1920)))
+                    else: hits_[h_[4].name] = hits_.get(h_[4].name, 0) + 1
+            print('SWAPTEST', round(t * 24), 'arc pts', ntot_, 'visible', nvis_, 'blockers', dict(sorted(hits_.items(), key=lambda kv: -kv[1])[:4]), 'vis px', vis_px_[:40], flush=True)
         self.rim_light(shot, pos)
         self.backdrop(shot, pos, tgt)
+        if os.environ.get('KW_LIGHTPRINT'):
+            for o_ in self.S.objects:
+                if o_.type == 'LIGHT' and not o_.hide_render and all(not c.hide_render for c in o_.users_collection): print('LIGHTPRINT', round(t * 24), o_.name, tuple(round(x, 2) for x in o_.matrix_world.translation), round(o_.data.energy))
         self.FX.update_screen(shot, u, t)
         bpy.context.view_layer.update()
 

@@ -42,6 +42,7 @@ ARK = {   # kit expression -> HG ARKit shape keys (weight)
     'eyeswell_l': {'eyeBlink_L': 0.7, 'eyeSquint_L': 0.5}, 'eyeswell_r': {'eyeBlink_R': 0.7, 'eyeSquint_R': 0.5},
     'cheekswell_l': {'cheekPuff': 0.3}, 'cheekswell_r': {'cheekPuff': 0.3}, 'lipswell': {'mouthPucker': 0.3},
     'bloat': {'kw_bloat': 1.0},
+    'chewside': {'jawLeft': 1.0}, 'cheekfull': {'cheekPuff': 1.0},     # ep08 chew: chin to his left on each close, cheek bulge
     'jaw': {'jawOpen': 1.0}, 'lipsclose': {'mouthClose': 1.0},     # humgen spoon bite (ruling d): jaw open + lips closed on the handle
 }
 # cast v1.1 (KW_CAST=v1.1, kindawild/cast/v11_brief.md part A/B2): six expressions + named jaw openings; unused on v1.0
@@ -1825,11 +1826,93 @@ def _burger_yaw(side, at):
     return Matrix.Rotation(math.radians(yw) * (1 if side == 'R' else -1), 4, 'Z')
 
 
+# ------------------------------------------------------------------ ep08 burger track (grip where='track', ep.burger_track)
+# One continuous held-burger path: bite at the mouth -> pull away -> lowered onto a tray place -> released (hands rest palm
+# down on the table) -> picked up again -> raised back to the bite.  ep.burger_track = dict(
+#   keys=[(frame, {w, pull, down, lvl, spin, g, gt, lift, r, tap, dxL, dxR, gone}), ...]  smoothstep between keys, names carry forward
+#     w 0 at the mouth (bite frame) .. 1 at place; pull / down m away from / below the mouth; lvl 0..1 bun levelled;
+#     spin deg the bun turns in the hands (mesh only); g / gt finger / thumb grip 1 closed .. 0 open; lift 0..1 = 2 cm up;
+#     r 0 hands on the bun .. 1 at rest; tap 0..1 right index lifted; dxL / dxR m hand shift in world x; gone burger bites
+#   place=(x, y, z, rz)  bun bottom centre on the tray (world) + its yaw (deg),  rest={'L': (x, y, z), 'R': ...} palm points,
+#   swap=frame (from this frame on the bites read 0: the whole bun, done while the bitten arc is hidden))
+BT_REST = {2: ((8, 12, 8), -4), 3: ((10, 13, 9), 0), 4: ((12, 15, 10), 3), 5: ((14, 17, 10), 7), 1: ((4, 6, 2), 0)}
+BT_SOFT = {2: (22, 24, 20), 3: (22, 24, 20), 4: (23, 25, 20), 5: (24, 25, 20), 1: (10, 14, 8)}   # released hand in the air: softly curved, never straight
+TRK_DRIFT = 0.0025     # m hand drift at rest (alive layer)
+
+
+def _trk(kr): return getattr(kr.ep, 'burger_track', None)
+
+
+def _trk_state(kr):
+    trk = _trk(kr); f = getattr(kr, '_t_now', 0.0) * KW.FPS; full = []; cur = {}
+    for t_, v in sorted(trk['keys'], key=lambda x: x[0]):
+        cur = dict(cur); cur.update(v); full.append((t_, cur))
+    st = dict(full[0][1])
+    if f > full[0][0]:
+        st = dict(full[-1][1])
+        for (t0, a), (t1, b) in zip(full, full[1:]):
+            if f <= t1:
+                x = (f - t0) / max(1e-6, t1 - t0); x = x * x * (3 - 2 * x); st = {k: a.get(k, b[k]) + (b[k] - a.get(k, b[k])) * x for k in b}; break
+    for k, d in (('w', 0.0), ('pull', 0.0), ('down', 0.0), ('lvl', 0.0), ('spin', 0.0), ('g', 1.0), ('gt', 1.0), ('lift', 0.0), ('r', 0.0),
+                 ('tap', 0.0), ('dxL', 0.0), ('dxR', 0.0), ('gone', 0.0), ('rr', None), ('ox', 0.0), ('rf', None)):
+        st.setdefault(k, d)
+    for k, ks in (trk.get('chan') or {}).items():     # per-channel keys (own smoothstep spans; override the carried keys)
+        ks = sorted(ks); v = ks[0][1] if f <= ks[0][0] else ks[-1][1]
+        for (t0, v0), (t1, v1) in zip(ks, ks[1:]):
+            if t0 <= f <= t1: x = (f - t0) / max(1e-6, t1 - t0); v = v0 + (v1 - v0) * x * x * (3 - 2 * x); break
+        st[k] = v
+    if st['rr'] is None: st['rr'] = st['r']          # rr: wrist turn to the palm-down rest orientation (own key, ep08 CHECK 2), default = r
+    if st['rf'] is None: st['rf'] = st['r']          # rf: open finger table soft-curl (0) .. rest table (1), default = r
+    if trk.get('swap') is not None and f >= trk['swap']: st['gone'] = 0.0
+    return st, f
+
+
+def _burger_Bt(self, kr, ra, st):
+    """track frame of the burger (as _burger_B: origin bun bottom centre, z up through the bun)"""
+    trk = _trk(kr); H = BURGER2['height']; Z = V((0, 0, 1)); R = ra.p.rig.matrix_world.to_3x3().normalized(); Fp = R @ V((0, -1, 0)); Fp.z = 0; Fp.normalize()
+    Bm = _burger_B(self, kr, ra, 'mouth'); C = Bm @ V((0, 0, H / 2)); Rm = Bm.to_3x3().normalized()
+    q = (Rm @ V((0, 0, 1))).rotation_difference(Z); ql = Quaternion().slerp(q, st['lvl'])
+    Rm = ql.to_matrix() @ Rm; C = C + Fp * st['pull'] - Z * st['down']
+    px, py, pz, rz = trk['place']; Rp = Matrix.Rotation(math.radians(rz), 3, 'Z'); Cp = V((px, py, pz)) + Z * (H / 2)
+    w = st['w']; Cw = C.lerp(Cp, w) + Fp * (0.04 * math.sin(math.pi * w))      # a gentle forward arc on the way down / up
+    Rw = Rm.to_quaternion().slerp(Rp.to_quaternion(), w).to_matrix()
+    return Matrix.Translation(Cw) @ Rw.to_4x4() @ Matrix.Translation(V((0, 0, -H / 2)))
+
+
+def _rest_W(self, kr, ra, side, st, t):
+    """wrist frame for a hand resting palm down on the table at the track's rest point (back of the hand up, fingers forward-in)"""
+    trk = _trk(kr); R = ra.p.rig.matrix_world.to_3x3().normalized(); Fp = R @ V((0, -1, 0)); Fp.z = 0; Fp.normalize(); out = _side_out(kr, ra, side)
+    if not hasattr(self, '_palmar') or side not in self._palmar: _burger_Pl(self, kr, ra, side); _burger_frame(self, kr, ra, side, BURGER_HAND['z'])
+    n_l, f_l = (V(v).normalized() for v in self.pn[side]); f_l = (f_l - n_l * f_l.dot(n_l)).normalized()
+    a = math.radians(18); f_t = (Fp * math.cos(a) - out * math.sin(a)).normalized(); n_t = V((0, 0, 1))
+    T = Matrix((n_t, f_t, n_t.cross(f_t))).transposed(); Lm = Matrix((n_l, f_l, n_l.cross(f_l))).transposed(); Rwb = T @ Lm.inverted()
+    ph = 1.7 if side == 'L' else 0.0
+    P = V(trk['rest'][side]) + V((st['dx' + side] + TRK_DRIFT * math.sin(t * 1.3 + ph), TRK_DRIFT * 0.7 * math.sin(t * 0.9 + 2 * ph), 0.0))
+    return Matrix.Translation(P - Rwb @ self._palmar[side]) @ Rwb.to_4x4()
+
+
 def _burger_goal(self, kr, ra, side, h, tip, shape):
-    tl = ra.hand[side][shape][tip]; B = _burger_B(self, kr, ra, h.at); Wd = B @ _burger_yaw(side, h.at) @ _burger_Pl(self, kr, ra, side).inverted()
+    tl = ra.hand[side][shape][tip]
     R = ra.p.rig.matrix_world.to_3x3().normalized(); Up = R @ V((0, 0, 1)); sh = kr.bw(ra.p, f'upperarm01.{side}')
     out = _side_out(kr, ra, side); Fp = R @ V((0, -1, 0))
     pole = sh + out * 0.35 - Up * 0.6 - Fp * 0.1          # elbows down, ~30 deg out
+    if h.at == 'track':
+        st, f = _trk_state(kr); B = _burger_Bt(self, kr, ra, st)
+        Wd = B @ _burger_yaw(side, 'mouth') @ _burger_Pl(self, kr, ra, side).inverted()
+        if st['r'] > 1e-4 or st['lift'] > 1e-4 or st['rr'] > 1e-4 or st['ox'] > 1e-4:
+            Wr = _rest_W(self, kr, ra, side, st, f / KW.FPS); r = st['r']; Rr = Wr.to_3x3()
+            trk = _trk(kr)
+            if 'chan' in trk:      # CHECK 2: grip -> HOVER (palm down just over the bun top, ox m outward on its own side) -> rest
+                Hp = V((trk['place'][0], trk['place'][1], trk['place'][2] + BURGER2['height'] + 0.005)) + _side_out(kr, ra, side) * (0.045 + st['ox'])   # own side, palms >= 14 cm apart
+                Wh_t = Hp - Rr @ self._palmar[side]
+                pos = Wd.translation.lerp(Wh_t, st['rr']).lerp(Wr.translation, r) + V((0, 0, 0.02 * st['lift']))
+            else:
+                pos = (Wd.translation + _side_out(kr, ra, side) * st['ox']).lerp(Wr.translation, r) + V((0, 0, 0.02 * st['lift']))
+            rot = Wd.to_quaternion().slerp(Wr.to_quaternion(), st['rr']).to_matrix()      # palm turns down near the bun, then travels
+            Wd = Matrix.Translation(pos) @ rot.to_4x4()
+            pole = pole.lerp(sh + out * 0.4 - Up * 0.6 + Fp * 0.05, r)
+        return Wd @ tl, tip, shape, Wd.to_3x3(), pole
+    B = _burger_B(self, kr, ra, h.at); Wd = B @ _burger_yaw(side, h.at) @ _burger_Pl(self, kr, ra, side).inverted()
     return Wd @ tl, tip, shape, Wd.to_3x3(), pole
 
 
@@ -1844,6 +1927,31 @@ def _burger_hold(self, kr, jobs):
             for jj in (1, 2, 3):
                 e = p.pb(f'finger{k}-{jj}.{side}').rotation_euler
                 e.x = math.radians(a[jj - 1]); e.y = 0.0; e.z = math.radians(z if jj == 1 else 0.0) * (1 if side == 'R' else -1)
+    if js[0][8].at == 'track':
+        st, f = _trk_state(kr)
+        for j in js:          # fingers: closed table -> relaxed by the grip weights (thumb on its own key); index tap
+            side = j[1]; sg = 1 if side == 'R' else -1
+            for k, (a, z) in self._bclose[side].items():
+                gk = st['gt'] if k == 1 else st['g']; ra_, rz_ = BT_REST[k]; sf_ = BT_SOFT[k]; rf_ = st['rf']
+                ra_ = tuple(sf_[q] + (ra_[q] - sf_[q]) * rf_ for q in range(3)); rz_ = rz_ * rf_
+                for jj in (1, 2, 3):
+                    e = p.pb(f'finger{k}-{jj}.{side}').rotation_euler
+                    x_ = a[jj - 1] * gk + ra_[jj - 1] * (1 - gk)
+                    if k == 2 and side == 'R': x_ -= 28.0 * st['tap'] * (1.0 if jj == 1 else 0.3)
+                    e.x = math.radians(x_); e.y = 0.0; e.z = math.radians((z if jj == 1 else 0.0) * gk + (rz_ if jj == 1 else 0.0) * (1 - gk)) * sg
+        it = getattr(kr.FX, 'grip_items', {}).get('g_burger')
+        if it is not None: it.set(gone=st['gone'])
+        if os.environ.get('KW_RELDBG'):
+            for j in js:
+                sd = j[1]; Mw = kr.wmat(p, f'wrist.{sd}'); R3 = Mw.to_3x3()
+                print('RELDBG f%d %s wrist %s palmN %s fingers %s' % (int(round(f)), sd, tuple(round(c, 3) for c in Mw.translation),
+                      tuple(round(c, 2) for c in (R3 @ V(self.pn[sd][0])).normalized()), tuple(round(c, 2) for c in (R3 @ V(self.pn[sd][1])).normalized())), flush=True)
+        H = BURGER2['height']; spin = Matrix.Translation(V((0, 0, 0))) @ Matrix.Rotation(math.radians(st['spin']), 4, 'Z')
+        if st['r'] < 1e-4 and st['lift'] < 1e-4 and min(st['g'], st['gt']) > 0.999:      # held: from the first hand's wrist (contacts exact)
+            side0 = js[0][1]; ob.matrix_world = kr.wmat(p, f'wrist.{side0}') @ _burger_Pl(self, kr, self.ra, side0) @ _burger_yaw(side0, 'mouth').inverted() @ spin
+        else:
+            ob.matrix_world = _burger_Bt(self, kr, self.ra, st) @ spin
+        return True
     side0 = js[0][1]; ob.matrix_world = kr.wmat(p, f'wrist.{side0}') @ _burger_Pl(self, kr, self.ra, side0) @ _burger_yaw(side0, js[0][8].at).inverted()
     if os.environ.get('KW_V11_DBG'):
         bpy.context.view_layer.update(); Bt = _burger_B(self, kr, self.ra, js[0][8].at)

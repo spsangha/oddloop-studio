@@ -113,10 +113,10 @@ PARTS = ('nose', 'mouth', 'chin', 'forehead', 'head_top', 'eye_l', 'eye_r', 'che
 HAND_SHAPES = ('relaxed', 'open', 'fist', 'pinch', 'point', 'press2', 'hold', 'cup', 'claw')
 HANDS = ('rest', 'lap', 'wheel', 'pinch_nose', 'cover_mouth', 'cover_nose', 'tissue_nose', 'wave', 'point_fwd', 'clipboard', 'write', 'hips',
          'to_mouth', 'phone_ear') + tuple('touch_' + p for p in PARTS) + tuple('clutch_' + p for p in ('chest', 'belly', 'neck', 'head', 'throat', 'forehead', 'eye_l', 'eye_r', 'cheek_l', 'cheek_r', 'ear_l', 'ear_r'))
-ACTS = ('sneeze', 'cough', 'blow_nose', 'swallow', 'eat', 'drink', 'wince', 'nod', 'shake_head', 'gasp', 'breathe_hard', 'look_around', 'flinch', 'yawn', 'sniff', 'scratch')
+ACTS = ('sneeze', 'cough', 'blow_nose', 'swallow', 'eat', 'drink', 'wince', 'nod', 'shake_head', 'gasp', 'breathe_hard', 'look_around', 'flinch', 'yawn', 'sniff', 'scratch', 'chew')
 ITEMS = ('tray', 'burger', 'fries', 'salmon', 'wedges', 'salad', 'cup', 'penlight', 'tweezers', 'probe', 'magnifier',
-         'paperclip', 'pea', 'ball', 'bulb', 'bench')      # table-top props (kwprops) placed with fx.item
-ITEM_CONTROLS = {'burger': ('eaten',), 'fries': ('eaten',), 'salmon': ('eaten',), 'wedges': ('eaten',), 'salad': ('eaten',),
+         'paperclip', 'pea', 'ball', 'bulb', 'bench', 'sweet_potato', 'beans', 'ketchup', 'fork', 'bar')      # table-top props (kwprops) placed with fx.item
+ITEM_CONTROLS = {'burger': ('eaten', 'gone'), 'fries': ('eaten', 'gone'), 'salmon': ('eaten', 'gone'), 'sweet_potato': ('gone',), 'beans': ('gone',), 'bar': ('fill', 'alpha', 'br'), 'tray': ('dx', 'dy'), 'wedges': ('eaten',), 'salad': ('eaten',),
                  'penlight': ('on',), 'pea': ('sprout',), 'ball': ('squash',)}
 PROPS = ('tissue', 'cup', 'apple', 'pill', 'phone', 'pen', 'spoon', 'bottle', 'can', 'earbud', 'swab', 'pepper', 'slushie')
 ORGANS = ('airway', 'lungs', 'esophagus', 'stomach', 'heart', 'brain', 'intestines', 'sinus', 'eyes', 'skull', 'vessels', 'kidneys', 'bladder', 'liver')
@@ -190,6 +190,12 @@ class act:
         if chew is not None: kw['chew'] = tuple(chew)
         return Act('eat', **kw)
     @staticmethod
+    def chew(at=0.5, until=3.0, rate=1.5, gap=7.0, side=1.0, bulge=0.35, swallow=None):
+        """closed-lip chewing (humgen): `rate` chews a second from local `at` to `until`; jaw opens `gap` mm (front teeth)
+        with the lips sealed, chin to his left on each close (side 0..1), cheek bulge (first six chews, then 60 %).
+        swallow = local time: 10-frame pause in the chew with a 1 deg chin dip."""
+        return Act('chew', at=at, until=until, rate=rate, gap=gap, side=side, bulge=bulge, swallow=swallow)
+    @staticmethod
     def drink(at=0.3, dur=1.2): return Act('drink', at=at, dur=dur)
     @staticmethod
     def wince(at=0.5, hard=1.0): return Act('wince', at=at, hard=hard)
@@ -253,7 +259,8 @@ def _grip(name, item=None, where='chest'):
     (rest_belly was dropped in round 2: for a hand on the belly use KW.hand.clutch('belly') on a seated pose.)"""
     _check_name('grip', name, tuple(GRIPS))
     item = item or GRIPS[name][0]; _check_name(name + ' item', item, GRIPS[name])
-    if where not in ('chest', 'mouth', 'out'): raise ValueError('grip where: chest | mouth | out')
+    if where not in ('chest', 'mouth', 'out', 'track'): raise ValueError('grip where: chest | mouth | out | track')
+    if where == 'track' and name != 'grip_burger': raise ValueError("grip where='track': grip_burger only (path in ep.burger_track)")
     part = {'mouth': 'mouth'}.get(where)
     # the cup rides on the solved HG can grip (the carrier mesh is hidden, the kwprops item is shown); tools, pinch and burger
     # are fixed hand-authored finger tables (heads_hg.AUTH) with the item put on the hand
@@ -411,6 +418,17 @@ class cam:
         """escape hatch: fixed world position looking at a world point"""
         return Cam('at', None, pos=tuple(pos), look=tuple(look), lens=lens, **o)
     @staticmethod
+    def path(keys, fstop=4.0, **o):
+        """one continuous camera move through world keys [(local_t, pos, look, lens), ...]: each segment eases
+        (smoothstep) from key to key, holding before the first and after the last key"""
+        ks = []
+        for k in keys:      # (t, pos, look, lens) or (t, KW.cam.*(...)): a preset evaluated live at that key (e.g. the frame-0 face view)
+            if len(k) == 2 and isinstance(k[1], Cam): ks.append((float(k[0]), k[1], None, None))
+            else: t, p, l, ln = k; ks.append((float(t), tuple(p), tuple(l), float(ln)))
+        ks.sort(key=lambda x: x[0])
+        if len(ks) < 1: raise ValueError('cam.path: at least one key')
+        return Cam('path', None, keys=ks, fstop=fstop, **o)
+    @staticmethod
     def bench(which='wide', at=(63.0, 0.0), top=0.9, lens=None, look=(0.0, 0.0), h=None, width=None, **o):
         """table-top presets on an fx.item('bench') whose top centre is at (at, top).  'wide' frames the whole 120 cm top
         from in front and above (lens 35); 'close' frames about 30 cm of the top (lens 50).  look = (dx, dy) shift of the
@@ -458,12 +476,20 @@ class fx:
         """pressure dial: needle rises 0.1 -> `to` (0..1) from local `at` over `dur`; `label` (e.g. '20x') pops beside it."""
         return FX('gauge', to=to, at=at, dur=dur, label=label, low=low, high=high, title=title, place=place, pos=pos, size=size, slam=slam)
     @staticmethod
-    def label(text, at=0.2, pos=(0.5, 0.72), near=None, size=1.0, color='red', dur=None):
+    def label(text, at=0.2, pos=(0.5, 0.72), near=None, size=1.0, color='red', dur=None, keys=None):
         """3D word that pops in (keep to 1-3 words or a number). pos = screen position (0..1, 0..1 from bottom-left) or near=Anchor.
         A pos label is printed on the screen: same size and place whatever the camera does, never wider than 960 px (a long word
         is scaled down to fit). dur = seconds on screen, then it is gone (like a cut); a label may be given to several shots
-        (at < 0 in the later ones) to stay on through a segment change of one continuous camera move."""
+        (at < 0 in the later ones) to stay on through a segment change of one continuous camera move.
+        keys = [(local_t, {'pos': (x, y), 'width': px}), ...] (pos labels only): the label eases (smoothstep) to each key's
+        screen place / width cap; with no keys a label behaves exactly as before."""
         if color not in ('red', 'yellow', 'white', 'green', 'blue'): raise ValueError('label color: red | yellow | white | green | blue')
+        if keys:
+            if near is not None: raise ValueError('label keys: pos labels only')
+            for _, v in keys:
+                for kk in v:
+                    if kk not in ('pos', 'width'): raise ValueError(f"label key {kk!r}: 'pos' | 'width'")
+            return FX('label', text=str(text), at=at, pos=pos, near=near, size=size, color=color, dur=dur, keys=[(float(t), dict(v)) for t, v in keys])
         return FX('label', text=str(text), at=at, pos=pos, near=near, size=size, color=color, dur=dur)
     @staticmethod
     def arrow(points=None, at=0.2, dur=0.6, color='yellow', width=0.012, path=None, person=None):
