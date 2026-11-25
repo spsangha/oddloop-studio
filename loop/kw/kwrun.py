@@ -936,6 +936,7 @@ class Runtime:
                 base_f = V((0, 0, 1)); Uax = V((0, 0, 1))
             dirv = Matrix.Rotation(ang, 3, V((0, 0, 1))) @ base_f
             pos = A + dirv * dd + V((0, 0, 1)) * height + self._shake(t, o, u)
+            if o.get('aim'): ao_ = V(o['aim']); pos = pos + ao_; tgt = tgt + ao_     # shift the framing (world offset; bite close-up keeps the burger in frame)
             if self.camera_r4 and kind == 'wide' and shot.set == 'room':
                 bounds = getattr(self.set_obj.get('room'), 'camera_bounds', None)
                 if bounds and all(bounds[0][i] < tgt[i] < bounds[1][i] for i in range(3)):
@@ -1171,6 +1172,10 @@ class Runtime:
     # ================================================================== frame update
     def update(self, t):
         ep = self.ep; shot = ep.shot_at(t); u = t - shot.t; si = ep.shots.index(shot)
+        if os.environ.get('KW_BITE_SWEEP'):      # dev: per-shot bite yaw / turn ('shot:yaw:turn,...'), numeric sweeps in one run
+            for it_ in os.environ['KW_BITE_SWEEP'].split(','):
+                n_, y_, t_ = it_.split(':')
+                if n_ == shot.name: os.environ['KW_BITE_YAW'] = y_; os.environ['KW_BITE_TURN'] = t_
         self.render_budget(shot.set)
         self.prop_lights((0, 0, 0), on=False)
         self.visibility(shot)
@@ -1208,7 +1213,8 @@ class Runtime:
                         except Exception as ex__: print('V11DBG hand', b__, ex__)
                 print('V11DBG lip world', shot.name, tuple(round(x, 3) for x in L0_), 'fwd', tuple(round(x, 3) for x in fw_), 'his right', tuple(round(x, 3) for x in rt_))
                 for nm_, off_ in (('lip_up', up_ * 0.006), ('lip_lo', -up_ * 0.012), ('corner_R', rt_ * 0.024 - fw_ * 0.008), ('corner_L', -rt_ * 0.024 - fw_ * 0.008),
-                                  ('chin', -up_ * 0.045 - fw_ * 0.005), ('cheek_R', rt_ * 0.05 + up_ * 0.025 - fw_ * 0.025), ('jaw_R', rt_ * 0.05 - up_ * 0.03 - fw_ * 0.03), ('eye_R', rt_ * 0.032 + up_ * 0.075 - fw_ * 0.01)):
+                                  ('chin', -up_ * 0.045 - fw_ * 0.005), ('cheek_R', rt_ * 0.05 + up_ * 0.025 - fw_ * 0.025), ('jaw_R', rt_ * 0.05 - up_ * 0.03 - fw_ * 0.03), ('eye_R', rt_ * 0.032 + up_ * 0.075 - fw_ * 0.01), ('eye_L', -rt_ * 0.032 + up_ * 0.075 - fw_ * 0.01),
+                                  ('nose', up_ * 0.035 + fw_ * 0.02), ('cheek_L', -rt_ * 0.05 + up_ * 0.025 - fw_ * 0.025), ('jaw_L', -rt_ * 0.05 - up_ * 0.03 - fw_ * 0.03)):
                     L_ = L0_ + off_; d_ = (L_ - cp_); hit_ = bpy.context.scene.ray_cast(dg_, cp_, d_.normalized(), distance=d_.length + 0.01)
                     nmh_ = hit_[4].name if hit_[0] else None; gap_ = round((hit_[1] - L_).length * 1000) if hit_[0] else None
                     print('V11DBG lipview', shot.name, nm_, 'hit', nmh_, gap_, 'mm', 'BLOCKED' if hit_[0] and gap_ > 15 else 'ok')
