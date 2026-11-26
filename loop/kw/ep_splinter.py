@@ -37,9 +37,10 @@ RW0 = f_L5; RW1 = RW0 + 10                  # the rewind
 CAP0 = f_walls; CAP1 = CAP0 + 24
 RS0 = f_lump - 8; RS1 = RS0 + 34            # rise out through the surface to Ben
 RVAN0 = RS0 + 6; RVAN1 = RVAN0 + 6
-TW0 = f_L6 + 2; TW1 = TW0 + 16              # right hand rises from below the frame with the tweezers
-PUSH0 = TW1; PUSH1 = PUSH0 + 13             # eased push into the pull close (lead CHECK 1 #5)
-GR0 = PUSH1 + 1; GR1 = GR0 + 4              # jaws + grip close at full size (thumb last)
+TW0 = f_L6 + 6; TW1 = TW0 + 25              # lead FINAL ruling B: one hard cut at TW0 to the pull close; the tips glide in from the right edge, settle at TW1
+PUSH0 = TW0 - 1; PUSH1 = TW0                # the cut (camera keys SF at PUSH0 -> TWC at PUSH1; no push, no swing)
+TW_BACK = float(os.environ.get('KW_TWBACK', 0.022))     # metres the tweezers start backed out along their own axis (hand far out of frame)
+GR0 = TW1 + 1; GR1 = GR0 + 4                # jaws + grip close at full size (thumb last)
 PL0 = max(f_same, GR1 + 1); PL1 = PL0 + 16                # the pull along the axis
 OFF_SAME = max(f_L6e + 4, PL1 + 20)
 RET0 = OFF_SAME - 4; RET = 22; FN = RET0 + RET; NF = FN + 1
@@ -110,13 +111,16 @@ def tw_target(f, Fm=None):
     G = ft.splinter_M(out) @ V((TW_INSET, 0, 0))
     X = -TW_HAND.normalized(); Y = V((0, 1, 0)); Y = (Y - X * Y.dot(X)).normalized(); Z = X.cross(Y)
     R = Matrix((X, Y, Z)).transposed()
-    M = R.to_4x4(); M.translation = G - R @ V((0.06, 0.0, 0.0012))
+    M = R.to_4x4(); M.translation = G - R @ V((0.06 + tw_back(f), 0.0, 0.0012))
     return Fm @ M
+
+def tw_back(f):
+    if f < TW0 or f >= TW1: return 0.0
+    return TW_BACK * (1.0 - ease((f - TW0) / (TW1 - TW0)))
 
 def tw_state(f):
     """0 = at rest by his side .. 1 = at the splinter"""
     if f < TW0 or f > UNPULL1 + 10: return 0.0
-    if f <= TW1: return ease((f - TW0) / (TW1 - TW0))
     if f <= UNPULL1 + 2: return 1.0
     return 1.0 - ease((f - UNPULL1 - 2) / 8)
 
@@ -178,7 +182,7 @@ def state(f):
     v['out'] = po
     v['cells'] = (f - f_white) / FPS if DV0 <= f < RS1 else -1.0
     v['vanish'] = keys(f, [(0, 0.0), (VAN0, 0.0), (VAN1, 1.0), (RVAN0, 1.0), (RVAN1, 0.0)])
-    v['cut'] = 1.0 if VAN0 <= f < RVAN1 else 0.0
+    v['cut'] = ease(min((f - VAN0 + 1) / 6.0, (RVAN1 - f) / 6.0, 1.0)) if VAN0 <= f < RVAN1 else 0.0     # lead FINAL ruling A: block lights ease over 6 frames (no one-frame pale flash)
     v['ridges'] = 1.0
     return v
 
@@ -201,7 +205,7 @@ def frame_hook(rt, t):
     tw = TW['p']; s = tw_state(f); Mh = rt.wmat(p, 'wrist.R') @ TW['Pl']
     if s >= 1.0 or (GR0 - 2 <= f <= UNPULL1 + 1):
         Mt = tw_target(f)
-        k = min(1.0, (f - (TW1 - 2)) / 2.0) if f < TW1 else 1.0
+        k = max(0.0, min(1.0, (f - (TW1 - 2)) / 2.0)) if f < TW1 else 1.0
         if k < 1.0:
             q = Mh.to_quaternion().slerp(Mt.to_quaternion(), k); Mt = Matrix.Translation(Mh.translation.lerp(Mt.translation, k)) @ q.to_matrix().to_4x4()
     else: Mt = Mh
@@ -369,7 +373,7 @@ def cam_fn(rt, t):
         A_, B_ = Q[1], Q[2]; pos = A_[0].lerp(B_[0], s_); tgt = A_[1].lerp(B_[1], s_)
     else:
         pos = cr(*[q[0] for q in Q], s_); tgt = cr(*[q[1] for q in Q], s_)
-    if PUSH0 < f < PUSH1:     # the push bows away from the tweezer hand (his right, -X) and below it: nothing nears the lens
+    if False and PUSH0 < f < PUSH1:     # the push bows away from the tweezer hand (his right, -X) and below it: nothing nears the lens
         pos = pos + V(_wv('KW_PUSHOFF', '0.30,-0.10,-0.15')) * math.sin(math.pi * s_)
     lens = Q[1][2] + (Q[2][2] - Q[1][2]) * s_
     up = Q[1][3].lerp(Q[2][3], s_).normalized()
