@@ -235,7 +235,7 @@ class Builder:
             return dict(mark=root, objs=objs)
         if k == 'label':
             if not G: return dict(label=None)
-            return dict(label=G.Label3D(o['text'], V((0, 0, 0)), c, size=0.06, color=LABEL_COL[o['color']]))
+            return dict(label=G.Label3D(o['text'], V((0, 0, 0)), c, size=0.06, color=LABEL_COL[o['color']], outline=bool(getattr(rt.ep, 'label_outline', False))))
         if k == 'arrow':
             pts = o.get('points')
             if o.get('path'):
@@ -315,7 +315,7 @@ class Builder:
             for ps in s.cast.values():
                 for _, q in ps.keys:
                     for h in (q.left, q.right):
-                        if h is not None and h.prop: used.add(h.prop)
+                        if h is not None and h.prop and h.kind not in ('fn', 'inspect'): used.add(h.prop)   # ep10: fn/inspect props are tags
         c = L.coll('kw_props')
         for pr in used:
             self.props[pr] = self._make_prop(pr, c)
@@ -650,7 +650,7 @@ class Builder:
                         Mo = lab.root.matrix_world @ lab.object.matrix_parent_inverse @ lab.object.matrix_basis; RcT = Rc.transposed(); xs = []
                         for q in lab.object.bound_box:
                             cq = RcT @ ((Mo @ V(q)) - P0); xs.append(cq.x / max(1e-6, -cq.z) / (th * 9 / 16) * 540 + 540)
-                        wpx = max(xs) - min(xs); it['fit'] = min(1.0, 945.0 / max(1.0, wpx)); it['wpx'] = wpx * it['fit']; it['lens0'] = cd.lens
+                        wpx = max(xs) - min(xs); it['fit'] = min(1.0, float(getattr(rt.ep, 'label_maxw', 945.0)) / max(1.0, wpx)); it['wpx'] = wpx * it['fit']; it['lens0'] = cd.lens
                         print(f"KW label '{o['text']}' width {wpx:.0f} px -> {it['wpx']:.0f} px at 1080 (fit {it['fit']:.3f})", flush=True)
                     lf_ = it['lens0'] / cd.lens if getattr(rt.ep, 'label_lens_fix', False) else 1.0     # ep08: constant screen size while the lens changes (opt-in; ep07 unchanged)
                     if o.get('keys'):       # ep08 (g): eased screen place / width cap; un-keyed labels unchanged
@@ -659,6 +659,11 @@ class Builder:
                         wk = min(it['wpx'], kv.get('width', it['wpx'])); place(lab.root, (kv['pos_x'], kv['pos_y']), o['size'] * it['fit'] * lf_ * wk / max(1.0, it['wpx']))
                     else:
                         place(lab.root, o['pos'], o['size'] * it['fit'] * lf_)
+                    ldk_ = getattr(rt.ep, 'label_dk', None)      # ep10: inside a macro set, the label rides just in front of the lens (tissue nearer than d hid it)
+                    ldk_ = ldk_(bpy.context.scene.frame_current) if callable(ldk_) else ldk_
+                    if ldk_:
+                        Mw_ = lab.root.matrix_world; tr_ = Mw_.translation - P0; kk_ = ldk_ / max(1e-6, -(Rc.transposed() @ tr_).z)
+                        lab.root.matrix_world = Matrix.Translation(P0 + tr_ * kk_) @ Mw_.to_3x3().to_4x4() @ Matrix.Scale(kk_, 4)
                 ka = pop((u - o['at']) / 0.3) if u > o['at'] else 0.0
                 if o.get('dur') is not None and u > o['at'] + o['dur']: ka = 0.0
                 lab.set(scale=max(ka, 1e-5))

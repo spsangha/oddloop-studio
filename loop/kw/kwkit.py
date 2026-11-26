@@ -110,7 +110,7 @@ SWELL = {'neck': 'neckswell', 'eye_l': 'eyeswell_l', 'eye_r': 'eyeswell_r', 'che
 # body parts a hand can reach (of the same person or of another person); measured on the real mesh by ray casts
 PARTS = ('nose', 'mouth', 'chin', 'forehead', 'head_top', 'eye_l', 'eye_r', 'cheek_l', 'cheek_r', 'ear_l', 'ear_r', 'neck_l', 'neck_r',
          'throat', 'chest', 'chest_l', 'chest_r', 'belly', 'shoulder_l', 'shoulder_r', 'wrist_l', 'wrist_r', 'back', 'knee_l', 'knee_r')
-HAND_SHAPES = ('relaxed', 'open', 'fist', 'pinch', 'point', 'press2', 'hold', 'cup', 'claw')
+HAND_SHAPES = ('relaxed', 'open', 'fist', 'pinch', 'point', 'press2', 'hold', 'cup', 'claw', 'inspect')
 HANDS = ('rest', 'lap', 'wheel', 'pinch_nose', 'cover_mouth', 'cover_nose', 'tissue_nose', 'wave', 'point_fwd', 'clipboard', 'write', 'hips',
          'to_mouth', 'phone_ear') + tuple('touch_' + p for p in PARTS) + tuple('clutch_' + p for p in ('chest', 'belly', 'neck', 'head', 'throat', 'forehead', 'eye_l', 'eye_r', 'cheek_l', 'cheek_r', 'ear_l', 'ear_r'))
 ACTS = ('sneeze', 'cough', 'blow_nose', 'swallow', 'eat', 'drink', 'wince', 'nod', 'shake_head', 'gasp', 'breathe_hard', 'look_around', 'flinch', 'yawn', 'sniff', 'scratch', 'chew')
@@ -269,6 +269,19 @@ def _grip(name, item=None, where='chest'):
     if name == 'grip_cup': return Hand('hold', None, part, 'hold', prop='can', at=where, pad='cup')
     return Hand('hold', None, part, 'hold', prop='g_' + item, at=where)
 hand.grip = staticmethod(_grip)
+
+def _inspect(finger='index', dist=0.35, offset=(0.05, -0.10)):
+    """ep10: hold a hand up at chin height to look at a fingertip: palm toward the face (back of the hand away from him),
+    the named finger nearly straight and slightly forward, the others loosely curled.  Give it to left= or right=.
+    dist = metres in front of the eyes (30-40 cm reads as 'looking closely'); offset = (out, up) m from straight ahead."""
+    _check_name('finger', finger, ('index',))
+    return Hand('inspect', None, None, 'inspect', prop=finger, at=float(dist), pad=tuple(offset))
+hand.inspect = staticmethod(_inspect)
+
+def _hand_fn(tag=None):
+    """ep10: the episode solves this hand itself (ep.hand_fn(rt, ra, side, h, u, t) -> kit hand goal or None = rest)"""
+    return Hand('fn', None, None, 'hold', prop=tag)
+hand.fn = staticmethod(_hand_fn)
 
 def _hand_spec(h):
     if h is None or isinstance(h, Hand): return h

@@ -477,11 +477,28 @@ class Backdrop:
 class Label3D:
     """Centered Montserrat with rounded, lacquered letter edges."""
 
-    def __init__(self, text, origin, coll, size=.1, color=(1, .1, .1), face="-Y"):
+    OUTLINE = (0.049, 0.033, _hex("1A1410"), 0.5)   # ep10: outline ~6 px, shadow 4 px down-right at 50 % (of an ~86 px glyph)
+
+    def __init__(self, text, origin, coll, size=.1, color=(1, .1, .1), face="-Y", outline=False):
         self.root = _root(f"KW Label | {text}", coll, origin)
         self.material = _paint("KW label | candy lacquer", color, .27, .11, .40, .055)
         self.object = _type("KW | dimensional letters", text, size, coll, self.root,
                             self.material, depth=.105, bevel=.012, face=face)
+        self.extras = []
+        if outline and face == "-Y":     # dark outline + soft drop shadow, flat, behind the letters (root +Y = away from the lens)
+            ow, so, dark, sa = Label3D.OUTLINE
+            mo, _ = _ematerial("KW label | outline", dark, 1.0)
+            ms, ts, outs = _tree("KW label | shadow")
+            em = ts.nodes.new("ShaderNodeEmission"); em.inputs["Color"].default_value = _rgba(dark)
+            tr = ts.nodes.new("ShaderNodeBsdfTransparent"); mx = ts.nodes.new("ShaderNodeMixShader"); mx.inputs[0].default_value = 1.0 - sa
+            ts.links.new(em.outputs[0], mx.inputs[1]); ts.links.new(tr.outputs[0], mx.inputs[2]); ts.links.new(mx.outputs[0], outs.inputs["Surface"])
+            try: ms.blend_method = "HASHED"
+            except Exception: pass
+            for nm, m, loc in (("KW | label outline", mo, (0.0, size * 0.075, 0.0)), ("KW | label shadow", ms, (size * so, size * 0.10, -size * so))):
+                o = _type(nm, text, size, coll, self.root, m, loc=loc, depth=.004, bevel=0.0, face=face)
+                o.data.offset = size * ow
+                o.visible_diffuse = o.visible_glossy = o.visible_shadow = False
+                self.extras.append((o, loc))
 
     @staticmethod
     def pop(u):
@@ -497,6 +514,9 @@ class Label3D:
                 self.object.data.body = text
         self.object.scale = (max(.00001, scale),) * 3
         _vis(self.object, scale > .00001)
+        for o, loc in getattr(self, 'extras', ()):
+            if text is not None and o.data.body != self.object.data.body: o.data.body = self.object.data.body
+            o.scale = (max(.00001, scale),) * 3; o.location = tuple(c * scale for c in loc); _vis(o, scale > .00001)
         return self
 
 

@@ -488,6 +488,18 @@ def tweezers(c, K=None, length=0.12, **_):
     for sgn in (1, -1):
         pts = [V((-length / 2, 0.0, 0.0012)), V((-length / 2 + 0.02, sgn * 0.004, 0.0012)), V((0.0, sgn * 0.0065, 0.0012)), V((length / 2 - 0.012, sgn * 0.0018, 0.0012)), V((length / 2, sgn * 0.0003, 0.0012))]
         a = pr.add(L.tube(f'kwp_tw_arm{sgn}', pts, 0.0011, st, None, 3, radii=[1.6, 1.8, 2.2, 1.2, 0.5])); a.scale = (1, 1, 0.45)
+        pr.pts[f'tip{sgn}'] = (length / 2, sgn * 0.0003, 0.0012)
+    pr.pts['tip'] = (length / 2, 0.0, 0.0012); pr.pts['grip'] = (0.02, 0.0, 0.0012)
+    arms = {sgn: next(o for o in pr.objs if o.name.startswith(f'kwp_tw_arm{sgn}')) for sgn in (1, -1)}
+    hinge = V((-length / 2, 0.0, 0.0))
+    def _s(gap=None, **_):
+        """ep10 N7: gap = tip-centre half-gap in m (closed tips 0.0003; the arms spring about the joint at -X)"""
+        if gap is None: return
+        for sgn, o in arms.items():
+            ang = math.atan2(max(-0.0003, gap) - 0.0003, length) * sgn
+            o.matrix_basis = Matrix.Translation(hinge) @ Matrix.Rotation(ang, 4, 'Z') @ Matrix.Translation(-hinge) @ Matrix.Diagonal((1, 1, 0.45, 1))
+            pr.pts[f'tip{sgn}'] = (length / 2, sgn * max(0.0003, gap), 0.0012)
+    pr._set = _s
     return pr
 
 

@@ -18,7 +18,8 @@ RACE_TAN = {'caucasian': 0.45, 'asian': 0.3, 'african': 0.1, 'mixed': 0.25}
 SHAPES = {   # finger angles. curl: fingers 3-5 (0..1); idx: index curl; thumb: 0..1 ; spread not used
     'relaxed': dict(idx=0.25, curl=0.32, thumb=0.25), 'open': dict(idx=0.04, curl=0.05, thumb=0.05), 'fist': dict(idx=1.0, curl=1.0, thumb=0.9),
     'point': dict(idx=0.0, curl=1.0, thumb=0.7), 'press2': dict(idx=0.12, mid=0.12, curl=0.95, thumb=0.5), 'hold': dict(idx=0.55, curl=0.6, thumb=0.6),
-    'cup': dict(idx=0.28, curl=0.3, thumb=0.15), 'claw': dict(idx=0.45, curl=0.5, thumb=0.35), 'pinch': 'PINCH'}
+    'cup': dict(idx=0.28, curl=0.3, thumb=0.15), 'claw': dict(idx=0.45, curl=0.5, thumb=0.35), 'pinch': 'PINCH',
+    'inspect': dict(idx=0.08, mid=0.42, curl=0.58, thumb=0.3)}   # ep10: a finger held up to look at (index nearly straight, others loosely curled)
 PINCH = dict(idx=(60.4, 9.9, 12), curl=70, th1=(44.5, -10.9, 3.8), th2=(-9.1, 0, 0), th3=(0, 0, 0))   # ep_sneeze PINCHOPT result (finger part)
 # part -> (bone, start offset (left, fwd, up) from bone head in person axes, ray direction (left, fwd, up) INTO the body, mesh set)
 PARTSPEC = {
@@ -106,6 +107,8 @@ class Runtime:
         self._lights_world_camera()
         import kwfx
         self.FX = kwfx.Builder(self); self.FX.build_all()
+        bh = getattr(ep, 'build_hook', None)        # ep10: episode-owned parts (fingertip, cut-away) built once after the props
+        if bh: bh(self)
         self._canon()
         print(f'build done {time.time() - self.t0:.0f}s')
 
@@ -679,6 +682,17 @@ class Runtime:
                 spin = Matrix.Rotation(car.wheel.rotation_euler.z, 3, axis)
                 offset, nrm, up = spin @ offset, spin @ nrm, spin @ up
             return wc + offset, 'palm', 'hold', orient(nrm, up), sh + out * 0.5 + V((0, 0.3, -0.6))
+        if kind == 'inspect':     # ep10 KW.hand.inspect: fingertip held up at chin height, h.at m in front of the eyes, palm to the face
+            eye = (self.bw(p, 'eye.L') + self.bw(p, 'eye.R')) / 2; dist = float(h.at) if isinstance(h.at, (int, float)) else 0.35
+            o_ = h.pad or (0.05, -0.10)                    # (out, up) offset of the fingertip from straight ahead of the eyes
+            tgt = eye + Fp * dist + out * o_[0] + Up * o_[1]
+            n_w = (eye - tgt).normalized(); f_w = Up + Fp * 0.25 - out * 0.12
+            return tgt, 'index', 'inspect', orient(n_w, f_w), sh + out * 0.35 - Up * 0.55 + Fp * 0.05
+        hf = getattr(self.ep, 'hand_fn', None)          # ep10: episode-owned hand goal (kind 'fn'): -> (D, tip, shape, R, pole) or None
+        if kind == 'fn' and hf is not None:
+            g_ = hf(self, ra, side, h, u, t)
+            if g_ is not None: return g_
+            return self.hand_goal(ra, side, KW.Hand('rest'), u, t)
         if kind == 'wave':
             D = sh + out * 0.3 + Up * 0.32 + Fp * 0.12; a_ = math.radians(22 * math.sin(t * 9)); f_w = Matrix.Rotation(a_, 3, Fp) @ Up
             return D, 'palm', 'open', orient(Fp, f_w), sh + out * 0.5 - Up * 0.3
@@ -860,6 +874,8 @@ class Runtime:
         if si is None: si = ep.shots.index(shot)
         Lsh = shot.length; un = u / Lsh
         if c is None: c = KW.Cam('prop', None)
+        cf = getattr(ep, 'cam_fn', None)            # ep10: the episode computes its own camera (bone-relative keys)
+        if cf is not None: return cf(self, shot.t + u)
         if c.kind == 'loop':
             first = ep.shots[0]; un2 = (u - Lsh) / first.length       # arrives exactly at the first shot's start camera
             pos, tgt, up, lens, fs, foc = self.cam_eval_kind(first, first.cam, un2, 0, live=False, at_t=shot.t + u)
@@ -1087,6 +1103,24 @@ class Runtime:
                 else: e.matrix_basis = keep[e.name]
         bpy.context.view_layer.update()
 
+    def eyes_at(self, ra, target, k=1.0):
+        """ep10 N5 (reusable): both HG eyes converge on a near point. target = a world point, an object, or (armature, bone).
+        k < 1 blends from the default 1.5 m-ahead targets. Call from ep.frame_hook (after _v11_eyes_to_camera)."""
+        if isinstance(target, tuple) and len(target) == 2 and hasattr(target[0], 'pose'):
+            ob, bn = target; tp = ob.matrix_world @ ob.pose.bones[bn].head
+        elif hasattr(target, 'matrix_world'): tp = target.matrix_world.translation.copy()
+        else: tp = V(target)
+        keep = self.__dict__.setdefault('_eyetgt0', {})
+        for s_ in 'LR':
+            e = bpy.data.objects.get(f'{ra.p.name}_hg_eyetgt.{s_}')
+            if e is None: continue
+            if e.name not in keep: keep[e.name] = e.matrix_basis.copy()
+            if k < 1.0:
+                e.matrix_basis = keep[e.name]; bpy.context.view_layer.update(); tp_ = e.matrix_world.translation.lerp(tp, k)
+            else: tp_ = tp
+            e.matrix_world = Matrix.Translation(tp_)
+        bpy.context.view_layer.update()
+
     def set_cam(self, pos, tgt, up, lens, fstop, foc):
         if os.environ.get('KW_CAMPRINT'): print('CAMPRINT', bpy.context.scene.frame_current, tuple(round(x, 4) for x in pos), tuple(round(x, 4) for x in tgt), round(lens, 2), flush=True)
         cd = self.CAM.data; R = L.aim(V(tgt) - V(pos), up)
@@ -1246,11 +1280,15 @@ class Runtime:
             pos, tgt, up, lens, fs, foc = self.cam_eval(shot, u, si); self.set_cam(pos, tgt, up, lens, fs, foc)
             bpy.context.view_layer.update(); self.pose_all(shot, u)
         self.FX.update(shot, u, t)
+        ph = getattr(ep, 'pose_hook', None)         # ep10: after the kit pose + props, before the HG frame pass
+        if ph: ph(self, t)
         for ra in self.actors.values():
             if getattr(ra.p, 'hg', None) is not None: ra.p.hg.frame(self, shot)
         pos, tgt, up, lens, fs, foc = self.cam_eval(shot, u, si)
         self.set_cam(pos, tgt, up, lens, fs, foc)
         if V11: self._v11_eyes_to_camera()
+        fh = getattr(ep, 'frame_hook', None)        # ep10: last word on the frame (eye targets, own camera, part states)
+        if fh: fh(self, t)
         if V11 and os.environ.get('KW_V11_DBG'):      # what the camera sees at each HG person's lips (hand in front of the mouth?)
             dg_ = bpy.context.evaluated_depsgraph_get(); cp_ = V(pos)
             for ra in self.actors.values():

@@ -366,6 +366,7 @@ def graft(kr, ra, role):
     _outfit_color(p, G)
     if V11:
         import cast_v11; cast_v11.apply(kr, p, G)
+    if getattr(kr.ep, 'eyes_fix', False): eyes_fix(kr, p, G)
     _glasses(kr, p, G)
     if role.get('clipboard'): G.pen = _pen(coll); G.board, G.board_objs = _board(coll)
     p.hg = G
@@ -2488,3 +2489,50 @@ def _spoon_goal(self, kr, ra, side, tip, shape, u, pole):
 Graft.bite_state = _bite_state
 Graft.spoon_frame = _spoon_frame
 Graft.spoon_goal = _spoon_goal
+
+
+EYES_FIX = dict(limbal=0.28, pupil_rim=0.62, catch=(0.030, 1.6, (-0.09, -0.26, 0.10)), wet=(0.07, 0.004, 0.5, (0.0, -0.12, -0.075)))
+
+
+def eyes_fix(kr, p, G):
+    """N6 (opt-in per episode, ep.eyes_fix): darker limbal ring + a dark rim inside the iris (pupil depth),
+    a small wet catch light that rides on the head bone, a thin low light for the lower-lid wet line.
+    Both lights are light-linked to the eyes only."""
+    import bpy
+    from mathutils import Vector as V, Matrix
+    eye = next((o for o in G.meshes if o.name.startswith('HG_Eyes')), None)
+    if eye is None: print('eyes_fix: no eyes'); return
+    for m in eye.data.materials:
+        if m is None or not m.name.startswith('.HG_Eyes_Inner'): continue
+        rr = m.node_tree.nodes.get('kw11_ring')
+        if rr is None: continue
+        els = sorted(rr.color_ramp.elements, key=lambda e: e.position)
+        for e in els:
+            if abs(e.position - 0.45) < 0.02: e.color = (EYES_FIX['limbal'],) * 3 + (1,)
+        try: rr.color_ramp.elements.new(0.93).color = (EYES_FIX['pupil_rim'],) * 3 + (1,)
+        except Exception as ex: print('eyes_fix ramp', ex)
+    for m in eye.data.materials:      # wetter cornea
+        if m is None or not m.name.startswith('.HG_Eyes_Outer'): continue
+        b = next((n for n in m.node_tree.nodes if n.type == 'BSDF_PRINCIPLED'), None)
+        if b is not None and not b.inputs['Roughness'].is_linked: b.inputs['Roughness'].default_value = 0.0
+    coll = bpy.data.collections.get('kw11_eyes') or bpy.data.collections.new('kw11_eyes')
+    if eye.name not in coll.objects: coll.objects.link(eye)
+    rig = G.rig; bn = next((b for b in ('head', 'spine.006', 'DEF-spine.006') if b in rig.data.bones), None)
+    bpy.context.view_layer.update()
+    eb = [rig.matrix_world @ rig.pose.bones[n].head for n in ('eyeball.L', 'eyeball.R') if n in rig.pose.bones]
+    E = sum(eb, V()) / len(eb) if eb else eye.matrix_world.translation
+    def mk(name, shape, sx, sy, pw, off):
+        ld = bpy.data.lights.new(name, 'AREA'); ld.shape = shape; ld.size = sx; ld.size_y = sy; ld.energy = pw; ld.use_shadow = False
+        lo = bpy.data.objects.new(name, ld); bpy.context.scene.collection.objects.link(lo)
+        loc = E + V(off); d = (E - loc).normalized()
+        q = d.to_track_quat('-Z', 'Y'); W = Matrix.Translation(loc) @ q.to_matrix().to_4x4()
+        if bn:
+            lo.parent = rig; lo.parent_type = 'BONE'; lo.parent_bone = bn
+            bpy.context.view_layer.update(); lo.matrix_world = W
+        else: lo.matrix_world = W
+        lo.visible_camera = False; lo.light_linking.receiver_collection = coll
+        return lo
+    c = EYES_FIX['catch']; w = EYES_FIX['wet']
+    mk(f'kw_eyecatch_{p.name}', 'DISK', c[0], c[0], c[1], c[2])
+    mk(f'kw_eyewet_{p.name}', 'RECTANGLE', w[0], w[1], w[2], w[3])
+    print('eyes_fix', p.name, eye.name, 'bone', bn)
