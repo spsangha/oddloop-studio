@@ -393,6 +393,7 @@ labels = [KW.fx.label('RED + SWOLLEN', at=f_red * F, pos=(0.5, Y), dur=(DV0 - 4 
           KW.fx.label('PULL IT OUT OR WAIT?', at=CTA0 * F, pos=(0.5, 0.62), dur=(FN - 10 - CTA0) * F, color='white', size=0.9),     # lead: end CTA, caption style
           KW.fx.label('COMMENT BELOW', at=(CTA0 + 3) * F, pos=(0.5, 0.575), dur=(FN - 13 - CTA0) * F, color='white', size=0.125),
           KW.fx.label('WHAT YOUR BODY DOES', at=(FN - 9) * F, pos=(0.5, Y), dur=2.0, **YL)]                  # ... and back on for the loop (fN = f0)
+labels[-1].o['nopop'] = True     # final_scan: the pop overshoot took this wide word to 40 px margins at f703; eased in, it stays 860 px
 ep.sound(0.0, 'thud', 0.8)
 ep.sound(f_red * F, 'thud', 0.6)
 for f_ in (f_pus, f_out, f_walls, f_same): ep.sound(f_ * F, 'thud', 0.5)

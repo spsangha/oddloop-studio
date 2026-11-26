@@ -665,6 +665,8 @@ class Builder:
                         Mw_ = lab.root.matrix_world; tr_ = Mw_.translation - P0; kk_ = ldk_ / max(1e-6, -(Rc.transposed() @ tr_).z)
                         lab.root.matrix_world = Matrix.Translation(P0 + tr_ * kk_) @ Mw_.to_3x3().to_4x4() @ Matrix.Scale(kk_, 4)
                 ka = pop((u - o['at']) / 0.3) if u > o['at'] else 0.0
+                if o.get('nopop'):      # ep10: eased in with no overshoot (a wide word keeps its side margins)
+                    x_ = min(1.0, max(0.0, (u - o['at']) / 0.3)); ka = x_ * x_ * (3 - 2 * x_)
                 if o.get('dur') is not None and u > o['at'] + o['dur']: ka = 0.0
                 lab.set(scale=max(ka, 1e-5))
             elif f.kind == 'counter':
