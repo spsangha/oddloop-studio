@@ -115,9 +115,11 @@ HANDS = ('rest', 'lap', 'wheel', 'pinch_nose', 'cover_mouth', 'cover_nose', 'tis
          'to_mouth', 'phone_ear') + tuple('touch_' + p for p in PARTS) + tuple('clutch_' + p for p in ('chest', 'belly', 'neck', 'head', 'throat', 'forehead', 'eye_l', 'eye_r', 'cheek_l', 'cheek_r', 'ear_l', 'ear_r'))
 ACTS = ('sneeze', 'cough', 'blow_nose', 'swallow', 'eat', 'drink', 'wince', 'nod', 'shake_head', 'gasp', 'breathe_hard', 'look_around', 'flinch', 'yawn', 'sniff', 'scratch', 'chew')
 ITEMS = ('tray', 'burger', 'fries', 'salmon', 'wedges', 'salad', 'cup', 'penlight', 'tweezers', 'probe', 'magnifier',
-         'paperclip', 'pea', 'ball', 'bulb', 'bench', 'sweet_potato', 'beans', 'ketchup', 'fork', 'bar')      # table-top props (kwprops) placed with fx.item
+         'paperclip', 'pea', 'ball', 'bulb', 'bench', 'sweet_potato', 'beans', 'ketchup', 'fork', 'bar',
+         'kidney_dish', 'sprout', 'lens_arm', 'xray_screen', 'scope', 'peas')      # table-top props (kwprops) placed with fx.item
 ITEM_CONTROLS = {'burger': ('eaten', 'gone'), 'fries': ('eaten', 'gone'), 'salmon': ('eaten', 'gone'), 'sweet_potato': ('gone',), 'beans': ('gone',), 'bar': ('fill', 'alpha', 'br'), 'tray': ('dx', 'dy'), 'wedges': ('eaten',), 'salad': ('eaten',),
-                 'penlight': ('on',), 'pea': ('sprout',), 'ball': ('squash',)}
+                 'penlight': ('on',), 'pea': ('sprout',), 'ball': ('squash',),
+                 'lens_arm': ('slide',), 'xray_screen': ('power', 'ring', 'path', 'pulse'), 'scope': ('lift',)}
 PROPS = ('tissue', 'cup', 'apple', 'pill', 'phone', 'pen', 'spoon', 'bottle', 'can', 'earbud', 'swab', 'pepper', 'slushie')
 ORGANS = ('airway', 'lungs', 'esophagus', 'stomach', 'heart', 'brain', 'intestines', 'sinus', 'eyes', 'skull', 'vessels', 'kidneys', 'bladder', 'liver')
 MACRO_KINDS = ('windpipe', 'esophagus', 'artery', 'vein', 'intestine', 'stomach', 'bone', 'nerve', 'sinus')
@@ -252,7 +254,7 @@ class hand:
         if where not in ('chest', 'mouth', 'nose', 'ear', 'out'): raise ValueError("hold where: chest | mouth | nose | ear | out")
         return Hand('hold', None, {'mouth': 'mouth', 'nose': 'nose', 'ear': None}.get(where), 'hold', prop=prop, at=where)
 
-GRIPS = {'grip_cup': ('cup',), 'grip_tool': ('tweezers', 'penlight'), 'grip_pinch': ('pea', 'paperclip'), 'grip_burger': ('burger',)}
+GRIPS = {'grip_cup': ('cup',), 'grip_tool': ('tweezers', 'penlight', 'scope'), 'grip_pinch': ('pea', 'paperclip'), 'grip_burger': ('burger',)}
 def _grip(name, item=None, where='chest'):
     """cast v1.1 (KW_CAST=v1.1, HG cast): a hand grip on a kwprops item - grip_cup | grip_tool (penlight, tweezers) |
     grip_pinch (pea, paperclip) | grip_burger (two hands: give it to both hands; where='mouth' = bite).  The item follows the hand.
@@ -260,7 +262,7 @@ def _grip(name, item=None, where='chest'):
     _check_name('grip', name, tuple(GRIPS))
     item = item or GRIPS[name][0]; _check_name(name + ' item', item, GRIPS[name])
     if where not in ('chest', 'mouth', 'out', 'track'): raise ValueError('grip where: chest | mouth | out | track')
-    if where == 'track' and name != 'grip_burger': raise ValueError("grip where='track': grip_burger only (path in ep.burger_track)")
+    if where == 'track' and not (name == 'grip_burger' or (name == 'grip_tool' and item == 'scope')): raise ValueError("grip where='track': grip_burger (ep.burger_track) | grip_tool scope (ep.tool_track)")
     part = {'mouth': 'mouth'}.get(where)
     # the cup rides on the solved HG can grip (the carrier mesh is hidden, the kwprops item is shown); tools, pinch and burger
     # are fixed hand-authored finger tables (heads_hg.AUTH) with the item put on the hand
@@ -475,6 +477,14 @@ class fx:
     def gauge(to=1.0, at=0.2, dur=1.2, label=None, low='NORMAL', high=None, title='PRESSURE', place='screen', pos=(0.72, 0.6), size=1.0, slam=True):
         """pressure dial: needle rises 0.1 -> `to` (0..1) from local `at` over `dur`; `label` (e.g. '20x') pops beside it."""
         return FX('gauge', to=to, at=at, dur=dur, label=label, low=low, high=high, title=title, place=place, pos=pos, size=size, slam=slam)
+    @staticmethod
+    def mark(kind, at=0.2, pos=(0.5, 0.5), px=None, color=None, dur=None, rot=0.0):
+        """ep09: screen-fixed drawn graphic that pops on like a label.  kind 'tick' = green check mark about px (default 80) px
+        wide; 'ruler' = thin dark-navy bar px long with 3 tick marks (length = the thing it measures on screen).  pos = centre in
+        frame units (0..1, y up); rot = degrees on screen (counter-clockwise)."""
+        if kind not in ('tick', 'ruler'): raise ValueError("mark kind: 'tick' | 'ruler'")
+        return FX('mark', mark=kind, at=at, pos=tuple(pos), px=float(px or (80.0 if kind == 'tick' else 300.0)),
+                  color=tuple(color) if color else ((0.10, 0.80, 0.18) if kind == 'tick' else (0.03, 0.05, 0.12)), dur=dur, rot=float(rot))
     @staticmethod
     def label(text, at=0.2, pos=(0.5, 0.72), near=None, size=1.0, color='red', dur=None, keys=None):
         """3D word that pops in (keep to 1-3 words or a number). pos = screen position (0..1, 0..1 from bottom-left) or near=Anchor.

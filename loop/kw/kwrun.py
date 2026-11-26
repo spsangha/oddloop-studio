@@ -716,7 +716,7 @@ class Runtime:
             if V11 and h.prop == 'can' and h.pad == 'cup':     # cast v1.1 grip_cup: palm toward the midline, knuckles vertical -> cup upright
                 D = self.bw(p, 'spine02') + Fp * 0.3 - Up * 0.1 + out * 0.1
                 return D, 'palm', 'hold', orient(-out + Up * 0.1, Fp), sh + out * 0.45 - Up * 0.55
-            if V11 and h.prop in ('g_pea', 'g_paperclip', 'g_tweezers', 'g_penlight'):     # cast v1.1 grip_pinch / grip_tool: palm toward the midline, thumb on top, tips forward
+            if V11 and h.prop in ('g_pea', 'g_paperclip', 'g_tweezers', 'g_penlight', 'g_scope'):     # cast v1.1 grip_pinch / grip_tool: palm toward the midline, thumb on top, tips forward
                 D = self.bw(p, 'spine02') + Fp * 0.3 - Up * 0.05 + out * 0.1
                 return D, 'palm', 'hold', orient(-out + Up * 0.3, Fp + Up * 0.4), sh + out * 0.45 - Up * 0.55
             if V11 and h.prop == 'g_burger':     # cast v1.1 grip_burger: both hands, palms facing, ~11 cm apart, elbows low
@@ -1027,6 +1027,20 @@ class Runtime:
                     p_, t_, _, l_, _, _ = self.cam_eval_kind(shot, k[1], un, si, live, at_t); return V(p_), V(t_), l_
                 return V(k[1]), V(k[2]), k[3]
             (pa, ta, la), (pb, tb, lb) = kv_(ks[k0]), kv_(ks[k1]); pos = pa.lerp(pb, x); tgt = ta.lerp(tb, x); ln = la + (lb - la) * x
+            via = set(o.get('via', ()))      # ep09: pass-through keys - one eased move through them (Catmull-Rom), no stop at the key
+            if via and (k0 in via or k1 in via) and k0 != k1:
+                a_ = k0; b_ = k1
+                while a_ in via and a_ > 0: a_ -= 1
+                while b_ in via and b_ < len(ks) - 1: b_ += 1
+                T0, T1 = ks[a_][0], ks[b_][0]; xx = min(1.0, max(0.0, (u - T0) / max(1e-6, T1 - T0))); xx = xx * xx * (3 - 2 * xx); tt = T0 + xx * (T1 - T0)
+                i_ = a_
+                while i_ < b_ - 1 and ks[i_ + 1][0] <= tt: i_ += 1
+                s_ = min(1.0, max(0.0, (tt - ks[i_][0]) / max(1e-6, ks[i_ + 1][0] - ks[i_][0])))
+                Q_ = [kv_(ks[min(b_, max(a_, j))]) for j in (i_ - 1, i_, i_ + 1, i_ + 2)]
+                def cr(p0, p1, p2, p3, t_):
+                    t2, t3 = t_ * t_, t_ * t_ * t_
+                    return 0.5 * ((2 * p1) + (-p0 + p2) * t_ + (2 * p0 - 5 * p1 + 4 * p2 - p3) * t2 + (-p0 + 3 * p1 - 3 * p2 + p3) * t3)
+                pos = cr(*[q[0] for q in Q_], s_); tgt = cr(*[q[1] for q in Q_], s_); ln = Q_[1][2] + (Q_[2][2] - Q_[1][2]) * s_
             if o.get('shake') or o.get('hits'): pos = pos + self._shake(t, o, u)     # no base drift: the loop's last frame = frame 0
             return pos, tgt, up, ln, fstop or 4.0, tgt
         if kind == 'at':

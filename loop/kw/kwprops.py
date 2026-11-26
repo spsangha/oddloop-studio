@@ -12,7 +12,8 @@ from mathutils import Vector as V, Matrix
 import kwlib as L
 
 KINDS = ('tray', 'burger', 'fries', 'salmon', 'wedges', 'salad', 'cup', 'penlight', 'tweezers', 'probe', 'magnifier',
-         'paperclip', 'pea', 'ball', 'bulb', 'bench', 'sweet_potato', 'beans', 'ketchup', 'fork', 'bar')
+         'paperclip', 'pea', 'ball', 'bulb', 'bench', 'sweet_potato', 'beans', 'ketchup', 'fork', 'bar',
+         'kidney_dish', 'sprout', 'lens_arm', 'xray_screen', 'scope', 'peas')
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 
@@ -761,6 +762,350 @@ def bar(c, K=None, w=0.04, h=0.34, notches=16, color=(1.0, 0.82, 0.02), bracket=
             o.scale = (L_ + (th if pk > 0 else 0), 1, th) if abs(d.z) < 1e-6 else (th, 1, L_ + th)
             _show(o, alpha > 0.01 and pk > 1e-3)
     pr._set = _s; _s(0.0); return pr
+
+# ===================================================================================== ep09 pea lung (kidney dish, sprout, lens arm, X-ray screen, scope, peas)
+def _hexlin(h):
+    """sRGB hex -> linear rgb"""
+    c = [int(h[i:i + 2], 16) / 255.0 for i in (0, 2, 4)]
+    return tuple(x / 12.92 if x <= 0.04045 else ((x + 0.055) / 1.055) ** 2.4 for x in c)
+
+
+def kidney_dish(c, K=None, w=0.25, d=0.12, h=0.03, gauze=True, **_):
+    """brushed-steel kidney dish w x d x h (concave side toward +Y) with a folded 8 x 8 cm gauze square on its floor.
+    Point 'gauze' = centre of the gauze top."""
+    pr = Prop('kidney_dish', c); n = 72
+    def outline(s):
+        pts = []
+        for i in range(n):
+            a = 2 * math.pi * i / n; ca, sa = math.cos(a), math.sin(a)
+            y = 0.5 * d * sa - 0.30 * d * math.exp(-(ca / 0.45) ** 2) * max(0.0, sa)
+            pts.append((s * 0.5 * w * ca, s * (y + 0.06 * d)))
+        return pts
+    st = brushed('kwp_kd_steel', (0.62, 0.63, 0.65), 0.42)
+    o = pr.add(loft('kwp_kd', [(outline(0.80), 0.0015), (outline(0.90), 0.010), (outline(0.97), 0.022), (outline(1.0), h)], st))
+    sd = o.modifiers.new('sd', 'SOLIDIFY'); sd.thickness = 0.0012; sd.offset = 1.0
+    top = [(x, y, h) for x, y in outline(1.0)]
+    pr.add(ring_tube('kwp_kd_rim', top, 0.0022, st)); _contact_ao(st, 0.02, 0.6)
+    pr.pts['gauze'] = (0, 0, 0.0015)
+    if gauze:
+        gm = L.mat('kwp_gauze', (0.56, 0.56, 0.535), 0.85, sss=0.02); nt, N, Lk, b = _nodes(gm)
+        tc = N.new('ShaderNodeTexCoord'); ws = []
+        for ax in ('X', 'Y'):
+            wv = N.new('ShaderNodeTexWave'); wv.wave_type = 'BANDS'; wv.bands_direction = ax; wv.inputs['Scale'].default_value = 1.6; wv.inputs['Distortion'].default_value = 0.4
+            mp = N.new('ShaderNodeMapping'); mp.inputs['Scale'].default_value = (110, 110, 110); Lk(tc.outputs['Object'], mp.inputs['Vector']); Lk(mp.outputs[0], wv.inputs['Vector']); ws.append(wv)
+        mx = N.new('ShaderNodeMath'); mx.operation = 'MULTIPLY'; Lk(ws[0].outputs['Fac'], mx.inputs[0]); Lk(ws[1].outputs['Fac'], mx.inputs[1])
+        bp = N.new('ShaderNodeBump'); bp.inputs['Strength'].default_value = 0.35; bp.inputs['Distance'].default_value = 0.0003; Lk(mx.outputs[0], bp.inputs['Height']); Lk(bp.outputs['Normal'], b.inputs['Normal'])
+        rnd = random.Random(9); G_ = 28; vs = []; fs = []
+        for j in range(G_ + 1):
+            for i in range(G_ + 1):
+                x = -0.04 + 0.08 * i / G_; y = -0.04 + 0.08 * j / G_
+                z = 0.0006 * math.sin(x * 90 + 1.0) * math.sin(y * 70) + rnd.uniform(-0.00015, 0.00015)
+                if x > 0.025: z += 0.0018 * min(1.0, (x - 0.025) / 0.012)        # a soft folded edge on one side
+                vs.append((x, y, z))
+        for j in range(G_):
+            for i in range(G_): fs.append((j * (G_ + 1) + i, j * (G_ + 1) + i + 1, (j + 1) * (G_ + 1) + i + 1, (j + 1) * (G_ + 1) + i))
+        g = pr.add(_mesh('kwp_gauze', vs, fs, gm)); g.location.z = 0.0036      # ep09 CHECK 2: 2.1 mm let the dish floor poke through (grey flakes)
+        sg = g.modifiers.new('sd', 'SOLIDIFY'); sg.thickness = 0.0015; sg.offset = -1.0
+        pr.pts['gauze'] = (0, 0, 0.0036 + 0.0006)
+    return pr
+
+
+def sprout(c, K=None, scale=1.0, **_):
+    """sprouted pea lying on its side, total ~13 mm: seed 7 mm split along its top (two halves gaping a little, paler inside),
+    a cream root tip 4 mm out of the -X end, a pale green shoot 5 mm out of the +X end with two tiny folded leaves.
+    Point 'mid' = centre of the seed."""
+    pr = Prop('sprout', c); mm = 0.001 * scale; r = 3.5 * mm
+    seed = two_tone('kwp_sp_seed', _hexlin('9DB86A'), tuple(0.82 * x for x in _hexlin('9DB86A')), 900 / scale, 0.5, coat=0.05, sss=0.08, bump=0.9)
+    inner = two_tone('kwp_sp_inner', _hexlin('EADFA0'), _hexlin('D8CC80'), 1400 / scale, 0.55, sss=0.1, bump=0.1)
+    for sg in (1, -1):
+        bm = bmesh.new(); bmesh.ops.create_uvsphere(bm, u_segments=40, v_segments=20, radius=1.0)
+        res = bmesh.ops.bisect_plane(bm, geom=bm.verts[:] + bm.edges[:] + bm.faces[:], plane_co=(0, 0, 0), plane_no=(0, sg, 0), clear_outer=True)
+        cut = [e for e in res['geom_cut'] if isinstance(e, bmesh.types.BMEdge)]; nf = bmesh.ops.holes_fill(bm, edges=cut, sides=0)['faces']
+        me = bpy.data.meshes.new(f'kwp_sp_half{sg}'); bm.to_mesh(me); bm.free()
+        me.materials.append(seed); me.materials.append(inner)
+        for p_ in me.polygons: p_.use_smooth = True
+        o = bpy.data.objects.new(me.name, me); bpy.context.scene.collection.objects.link(o)
+        for p_ in o.data.polygons:
+            if abs(p_.normal.y) > 0.98 and abs(p_.center.y) < 0.02: p_.material_index = 1; p_.use_smooth = False
+        o.scale = (r, 0.92 * r, 0.82 * r)
+        # hinge on the bottom line: each half leans out 7 deg about X -> a V split along the top
+        o.rotation_euler = (math.radians(-17 * sg), 0, 0); o.location = (0, sg * 0.45 * mm, 0.82 * r)
+        pr.add(o)
+    rm = L.mat('kwp_sp_root', (0.62, 0.55, 0.36), 0.5, sss=0.15)
+    pr.add(L.tube('kwp_sp_root', [V((-2.6 * mm, 0.1 * mm, 1.6 * mm)), V((-4.3 * mm, 0.35 * mm, 0.95 * mm)), V((-6.0 * mm, 0.75 * mm, 0.62 * mm)), V((-7.6 * mm, 1.15 * mm, 0.5 * mm))],
+                  0.75 * mm, rm, None, 4, radii=[1.0, 0.9, 0.7, 0.35]))
+    sh = L.mat('kwp_sp_shoot', _hexlin('A9CF78'), 0.5, sss=0.15)
+    S = [V((2.4 * mm, -0.1 * mm, 4.0 * mm)), V((3.9 * mm, -0.3 * mm, 5.0 * mm)), V((5.1 * mm, -0.55 * mm, 4.6 * mm)), V((5.6 * mm, -0.7 * mm, 3.7 * mm))]
+    pr.add(L.tube('kwp_sp_shoot', S, 0.45 * mm, sh, None, 4, radii=[1.0, 0.95, 0.9, 0.8]))
+    lm = two_tone('kwp_sp_leaf', _hexlin('8FC45A'), tuple(0.85 * x for x in _hexlin('8FC45A')), 2500 / scale, 0.5, sss=0.2, bump=0.1)
+    for sg in (1, -1):
+        lf = pr.add(L.sphere(f'kwp_sp_leaf{sg}', 1.0, (5.75 * mm, (-0.7 + sg * 0.45) * mm, 3.2 * mm), lm, None, 16, 8))
+        lf.scale = (2.1 * mm, 0.95 * mm, 0.32 * mm); lf.rotation_euler = (math.radians(sg * 55), math.radians(70), 0)
+    pr.pts['mid'] = (0, 0, 0.82 * r)
+    return pr
+
+
+def _lens_mat(name, power, th=0.003):
+    """thin glass disc that refracts like a converging lens: the surface normal tilts with the radius (power = 1/R per face, 1/m)"""
+    m = bpy.data.materials.new(name); m.use_nodes = True; nt = m.node_tree; N = nt.nodes; Lk = nt.links.new; N.clear()
+    # Refraction BSDF (no reflection): a glass BSDF mirrored the lamp twice (front + back face) = a see-through double square
+    out = N.new('ShaderNodeOutputMaterial'); gl = N.new('ShaderNodeBsdfRefraction'); gl.inputs['IOR'].default_value = 1.5; gl.inputs['Roughness'].default_value = 0.0
+    gl.inputs['Color'].default_value = (0.985, 0.99, 0.99, 1)
+    tc = N.new('ShaderNodeTexCoord'); sp = N.new('ShaderNodeSeparateXYZ'); Lk(tc.outputs['Object'], sp.inputs[0])
+    def M(op, a, b=None):
+        q = N.new('ShaderNodeMath'); q.operation = op
+        for i_, v in enumerate((a, b)):
+            if v is None: continue
+            if isinstance(v, (int, float)): q.inputs[i_].default_value = v
+            else: Lk(v, q.inputs[i_])
+        return q.outputs[0]
+    cb = N.new('ShaderNodeCombineXYZ'); Lk(M('MULTIPLY', sp.outputs['X'], power), cb.inputs['X']); Lk(M('MULTIPLY', sp.outputs['Y'], power), cb.inputs['Y'])
+    Lk(M('SIGN', sp.outputs['Z']), cb.inputs['Z'])
+    vt = N.new('ShaderNodeVectorTransform'); vt.vector_type = 'NORMAL'; vt.convert_from = 'OBJECT'; vt.convert_to = 'WORLD'; Lk(cb.outputs[0], vt.inputs[0])
+    geo = N.new('ShaderNodeNewGeometry')
+    fl = N.new('ShaderNodeVectorMath'); fl.operation = 'SCALE'; Lk(vt.outputs[0], fl.inputs[0])
+    Lk(M('SUBTRACT', 1.0, M('MULTIPLY', geo.outputs['Backfacing'], 2.0)), fl.inputs['Scale'])     # Cycles: the normal must face the ray side
+    nm = N.new('ShaderNodeVectorMath'); nm.operation = 'NORMALIZE'; Lk(fl.outputs[0], nm.inputs[0])
+    face = M('GREATER_THAN', M('ABSOLUTE', sp.outputs['Z']), th * 0.37)
+    mx = N.new('ShaderNodeMix'); mx.data_type = 'VECTOR'; Lk(face, mx.inputs['Factor']); Lk(geo.outputs['Normal'], mx.inputs[4]); Lk(nm.outputs[0], mx.inputs[5])
+    Lk(mx.outputs[1], gl.inputs['Normal']); Lk(gl.outputs[0], out.inputs[0])
+    return m
+
+
+def lens_arm(c, K=None, lens=(-0.30, -0.31, 0.058), off=(0.048, 0.0, 0.0), r=0.045, lt=25.0, power=12.3, post=0.16, l1=0.22, l2=0.24,
+             rim=0.0013, rim_z=1.6, th=0.003, rim_col=(0.025, 0.025, 0.027), **_):
+    """magnifier on a two-joint black arm; the root is the clamp on the table edge.  lens = lens centre (root local) when
+    slide=0 (centred over the dish); slide=1 moves it by `off`.  The glass is a thin disc whose normals bend the view like
+    a converging lens (power ~ 1/R per face), tilted `lt` deg toward -Y (NB fx.item's own tilt turns the root).  Lens casts no shadow."""
+    pr = Prop('lens_arm', c); blk = L.mat('kwp_la_black', (0.025, 0.025, 0.027), 0.35, coat=0.2)
+    pr.add(_box('kwp_la_clamp', (0.05, 0.06, 0.045), (0, 0, 0.0225), blk, None, 0.004))
+    pr.add(_box('kwp_la_jaw', (0.05, 0.012, 0.05), (0, 0.035, -0.012), blk, None, 0.003))
+    pr.add(L.cyl('kwp_la_post', 0.007, post, (0, 0, 0.045 + post / 2), blk, None, verts=20))
+    J1 = V((0, 0, 0.045 + post)); pr.add(L.sphere('kwp_la_j1', 0.011, J1, blk, None, 20, 10))
+    seg1 = pr.add(L.cyl('kwp_la_s1', 0.0055, 1.0, (0, 0, 0), blk, None, verts=16)); seg2 = pr.add(L.cyl('kwp_la_s2', 0.0048, 1.0, (0, 0, 0), blk, None, verts=16))
+    j2 = pr.add(L.sphere('kwp_la_j2', 0.0095, (0, 0, 0), blk, None, 20, 10))
+    head = bpy.data.objects.new('kwp_la_head', None); c.objects.link(head); head.parent = pr.root; pr.objs.append(head)
+    ring = pr.add(L.prim('torus', 'kwp_la_ring', blk, None, major_radius=r + rim * 0.77, minor_radius=rim, major_segments=128, minor_segments=12)); L.smooth(ring)
+    ring.scale = (1, 1, rim_z); ring.parent = head
+    if tuple(rim_col) != (0.025, 0.025, 0.027): ring.data.materials[0] = L.mat('kwp_la_rim', tuple(rim_col), 0.38, metal=0.6)
+    gm = _lens_mat('kwp_la_glass', power, th)
+    gl = pr.add(L.cyl('kwp_la_glass', r, th, (0, 0, 0), gm, None, verts=160)); gl.parent = head
+    gl.visible_shadow = False
+    stub = pr.add(L.cyl('kwp_la_stub', 0.004, 0.03, (r + 0.015, 0, 0), blk, None, rot=(0, 90, 0), verts=12)); stub.parent = head
+    def place_seg(o, a, b):
+        d_ = b - a; o.location = (a + b) / 2; o.rotation_mode = 'QUATERNION'; o.rotation_quaternion = V((0, 0, 1)).rotation_difference(d_.normalized()); o.scale = (1, 1, d_.length)
+    def _s(slide=0.0, **_):
+        Lc = V(lens) + V(off) * slide
+        to_clamp = V((-Lc.x, -Lc.y, 0)).normalized()                      # the arm leaves the ring toward the clamp side
+        yaw = math.atan2(to_clamp.y, to_clamp.x)
+        # head frame: disc tilted toward -Y (camera) by `tilt`; stub along the clamp direction in the disc plane
+        Rt = Matrix.Rotation(math.radians(lt), 3, 'X')
+        xs = (Rt.inverted() @ V((to_clamp.x, to_clamp.y, 0))); xs.z = 0; xs.normalize(); a_ = math.atan2(xs.y, xs.x)
+        head.matrix_basis = (Matrix.Translation(Lc) @ Rt.to_4x4() @ Matrix.Rotation(a_, 4, 'Z'))
+        A = head.matrix_basis @ V((r + 0.03, 0, 0))
+        dv = A - J1; dist = min(dv.length, l1 + l2 - 1e-4); dn = dv.normalized()
+        a1 = (l1 * l1 - l2 * l2 + dist * dist) / (2 * dist); hh = math.sqrt(max(0.0, l1 * l1 - a1 * a1))
+        up = V((0, 0, 1)); pp = (up - dn * up.dot(dn)).normalized(); E = J1 + dn * a1 + pp * hh
+        place_seg(seg1, J1, E); place_seg(seg2, E, A); j2.location = E
+    pr._set = _s; _s(0.0)
+    pr.pts['lens'] = tuple(lens)
+    return pr
+
+
+def _xray_pixels(Wp=1024, Hp=658, spot=(0.33, 0.36), spot_r=0.029):
+    """chest X-ray drawn by us: R = grey film, G = dotted path parameter (0 none, 0.02..1 along it), B = ring angle parameter"""
+    import numpy as np
+    asp = Wp / Hp; u = (np.arange(Wp) + 0.5) / Wp; v = (np.arange(Hp) + 0.5) / Hp; U, Vv = np.meshgrid(u, v); X = (U - 0.5) * asp; Y = Vv
+    rng = np.random.default_rng(4)
+    def ell(cx, cy, rx, ry, soft=0.04):
+        q = ((U - cx) * asp / (rx * asp)) ** 2 + ((Vv - cy) / ry) ** 2
+        return np.clip((1.0 - q) / soft, 0, 1)
+    def sm(a, n=3):
+        k = np.ones(n) / n
+        a = np.apply_along_axis(lambda m: np.convolve(m, k, 'same'), 0, a); return np.apply_along_axis(lambda m: np.convolve(m, k, 'same'), 1, a)
+    g = np.full((Hp, Wp), 0.018)
+    torso = np.maximum(ell(0.5, 0.36, 0.40, 0.62, 0.08), np.clip(1 - np.abs(U - 0.5) / 0.07, 0, 1) * (Vv > 0.85))
+    g = g + 0.20 * torso
+    lungR = ell(0.345, 0.50, 0.125, 0.31, 0.10); lungL = ell(0.655, 0.50, 0.118, 0.29, 0.10)
+    lungs = np.maximum(lungR, lungL)
+    nz = sm(rng.normal(0, 1, (Hp, Wp)), 9) * 0.5
+    g = g * (1 - 0.62 * lungs) + lungs * (0.02 * nz)
+    heart = ell(0.565, 0.31, 0.11, 0.13, 0.25); g = g + 0.10 * heart * lungL + 0.05 * heart
+    spine = np.clip(1 - np.abs(U - 0.5) / 0.028, 0, 1) * torso; g = g + 0.07 * spine * (0.85 + 0.15 * np.sin(Vv * 140))
+    for i in range(9):            # ribs: arcs from the spine outward and down, both sides
+        v0 = 0.84 - i * 0.068
+        for s in (-1, 1):
+            t = np.clip((U - 0.5) * s / 0.34, 0, 1.2)
+            vr = v0 - 0.11 * t ** 1.5 + 0.035 * np.sin(np.pi * np.clip(t, 0, 1))
+            band = np.exp(-((Vv - vr) / 0.0085) ** 2) * (t > 0.06) * (t < 1.02) * torso
+            g = g + 0.10 * band
+    for s in (-1, 1):              # clavicles
+        t = np.clip((U - 0.5) * s / 0.3, 0, 1); vc = 0.86 + 0.03 * t - 0.02 * t * t
+        g = g + 0.12 * np.exp(-((Vv - vc) / 0.011) ** 2) * (t > 0.08) * (t < 0.95)
+    wp = np.clip(1 - np.abs(U - 0.5) / 0.016, 0, 1) * (Vv > 0.56) * torso; g = g * (1 - 0.55 * wp)
+    for s in (-1, 1):              # main bronchi
+        a = np.array([0.5, 0.56]); b = np.array([0.5 + s * 0.085, 0.47]); P = np.stack([U, Vv], -1); ab = b - a
+        tt = np.clip(((P - a) @ ab) / (ab @ ab), 0, 1); dd = np.linalg.norm(P - (a + tt[..., None] * ab), axis=-1)
+        g = g * (1 - 0.45 * np.clip(1 - dd / 0.012, 0, 1))
+    g = sm(g, 3) + rng.normal(0, 0.006, (Hp, Wp))
+    # the dark spot itself is drawn by the shader (it pulses); a faint halo here so it sits in the film
+    sx, sy = spot; dsp = np.sqrt(((U - sx) * asp) ** 2 + (Vv - sy) ** 2); g = g * (1 - 0.15 * np.clip(1 - dsp / (spot_r * 1.6), 0, 1))
+    # dotted path: mouth (top centre) -> windpipe -> right bronchus (viewer's left) -> down to the spot edge
+    ctrl = [(0.5, 1.02), (0.5, 0.80), (0.5, 0.58), (0.455, 0.52), (0.40, 0.47), (0.36, 0.43), (sx + 0.006, sy + spot_r * 1.9)]
+    pts = []
+    for (x0, y0), (x1, y1) in zip(ctrl, ctrl[1:]):
+        for k in range(40): f = k / 40; pts.append((x0 + (x1 - x0) * f, y0 + (y1 - y0) * f))
+    pts.append(ctrl[-1]); pts = np.array(pts); seg = np.linalg.norm(np.diff(pts * [asp, 1], axis=0), axis=1); s_ = np.concatenate([[0], np.cumsum(seg)]); L_ = s_[-1]
+    G = np.zeros((Hp, Wp)); step = 0.032; nd = int(L_ / step)
+    for k in range(nd + 1):
+        sk = min(L_, k * step + 0.01); j = np.searchsorted(s_, sk); j = max(1, min(len(pts) - 1, j)); f = (sk - s_[j - 1]) / max(1e-9, seg[j - 1])
+        cx, cy = pts[j - 1] + (pts[j] - pts[j - 1]) * f
+        dd = np.sqrt(((U - cx) * asp) ** 2 + (Vv - cy) ** 2); G = np.where(dd < 0.0095, max(0.02, sk / L_), G)
+    ra = np.where(np.abs(dsp - spot_r * 1.75) < 0.0042, (np.arctan2((U - sx) * asp, Vv - sy) % (2 * np.pi)) / (2 * np.pi) + 0.002, 0.0)
+    img = np.stack([np.clip(g, 0, 1), G, ra, np.ones_like(g)], -1).astype(np.float32)
+    return img, asp
+
+
+def xray_screen(c, K=None, width=0.45, spot=(0.33, 0.36), **_):
+    """the ep02 CT monitor body (gfx_kw.ScanMonitor) on its stand, standing on z=0, with OUR chest X-ray on its screen and
+    no text: controls power (backlight 0..1), ring (yellow ring drawn 0..1 round the spot), path (dotted mouth->lung path
+    0..1), pulse (spot scale, 1 = normal).  Point 'spot' = the spot on the screen (world, for labels / looks)."""
+    import gfx_kw as G
+    pr = Prop('xray_screen', c); mon = G.ScanMonitor(V((0, 0, 0)), c, width=width); mon.root.parent = pr.root; mon.root.location = (0, 0, 0.681 * width)
+    for o in list(mon._ui_objs) + [mon._marker]: o.hide_render = True; o.hide_viewport = True
+    Wp, Hp = 1024, 658; img, asp = _xray_pixels(Wp, Hp, spot)
+    im = bpy.data.images.new('kwp_xray', Wp, Hp, float_buffer=True, alpha=True); im.colorspace_settings.name = 'Non-Color'; im.pixels.foreach_set(img.ravel())
+    try: im.pack()
+    except Exception: pass
+    m = bpy.data.materials.new('kwp_xray_screen'); m.use_nodes = True; nt = m.node_tree; N = nt.nodes; Lk = nt.links.new; N.clear()
+    out = N.new('ShaderNodeOutputMaterial'); em = N.new('ShaderNodeEmission'); tc = N.new('ShaderNodeTexCoord')
+    sp = N.new('ShaderNodeSeparateXYZ'); Lk(tc.outputs['Generated'], sp.inputs[0])
+    uv = N.new('ShaderNodeCombineXYZ'); Lk(sp.outputs['X'], uv.inputs['X']); Lk(sp.outputs['Z'], uv.inputs['Y'])
+    tx = N.new('ShaderNodeTexImage'); tx.image = im; tx.interpolation = 'Linear'; tx.extension = 'EXTEND'; Lk(uv.outputs[0], tx.inputs['Vector'])
+    rgb = N.new('ShaderNodeSeparateColor'); Lk(tx.outputs['Color'], rgb.inputs[0])
+    vals = {}
+    for nm_, dv in (('power', 0.0), ('ring', 0.0), ('path', 0.0), ('pulse', 1.0)):
+        vn = N.new('ShaderNodeValue'); vn.outputs[0].default_value = dv; vn.label = nm_; vals[nm_] = vn
+    def M(op, a, b=None):
+        q = N.new('ShaderNodeMath'); q.operation = op
+        for i_, v in enumerate((a, b)):
+            if v is None: continue
+            if isinstance(v, (int, float)): q.inputs[i_].default_value = v
+            else: Lk(v, q.inputs[i_])
+        return q.outputs[0]
+    du = M('MULTIPLY', M('SUBTRACT', sp.outputs['X'], spot[0]), asp); dv_ = M('SUBTRACT', sp.outputs['Z'], spot[1])
+    dist = M('SQRT', M('ADD', M('MULTIPLY', du, du), M('MULTIPLY', dv_, dv_)))
+    rr = M('MULTIPLY', vals['pulse'].outputs[0], 0.029)
+    mr = N.new('ShaderNodeMapRange'); mr.interpolation_type = 'SMOOTHSTEP'; Lk(dist, mr.inputs['Value']); Lk(M('MULTIPLY', rr, 0.55), mr.inputs['From Min']); Lk(rr, mr.inputs['From Max'])
+    spotm = M('SUBTRACT', 1.0, mr.outputs['Result'])
+    grey = M('MULTIPLY', rgb.outputs['Red'], M('SUBTRACT', 1.0, M('MULTIPLY', spotm, 0.85)))
+    pon = M('MULTIPLY', M('GREATER_THAN', rgb.outputs['Green'], 0.001), M('LESS_THAN', rgb.outputs['Green'], M('ADD', vals['path'].outputs[0], 0.0001)))
+    pon = M('MULTIPLY', pon, M('GREATER_THAN', vals['path'].outputs[0], 0.001))
+    ron = M('MULTIPLY', M('GREATER_THAN', rgb.outputs['Blue'], 0.001), M('LESS_THAN', rgb.outputs['Blue'], M('ADD', vals['ring'].outputs[0], 0.0001)))
+    ron = M('MULTIPLY', ron, M('GREATER_THAN', vals['ring'].outputs[0], 0.001))
+    yel = M('MAXIMUM', pon, ron)
+    gc = N.new('ShaderNodeCombineColor'); Lk(M('MULTIPLY', grey, 0.92), gc.inputs['Red']); Lk(M('MULTIPLY', grey, 0.97), gc.inputs['Green']); Lk(grey, gc.inputs['Blue'])
+    mx = N.new('ShaderNodeMix'); mx.data_type = 'RGBA'; Lk(yel, mx.inputs['Factor']); Lk(gc.outputs[0], mx.inputs[6]); mx.inputs[7].default_value = (1.0, 0.72, 0.02, 1)
+    Lk(mx.outputs[2], em.inputs['Color']); Lk(M('MULTIPLY', vals['power'].outputs[0], 1.6), em.inputs['Strength'])
+    Lk(em.outputs[0], out.inputs[0])
+    mon.screen.data.materials.clear(); mon.screen.data.materials.append(m)
+    pr.objs += [o for o in mon.root.children_recursive]
+    sw, sh = mon._screen_dims
+    pr.pts['spot'] = (0 + (spot[0] - 0.5) * sw, -0.091 * width - 0.003, 0.681 * width + mon._sz + (spot[1] - 0.5) * sh)
+    pr.pts['top_mid'] = (0, -0.091 * width - 0.003, 0.681 * width + mon._sz + 0.5 * sh)
+    def _s(power=0.0, ring=0.0, path=0.0, pulse=1.0, **_):
+        vals['power'].outputs[0].default_value = power; vals['ring'].outputs[0].default_value = ring
+        vals['path'].outputs[0].default_value = path; vals['pulse'].outputs[0].default_value = pulse
+    pr._set = _s; _s(); return pr
+
+
+def scope(c, K=None, handle=0.12, hr=0.0085, tube_r=0.003, coil=(0.0, 0.10), **_):
+    """flexible endoscope: grey handle `handle` long along +X (axis hr above the origin, the grip point 2 cm in front of its
+    middle), black 6 mm tube.  The tube is rebuilt every frame by post(): a 14 cm tip section out of the handle front
+    (lying on the table when lift=0, curving up toward the user when lift=1) and a cord from the handle back end to a
+    coil lying on the table (coil = its centre in the handle's table frame, set once by place_table)."""
+    pr = Prop('scope', c); gm = plastic('kwp_sc_grey', (0.30, 0.31, 0.33), 0.45, 0.5, 0.2); bk = L.mat('kwp_sc_black', (0.018, 0.018, 0.02), 0.4, coat=0.25)
+    pr.add(L.cyl('kwp_sc_handle', hr, handle, (0, 0, hr), gm, None, rot=(0, 90, 0), verts=24))
+    pr.add(L.cyl('kwp_sc_cap', hr * 0.8, 0.012, (-handle / 2 - 0.006, 0, hr), bk, None, rot=(0, 90, 0), verts=20))
+    pr.add(L.cyl('kwp_sc_nose', hr * 0.55, 0.018, (handle / 2 + 0.009, 0, hr), bk, None, rot=(0, 90, 0), verts=20))
+    lev = pr.add(_box('kwp_sc_lever', (0.012, 0.006, 0.01), (-0.02, 0, 2 * hr + 0.003), bk, None, 0.002))
+    NP = 90
+    cu = bpy.data.curves.new('kwp_sc_tube', 'CURVE'); cu.dimensions = '3D'; cu.bevel_depth = tube_r; cu.bevel_resolution = 4; cu.use_fill_caps = True
+    spl = cu.splines.new('POLY'); spl.points.add(NP - 1)
+    tube = bpy.data.objects.new('kwp_sc_tube', cu); c.objects.link(tube); tube.data.materials.append(bk); pr.objs.append(tube)
+    state = {'T': None, 'lift': 0.0}; pr.state = state; pr.held = False
+    def _cat(P, n):
+        out = []
+        for i in range(len(P) - 1):
+            p0 = P[max(0, i - 1)]; p1 = P[i]; p2 = P[i + 1]; p3 = P[min(len(P) - 1, i + 2)]
+            for k in range(n):
+                t = k / n; t2 = t * t; t3 = t2 * t
+                out.append(0.5 * ((2 * p1) + (-p0 + p2) * t + (2 * p0 - 5 * p1 + 4 * p2 - p3) * t2 + (-p0 + 3 * p1 - 3 * p2 + p3) * t3))
+        out.append(P[-1]); return out
+    def _resample(P, n):
+        d = [0.0]
+        for a, b in zip(P, P[1:]): d.append(d[-1] + (b - a).length)
+        out = []; j = 0
+        for k in range(n):
+            s = d[-1] * k / (n - 1)
+            while j < len(d) - 2 and d[j + 1] < s: j += 1
+            f = (s - d[j]) / max(1e-9, d[j + 1] - d[j]); out.append(P[j].lerp(P[j + 1], f))
+        return out
+    def post(lift=0.0, look=None):
+        """rebuild the tube in world space from the current handle placement"""
+        M = pr.root.matrix_world; X = (M.to_3x3() @ V((1, 0, 0))).normalized(); A0 = M @ V((handle / 2 + 0.018, 0, hr)); B0 = M @ V((-handle / 2 - 0.012, 0, hr))
+        T = state['T'] or M; Tz = T.translation.z; Xt = (T.to_3x3() @ V((1, 0, 0))).normalized(); Yt = (T.to_3x3() @ V((0, 1, 0))).normalized(); Yt.z = 0; Yt.normalize(); Xt.z = 0; Xt.normalize()
+        Cc = T @ V((coil[0], coil[1], 0)); Cc.z = Tz + tube_r
+        # tip section 14 cm: on the table it lies straight on along X then bends a little; lifted it curves up toward the face
+        if look is not None: up = (V(look) - A0).normalized()
+        else: up = V((0, 0, 1))
+        dflat = [A0 + X * 0.05, A0 + X * 0.10 + Yt * 0.012, A0 + X * 0.14 + Yt * 0.03]
+        for p_ in dflat: p_.z = Tz + tube_r
+        dlift = [A0 + X * 0.045 + up * 0.012, A0 + X * 0.07 + up * 0.055, A0 + X * 0.06 + up * 0.10]
+        tip = [a.lerp(b, lift) for a, b in zip(dflat, dlift)]
+        # cord: from the back end, down to the table and round the coil (1.4 turns, r 5 cm)
+        cord = [B0 - X * 0.03]; drop = B0 - X * 0.07; drop.z = max(Tz + tube_r, drop.z - 0.10 * lift); cord.append(drop)
+        e0 = Cc + (B0 - Cc).normalized() * 0.055; e0.z = Tz + tube_r; cord.append(e0)
+        a0 = math.atan2((e0 - Cc).y, (e0 - Cc).x)
+        for k in range(1, 15):
+            a = a0 + k * 2 * math.pi * 1.4 / 14; rr = 0.055 - 0.012 * k / 14
+            cord.append(V((Cc.x + rr * math.cos(a), Cc.y + rr * math.sin(a), Tz + tube_r + (0.0055 if k > 10 else 0.0))))
+        P = list(reversed(tip)) + [A0] + [B0] + cord
+        # (the tube runs THROUGH the handle between A0 and B0: hidden inside it)
+        P = _resample(_cat(P, 6), NP)
+        for q, p_ in zip(spl.points, P): q.co = (p_.x, p_.y, p_.z, 1)
+    def place_table(T):
+        state['T'] = T.copy(); pr.root.matrix_world = T; bpy.context.view_layer.update(); post(0.0)
+    def _s(lift=0.0, **_): state['lift'] = lift
+    pr._set = _s
+    pr.post = post; pr.place_table = place_table; pr.pts['tip'] = (handle / 2 + 0.07, 0, hr + 0.1)
+    return pr
+
+
+def peas(c, K=None, count=40, plate_r=0.105, heap_r=0.042, heap_h=0.016, **_):
+    """white plate with a small heap of ~40 bright green peas (7-8 mm, a little uneven)"""
+    pr = Prop('peas', c); pm = L.mat('kwp_plate', (0.70, 0.70, 0.68), 0.22, coat=0.3)
+    prof = [(0.0, 0.0), (plate_r * 0.62, 0.0), (plate_r * 0.70, 0.004), (plate_r * 0.98, 0.016), (plate_r, 0.0185)]
+    loops = []
+    for rr, z in prof[1:]:
+        loops.append(([(rr * math.cos(2 * math.pi * i / 64), rr * math.sin(2 * math.pi * i / 64)) for i in range(64)], z))
+    o = pr.add(loft('kwp_plate', loops, pm, cap_bottom=True)); sd = o.modifiers.new('sd', 'SOLIDIFY'); sd.thickness = 0.003; sd.offset = 1.0; _contact_ao(pm, 0.02, 0.6)
+    gm = two_tone('kwp_peas', _hexlin('6DB33F'), tuple(0.78 * x for x in _hexlin('6DB33F')), 700, 0.32, coat=0.35, sss=0.05, bump=0.12)
+    rnd = random.Random(17); placed = []
+    tries = 0
+    while len(placed) < count and tries < 400 * count:
+        tries += 1; rr = rnd.uniform(0.0036, 0.0041); a = rnd.uniform(0, 2 * math.pi); d_ = heap_r * math.sqrt(rnd.random()); x, y = d_ * math.cos(a), d_ * math.sin(a)
+        z = 0.0035 + rr
+        for (px, py, pz, pr_) in placed:          # stack: rest on the highest pea it overlaps
+            h2 = (rr + pr_) ** 2 - (x - px) ** 2 - (y - py) ** 2
+            if h2 > 0: z = max(z, pz + math.sqrt(h2))
+        if z > 0.0035 + rr + heap_h * (1 - (d_ / (heap_r + 0.003)) ** 2) + 0.002: continue
+        placed.append((x, y, z, rr))
+    print('KW peas placed', len(placed), 'of', count)
+    for i, (x, y, z, rr) in enumerate(placed):
+        s = pr.add(L.sphere(f'kwp_pea{i}', rr, (x, y, z), gm, None, 16, 8)); s.scale = (1, 1, rnd.uniform(0.92, 1.0))
+    return pr
+
 
 def make(kind, c, K=None, **params):
     if kind not in KINDS: raise ValueError(f'item kind {kind!r}: one of {", ".join(KINDS)}')

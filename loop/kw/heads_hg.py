@@ -803,13 +803,14 @@ AUTH = {
     'g_paperclip': {1: ((35.7, 29.75, 29.75), -10), 2: ((47.5, 60, 47.5), 0), 3: ((45, 55, 40), 0), 4: ((50, 60, 40), 0), 5: ((55, 62, 40), 0)},
     'g_tweezers': {1: ((42, 35, 35), -30), 2: ((47.5, 60, 47.5), 0), 3: ((45, 55, 40), 0), 4: ((50, 60, 40), 0), 5: ((55, 62, 40), 0)},
     'g_penlight': {1: ((48.3, 40.25, 40.25), -30), 2: ((47.5, 60, 47.5), 0), 3: ((45, 55, 40), 0), 4: ((50, 60, 40), 0), 5: ((55, 62, 40), 0)},
+    'g_scope': {1: ((40, 34, 32), -30), 2: ((42, 54, 42), 0), 3: ((42, 52, 38), 0), 4: ((46, 56, 38), 0), 5: ((50, 58, 38), 0)},
     'g_burger': {1: ((5, 10, 10), -55), 2: ((25, 35, 25), 0), 3: ((28, 38, 25), 0), 4: ((30, 40, 25), 0), 5: ((32, 42, 25), 0)},
 }
 AUTH_P = {}
 AUTH_OFF = {'g_pea': (0.0006, 0.0016, 0.0146), 'g_paperclip': (0.0067, -0.0014, 0.011), 'g_burger': (0.0, 0.0, 0.0),
-            'g_tweezers': (-0.0001, 0.0008, 0.0139), 'g_penlight': (-0.0027, 0.003, 0.0128)}
+            'g_tweezers': (-0.0001, 0.0008, 0.0139), 'g_penlight': (-0.0027, 0.003, 0.0128), 'g_scope': (-0.003, 0.003, 0.0135)}
 # tools: (grip point along the item's +X from its origin, item axis height above its origin) -> the pads close on the grip point
-TOOL_AT = {'g_tweezers': (0.02, 0.0012), 'g_penlight': (-0.02, 0.0065)}
+TOOL_AT = {'g_tweezers': (0.02, 0.0012), 'g_penlight': (-0.02, 0.0065), 'g_scope': (-0.01, 0.0085)}
 BURGER = dict(width=0.11, height=0.06, squash=0.96, tilt=12.0)     # bun dent = (1 - squash) * height ~ 2.4 mm; tilt toward the face
 SKIN = 0.0015                                             # target skin-to-prop gap
 INV = {v[0]: k for k, v in MAP.items()}                   # MakeHuman bone -> HG bone
@@ -1091,6 +1092,8 @@ def _goal(self, kr, ra, side, h, g, u, t):
     D, tip, shape, Rw, pole = g
     if not isinstance(D, V) or Rw is None: return g
     tl = ra.hand[side][shape][tip]
+    if V11 and h is not None and h.kind == 'hold' and h.prop in TOOL_TRACK_PROPS and h.at == 'track':     # ep09: the scope track
+        return _tool_goal(self, kr, ra, side, h, g, tip, shape)
     if V11 and h is not None and h.kind == 'hold' and h.prop == 'g_burger':     # round 2: both hands from the burger frame
         return _burger_goal(self, kr, ra, side, h, tip, shape)
     if V11 and h is not None and h.kind == 'hold' and h.prop == 'can' and h.pad == 'cup' and h.at != 'mouth' and (side, 'can') in self.Pl:
@@ -1551,10 +1554,11 @@ def _v11_author(self, kr, side, prop, tab):
 def _v11_authored(self, kr, jobs):
     """cast v1.1 grip_pinch / grip_burger: fixed finger tables, then the item is put on the hand (it never moves the hand)"""
     p = self.p; RW = self.rig.matrix_world; moved = []
-    _burger_hold(self, kr, jobs)
+    _burger_hold(self, kr, jobs); _tool_hold(self, kr, jobs)
     for j in jobs:
         side, h = j[1], j[8]
         if not (h.kind == 'hold' and h.prop and h.prop in AUTH) or h.prop == 'g_burger': continue
+        if h.prop in TOOL_TRACK_PROPS and h.at == 'track': continue
         tab = AUTH_P.get((p.name, h.prop), AUTH[h.prop])
         for k, (ang, tz) in tab.items():
             for jj in (1, 2, 3):
@@ -1962,6 +1966,129 @@ def _burger_hold(self, kr, jobs):
     return True
 
 
+# ------------------------------------------------------------------ ep09 tool track (grip_tool 'scope' where='track', ep.tool_track)
+# The scope lies on the table; the right hand rests palm down, reaches to the handle, the tool grip closes (thumb last), lifts
+# it to the chest (the kit grip_tool chest goal), lowers it back and returns to rest.  The left hand rests palm down all along.
+# ep.tool_track = dict(table=(x, y, z, rz) handle origin on the table + yaw (deg), rest={'L': (x, y, z), 'R': ...} palm points,
+#   chan={'reach': [(frame, v), ...], 'g': .., 'gt': .., 'lift': .., 'tap': ..}, look=(x, y, z) where the lifted tip points)
+#   reach 0 rest .. 1 hand at the handle; g / gt finger / thumb grip 0 rest table .. 1 closed; lift 0 table .. 1 at the chest
+TOOL_TRACK_PROPS = ('g_scope',)
+
+
+def _tt(kr): return getattr(kr.ep, 'tool_track', None)
+
+
+def _tt_state(kr):
+    tt = _tt(kr); f = getattr(kr, '_t_now', 0.0) * KW.FPS; st = {'reach': 0.0, 'g': 0.0, 'gt': 0.0, 'lift': 0.0, 'tap': 0.0}
+    for k, ks in (tt.get('chan') or {}).items():
+        ks = sorted(ks); v = ks[0][1] if f <= ks[0][0] else ks[-1][1]
+        for (t0, v0), (t1, v1) in zip(ks, ks[1:]):
+            if t0 <= f <= t1: x = (f - t0) / max(1e-6, t1 - t0); v = v0 + (v1 - v0) * x * x * (3 - 2 * x); break
+        st[k] = v
+    return st, f
+
+
+def _tt_T(kr):
+    x, y, z, rz = _tt(kr)['table']
+    return Matrix.Translation(V((x, y, z))) @ Matrix.Rotation(math.radians(rz), 4, 'Z')
+
+
+def _rest_at(self, kr, ra, side, P, t):
+    """wrist frame for a hand resting palm down on the table with its palm centre at P (back up, fingers forward-in)"""
+    R = ra.p.rig.matrix_world.to_3x3().normalized(); Fp = R @ V((0, -1, 0)); Fp.z = 0; Fp.normalize(); out = _side_out(kr, ra, side)
+    if not hasattr(self, '_palmar') or side not in self._palmar: _burger_frame(self, kr, ra, side, BURGER_HAND['z'])
+    n_l, f_l = (V(v).normalized() for v in self.pn[side]); f_l = (f_l - n_l * f_l.dot(n_l)).normalized()
+    a = math.radians(18); f_t = (Fp * math.cos(a) - out * math.sin(a)).normalized(); n_t = V((0, 0, 1))
+    T = Matrix((n_t, f_t, n_t.cross(f_t))).transposed(); Lm = Matrix((n_l, f_l, n_l.cross(f_l))).transposed(); Rwb = T @ Lm.inverted()
+    ph = 1.7 if side == 'L' else 0.0
+    P = V(P) + V((TRK_DRIFT * math.sin(t * 1.3 + ph), TRK_DRIFT * 0.7 * math.sin(t * 0.9 + 2 * ph), 0.0))
+    return Matrix.Translation(P - Rwb @ self._palmar[side]) @ Rwb.to_4x4()
+
+
+def _tool_M(self, kr, side, prop):
+    """item world matrix from the posed thumb / index tips (as the v1.1 generic tool placement)"""
+    RW = self.rig.matrix_world; tip = lambda b: RW @ self.rig.pose.bones[b].tail; p = self.p
+    Mw = kr.wmat(p, f'wrist.{side}'); n_, f_ = self.pn[side]; f = (Mw.to_3x3() @ f_).normalized()
+    off = V(AUTH_OFF.get(prop, (0, 0, 0))); T, I = tip(f'thumb.03.{side}'), tip(f'f_index.03.{side}'); c = (T + I) / 2 + Mw.to_3x3() @ off
+    Y = (I - T).normalized(); X = (f - Y * f.dot(Y)).normalized(); Z = X.cross(Y)
+    gx, zc = TOOL_AT[prop]; M = Matrix((X, Y, Z)).transposed().to_4x4(); M.translation = c - X * gx - Z * zc
+    return M
+
+
+def _tool_Pl(self, kr, ra, side, prop):
+    """item frame in wrist local with the AUTH finger table closed (measured once on the posed rig), and the roll about the
+    item axis that puts the back of the hand up when the item lies on the table"""
+    key = (side, prop + '_trk')
+    if key in self.Pl: return self.Pl[key]
+    p = ra.p; tab = AUTH_P.get((p.name, prop), AUTH[prop]); keep = []
+    for k, (ang, tz) in tab.items():
+        for jj in (1, 2, 3):
+            pb = p.pb(f'finger{k}-{jj}.{side}'); keep.append((pb, pb.rotation_euler.copy())); e = pb.rotation_euler
+            e.x = math.radians(ang[jj - 1]); e.y = 0.0; e.z = math.radians(tz if jj == 1 else 0.0) * (1 if side == 'R' else -1)
+    bpy.context.view_layer.update(); Mw = kr.wmat(p, f'wrist.{side}'); Pl = Mw.inverted() @ _tool_M(self, kr, side, prop)
+    for pb, e in keep: pb.rotation_euler = e
+    bpy.context.view_layer.update()
+    n_l = V(self.pn[side][0]).normalized(); f_l = V(self.pn[side][1]).normalized(); Pli = Pl.inverted(); best = None
+    R = ra.p.rig.matrix_world.to_3x3().normalized(); Fp = R @ V((0, -1, 0)); Fp.z = 0; Fp.normalize()
+    for deg in range(0, 360, 5):      # roll about the item X (its axis): back of the hand up, fingers away from him
+        Rr = Matrix.Rotation(math.radians(deg), 4, 'X'); W3 = (Rr @ Pli).to_3x3()
+        sc = (W3 @ n_l).normalized().z + 0.3 * (W3 @ f_l).normalized().dot(Fp)
+        if best is None or sc > best[0]: best = (sc, deg)
+    self.Pl[key] = (Pl, Matrix.Rotation(math.radians(best[1]), 4, 'X'))
+    print(f'ep09 tool track {p.name} {side}{prop}: item in wrist mm', tuple(round(1000 * x) for x in Pl.translation), 'table roll', best[1], 'score', round(best[0], 2))
+    return self.Pl[key]
+
+
+def _tool_goal(self, kr, ra, side, h, g, tip, shape):
+    D, tip, shape, Rw, pole = g; tl = ra.hand[side][shape][tip]; tt = _tt(kr); st, f = _tt_state(kr); t = f / KW.FPS
+    Wr = _rest_at(self, kr, ra, side, tt['rest'][side], t)
+    if side == 'L' or st['reach'] < 1e-4 and st['lift'] < 1e-4:
+        R = ra.p.rig.matrix_world.to_3x3().normalized(); Up = R @ V((0, 0, 1)); sh = kr.bw(ra.p, f'upperarm01.{side}'); out = _side_out(kr, ra, side); Fp = R @ V((0, -1, 0))
+        return Wr @ tl, tip, shape, Wr.to_3x3(), sh + out * 0.4 - Up * 0.6 + Fp * 0.05
+    Pl, Rr = _tool_Pl(self, kr, ra, side, h.prop)
+    Wg = _tt_T(kr) @ Rr @ Pl.inverted()                         # gripping the handle where it lies
+    Wc = Matrix.Translation(D - Rw @ tl + V(tt.get('lift_up', (0, 0, 0)))) @ Rw.to_4x4()           # the kit chest hold (+ lift_up m, world)
+    a = st['reach']; b = st['lift']
+    pos = Wr.translation.lerp(Wg.translation, a) + V((0, 0, 0.04 * math.sin(math.pi * min(1.0, a)) * (1 - b)))    # 4 cm hover arc
+    rot = Wr.to_quaternion().slerp(Wg.to_quaternion(), min(1.0, a * 1.15))
+    pos = pos.lerp(Wc.translation, b) + V((0, 0, 0.03 * math.sin(math.pi * b))); rot = rot.slerp(Wc.to_quaternion(), b)
+    W = Matrix.Translation(pos) @ rot.to_matrix().to_4x4()
+    R = ra.p.rig.matrix_world.to_3x3().normalized(); Up = R @ V((0, 0, 1)); sh = kr.bw(ra.p, f'upperarm01.{side}'); out = _side_out(kr, ra, side); Fp = R @ V((0, -1, 0))
+    return W @ tl, tip, shape, W.to_3x3(), (sh + out * 0.4 - Up * 0.6 + Fp * 0.05).lerp(pole, b)
+
+
+def _tool_hold(self, kr, jobs):
+    """frame hook: finger tables (rest <-> AUTH grip, thumb on its own key), the item on its table frame or in the hand, post()"""
+    js = [j for j in jobs if j[8] is not None and j[8].kind == 'hold' and j[8].prop in TOOL_TRACK_PROPS and j[8].at == 'track']
+    if not js or _tt(kr) is None: return
+    p = self.p; st, f = _tt_state(kr); t = f / KW.FPS; prop = js[0][8].prop
+    for j in js:
+        side = j[1]; sg = 1 if side == 'R' else -1; tab = AUTH_P.get((p.name, prop), AUTH[prop])
+        gg, gt = (st['g'], st['gt']) if side == 'R' else (0.0, 0.0)
+        for k in range(1, 6):
+            (ga, gz) = tab[k]; ra_, rz_ = BT_REST[k]; w_ = gt if k == 1 else gg
+            dr = 2.5 * math.sin(t * (0.7 + 0.13 * k) + k * 1.9 + (0.0 if side == 'R' else 2.2))       # uneven, never frozen
+            for jj in (1, 2, 3):
+                e = p.pb(f'finger{k}-{jj}.{side}').rotation_euler
+                x_ = ga[jj - 1] * w_ + (ra_[jj - 1] + dr * (1 - w_)) * (1 - w_)
+                if k == 2 and side == 'R': x_ -= 20.0 * st['tap'] * (1.0 if jj == 1 else 0.3)
+                e.x = math.radians(x_); e.y = 0.0; e.z = math.radians((gz if jj == 1 else 0.0) * w_ + (rz_ if jj == 1 else 0.0) * (1 - w_)) * sg
+    it = getattr(kr.FX, 'grip_items', {}).get(prop); ob = kr.FX.props.get(prop)
+    if it is None or ob is None: return
+    bpy.context.view_layer.update(); T = _tt_T(kr)
+    if not getattr(it, '_tt_placed', False) and hasattr(it, 'place_table'): it.state['T'] = T.copy(); it._tt_placed = True
+    rj = next((j for j in js if j[1] == 'R'), None); b = st['lift']
+    if rj is not None and b > 1e-4:
+        Pl, Rr = _tool_Pl(self, kr, self.ra, 'R', prop); Mh = kr.wmat(p, 'wrist.R') @ Pl @ Rr.inverted() if False else kr.wmat(p, 'wrist.R') @ Pl
+        Mh = Mh @ Rr.inverted()                   # item frame as it lay on the table (z up through the handle)
+        k = min(1.0, b * 3.0); k = k * k * (3 - 2 * k)
+        M = Matrix.Translation(T.translation.lerp(Mh.translation, k)) @ T.to_quaternion().slerp(Mh.to_quaternion(), k).to_matrix().to_4x4()
+    else: M = T
+    ob.matrix_world = M; it.root.matrix_world = M if it.root is not ob else M
+    bpy.context.view_layer.update()
+    if hasattr(it, 'post'): it.held = True; it.post(b, look=_tt(kr).get('look'))
+
+
 Graft.close_hand = close_hand
 
 
@@ -1974,8 +2101,42 @@ Graft.goal = _goal
 Graft.bloat_value = _bloat_value
 
 
+def _mouth_fix(self, kr):
+    """ep09 N6 (opt-in ep.mouth_fix): material and light only - teeth off-white (#E8E0CC tint, less shine) and a small warm
+    spot from in front of the lips into the mouth so the inner mouth reads dark red-brown, never a black hole.  Face shapes and
+    JAW_TAB are untouched."""
+    if not getattr(kr.ep, 'mouth_fix', False) or not hasattr(self, 'lip_local'): return
+    if not getattr(self, '_mfix', None):
+        done = set()
+        for o in bpy.data.objects:
+            if o.type != 'MESH' or not o.name.startswith('HG_Teeth') or o.hide_render: continue
+            for m in o.data.materials:
+                if m is None or m.name in done or not m.use_nodes: continue
+                done.add(m.name); nt = m.node_tree; b = next((n for n in nt.nodes if n.bl_idname == 'ShaderNodeBsdfPrincipled'), None)
+                if b is None: continue
+                bc = b.inputs['Base Color']; mx = nt.nodes.new('ShaderNodeMix'); mx.data_type = 'RGBA'; mx.blend_type = 'MULTIPLY'
+                mx.inputs['Factor'].default_value = 1.0; mx.inputs[7].default_value = (0.86, 0.80, 0.66, 1)
+                if bc.links: src = bc.links[0].from_socket; nt.links.remove(bc.links[0]); nt.links.new(src, mx.inputs[6])
+                else: mx.inputs[6].default_value = bc.default_value[:]
+                nt.links.new(mx.outputs[2], bc)
+                rg = b.inputs['Roughness']
+                if not rg.links: rg.default_value = max(rg.default_value, 0.42)
+                for nm_ in ('Specular IOR Level', 'Specular'):
+                    if nm_ in b.inputs and not b.inputs[nm_].links: b.inputs[nm_].default_value = min(b.inputs[nm_].default_value, 0.35)
+                print(f'ep09 mouth fix: teeth material {m.name} tinted', flush=True)
+        ld = bpy.data.lights.new('kw_mouth_fill', 'SPOT'); ld.energy = float(os.environ.get('KW_MOUTH_W', 0.12)); ld.color = (1.0, 0.86, 0.78)
+        ld.spot_size = math.radians(28); ld.spot_blend = 0.6; ld.shadow_soft_size = 0.004
+        lo = bpy.data.objects.new('kw_mouth_fill', ld); bpy.context.scene.collection.objects.link(lo); self._mfix = lo
+    lo = self._mfix; Hm = kr.wmat(self.p, 'head'); Lp = Hm @ self.lip_local
+    try: _, nr = kr.part_world(self.ra, 'mouth')
+    except Exception: nr = Hm.to_3x3() @ V((0, -1, 0))
+    nr = V(nr).normalized(); P = Lp + nr * 0.07 - V((0, 0, 0.012))
+    lo.location = P; lo.rotation_euler = (Lp - nr * 0.01 - P).to_track_quat('-Z', 'Y').to_euler()
+
+
 def _apply_contacts(self, kr, shot):
     """frame hook part 1: finger curls + HG prop placement (after kwfx placed the props on the kit hand)."""
+    _mouth_fix(self, kr)
     md_ = getattr(self, '_mound', None)
     if md_ is not None:      # the food mound follows its spoon out of the shot (it floated by the arm in hos_belly)
         h_ = md_.parent is None or md_.parent.hide_render; md_.hide_render = h_; md_.hide_viewport = h_

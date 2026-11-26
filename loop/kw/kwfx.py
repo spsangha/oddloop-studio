@@ -172,6 +172,7 @@ class Builder:
                     base = hp.point(nm) + base
             pr.root.location = base; pr.root.rotation_euler = (0, math.radians(o.get('tilt', 0.0)), math.radians(o['rz'])); bpy.context.view_layer.update()
             if o['keys']: pr.set(**{k_: v_ for k_, v_ in _key_vals(o['keys'], 0.0).items() if k_ not in ('dx', 'dy')})
+            if hasattr(pr, 'post'): bpy.context.view_layer.update(); pr.post(0.0)
             return dict(prop=pr, base=V(base))
         if k == 'counter':
             if not G: return dict(label=None)
@@ -212,6 +213,26 @@ class Builder:
         if k == 'earth':
             st = self.stations['earth']; key = f'{s.name}'
             st['obj'].add_line(key, o['mode'], o['lon'], o['lat']); return dict(key=key)
+        if k == 'mark':       # ep09: drawn tick / ruler in pixel units (placed by update_screen)
+            root = bpy.data.objects.new(f'kw_mark_{id(f)}', None); c.objects.link(root)
+            m = bpy.data.materials.new(f'kw_markm_{id(f)}'); m.use_nodes = True; nt = m.node_tree; nt.nodes.clear()
+            em = nt.nodes.new('ShaderNodeEmission'); em.inputs['Color'].default_value = (*o['color'], 1); em.inputs['Strength'].default_value = 1.0
+            ou = nt.nodes.new('ShaderNodeOutputMaterial'); nt.links.new(em.outputs[0], ou.inputs[0]); objs = []
+            def stroke(nm, pts, w):
+                cu = bpy.data.curves.new(nm, 'CURVE'); cu.dimensions = '3D'; cu.bevel_depth = w / 2; cu.bevel_resolution = 3; cu.use_fill_caps = True
+                sp = cu.splines.new('POLY'); sp.points.add(len(pts) - 1)
+                for q, (x, z) in zip(sp.points, pts): q.co = (x, 0.0, z, 1)
+                ob = bpy.data.objects.new(nm, cu); c.objects.link(ob); ob.data.materials.append(m); ob.parent = root
+                ob.visible_shadow = False; objs.append(ob)
+            P_ = o['px']
+            if o['mark'] == 'tick':
+                stroke(f'kw_tick_{id(f)}', [(-0.5 * P_, 0.02 * P_), (-0.16 * P_, -0.32 * P_), (0.5 * P_, 0.42 * P_)], 0.16 * P_)
+            else:
+                stroke(f'kw_ruler_{id(f)}', [(-P_ / 2, 0.0), (P_ / 2, 0.0)], 10.0)
+                for i_, xx in enumerate((-P_ / 2, 0.0, P_ / 2)):
+                    hl = 34.0 if i_ != 1 else 22.0; stroke(f'kw_rt{i_}_{id(f)}', [(xx, 0.0), (xx, hl)], 8.0)
+            for ob in objs: ob.visible_diffuse = ob.visible_glossy = False   # transmission on: seen through the lens glass like the labels
+            return dict(mark=root, objs=objs)
         if k == 'label':
             if not G: return dict(label=None)
             return dict(label=G.Label3D(o['text'], V((0, 0, 0)), c, size=0.06, color=LABEL_COL[o['color']]))
@@ -425,7 +446,9 @@ class Builder:
         for f, it in items:      # ep08: moving items (a tray sliding in) carry the items standing on them
             off = it.get('off', V((0, 0, 0))); hst = self.items.get(f.o.get('on')) if f.o.get('on') is not None else None
             if hst: off = off + hst.get('off', V((0, 0, 0)))
-            if off.length > 0 or 'off' in it: it['prop'].root.location = it['base'] + off
+            if off.length > 0 or 'off' in it or hst: it['prop'].root.location = it['base'] + off     # ep09: an item on a host also snaps back when the host's offset returns to 0
+        for f, it in items:      # ep09: items with world-space parts (the scope tube) rebuild them after placement
+            if hasattr(it['prop'], 'post') and not getattr(it['prop'], 'held', False): bpy.context.view_layer.update(); it['prop'].post(it['prop'].state.get('lift', 0.0))
         if items and not shot.cast:
             pts = [it['prop'].root.matrix_world.translation for f, it in items if f.o['item'] != 'bench']
             if not pts: pts = [it['prop'].point('top') for f, it in items]
@@ -572,13 +595,33 @@ class Builder:
         """screen-space graphics (gauge / label with pos=) placed in front of the camera after it moved"""
         rt = self.rt; cam = rt.CAM; cd = cam.data; Rc = cam.matrix_world.to_3x3().normalized(); P0 = cam.matrix_world.translation
         fd_ = cd.dof.focus_distance
+        if os.environ.get('KW_CAMDIST'):      # dev: nearest distance from the camera to any skinned mesh (the person, his coat)
+            import numpy as np
+            dg = bpy.context.evaluated_depsgraph_get(); best = (9.0, ''); best2 = 9.0; wr_ = []
+            for ra_ in rt.actors.values():
+                for sd_ in ('L', 'R'):
+                    try:
+                        Mw_ = rt.wmat(ra_.p, f'wrist.{sd_}'); fd2 = (Mw_.to_3x3() @ ra_.hand[sd_]['fdir']).normalized(); wr_.append((np.array(Mw_.translation[:]), np.array(fd2[:])))
+                    except Exception as ex_: print('KW camdist wrist?', sd_, repr(ex_))
+            for ob in bpy.data.objects:
+                if ob.type != 'MESH' or ob.hide_render or not any(m_.type == 'ARMATURE' for m_ in ob.modifiers): continue
+                e_ = ob.evaluated_get(dg); me = e_.to_mesh(); n_ = len(me.vertices)
+                if n_:
+                    a_ = np.empty(n_ * 3); me.vertices.foreach_get('co', a_); a_ = a_.reshape(-1, 3); M_ = np.array(ob.matrix_world)
+                    W_ = a_ @ M_[:3, :3].T + M_[:3, 3]; D_ = np.linalg.norm(W_ - np.array(P0[:]), axis=1); j_ = int(D_.argmin()); dd_ = float(D_[j_])
+                    keep_ = np.ones(len(W_), bool)
+                    for w0_, fd_v in wr_: keep_ &= ~((np.linalg.norm(W_ - w0_, axis=1) < 0.22) & ((W_ - w0_) @ fd_v > -0.01))
+                    if keep_.any(): best2 = min(best2, float(D_[keep_].min()))
+                    if dd_ < best[0]: best = (dd_, ob.name + ' at ' + str(tuple(round(float(x), 3) for x in W_[j_])) + ' cam ' + str(tuple(round(x, 3) for x in P0)))
+                e_.to_mesh_clear()
+            fw_ = Rc @ V((0, 0, -1)); print('KW camdist f%d %.3f nohands %.3f %s fwd %s lens %.1f' % (bpy.context.scene.frame_current, best[0], best2, best[1], tuple(round(x, 4) for x in fw_), cd.lens))
         # H1: closer than 14 cm the old 12 cm floor put the word behind the subject; there it sits at 0.93 x focus (in front, little blur).
         # Apparent size does not depend on d (sc grows with d), so a still camera renders exactly as before.
         d = fd_ * 0.85 if fd_ * 0.85 >= 0.12 else min(0.12, fd_ * 0.93); d = max(d, cd.clip_start * 3)
         th = 18.0 / cd.lens; hh = d * th; hw = hh * 9 / 16; sc = d / 0.55
-        def place(root, pos, size=1.0):
-            x = (pos[0] - 0.5) * 2 * hw; y = (pos[1] - 0.5) * 2 * hh
-            root.matrix_world = (Matrix.Translation(P0 + Rc @ V((x, y, -d))) @ (Rc @ RX90).to_4x4() @ Matrix.Scale(sc * size, 4))
+        def place(root, pos, size=1.0, k=1.0):     # k < 1: nearer the camera, same apparent size (ep09 marks sit in front of the lens glass)
+            dk = max(d * k, cd.clip_start * 3); x = (pos[0] - 0.5) * 2 * hw * dk / d; y = (pos[1] - 0.5) * 2 * hh * dk / d
+            root.matrix_world = (Matrix.Translation(P0 + Rc @ V((x, y, -dk))) @ (Rc @ RX90).to_4x4() @ Matrix.Scale(sc * size * dk / d, 4))
         for f in shot.fx:
             it = self.items.get(f); o = f.o
             if not it: continue
@@ -589,6 +632,12 @@ class Builder:
                 if lab:
                     place(lab.root, (o['pos'][0], o['pos'][1] + 0.115 * o['size']), o['size'])
                     ka = pop((u - o['at'] - o['dur']) / 0.3) if u > o['at'] + o['dur'] else 0.0; lab.set(scale=max(ka, 1e-5))
+            elif f.kind == 'mark':
+                ka = pop((u - o['at']) / 0.3) if u > o['at'] else 0.0
+                if o.get('dur') is not None and u > o['at'] + o['dur']: ka = 0.0
+                place(it['mark'], o['pos'], 1.0 / (cd.lens * 96.97), k=o.get('k', float(os.environ.get('KW_MK', 1.0))))
+                it['mark'].matrix_world = it['mark'].matrix_world @ Matrix.Rotation(math.radians(-o['rot']), 4, 'Y') @ Matrix.Scale(max(ka, 1e-5), 4)
+                for ob in it['objs']: ob.hide_render = ka < 1e-4
             elif f.kind == 'label':
                 lab = it.get('label')
                 if lab is None: continue
