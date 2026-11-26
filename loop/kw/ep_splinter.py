@@ -39,7 +39,7 @@ RS0 = f_lump - 8; RS1 = RS0 + 34            # rise out through the surface to Be
 RVAN0 = RS0 + 6; RVAN1 = RVAN0 + 6
 TW0 = f_L6 + 6; TW1 = TW0 + 25              # lead FINAL ruling B: one hard cut at TW0 to the pull close; the tips glide in from the right edge, settle at TW1
 PUSH0 = TW0 - 1; PUSH1 = TW0                # the cut (camera keys SF at PUSH0 -> TWC at PUSH1; no push, no swing)
-TW_BACK = float(os.environ.get('KW_TWBACK', 0.022))     # metres the tweezers start backed out along their own axis (hand far out of frame)
+TW_IN = float(os.environ.get('KW_TWIN', 0.03))     # metres the tweezers start backed out along their own axis (hand far out of frame)
 GR0 = TW1 + 1; GR1 = GR0 + 4                # jaws + grip close at full size (thumb last)
 PL0 = max(f_same, GR1 + 1); PL1 = PL0 + 16                # the pull along the axis
 OFF_SAME = max(f_L6e + 4, PL1 + 20)
@@ -116,7 +116,7 @@ def tw_target(f, Fm=None):
 
 def tw_back(f):
     if f < TW0 or f >= TW1: return 0.0
-    return TW_BACK * (1.0 - ease((f - TW0) / (TW1 - TW0)))
+    return TW_IN * (1.0 - ease((f - TW0) / (TW1 - TW0)))
 
 def tw_state(f):
     """0 = at rest by his side .. 1 = at the splinter"""
