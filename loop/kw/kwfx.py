@@ -263,6 +263,7 @@ class Builder:
                 ob = L.ico(f'kw_flow{i}', 1, (0, 0, 0), m, c, 2); ob.scale = (1e-5,) * 3
                 parts.append((ob, rnd.random(), rnd.uniform(-1, 1), rnd.uniform(-1, 1), rnd.random()))
             return dict(parts=parts, em=em, col=col)
+        if k in ('pressure', 'glow'): return dict()   # organ heat/swell is applied per frame in update(); {} so it isn't skipped
         if k == 'seal':
             body = self.bodies[o['person']]; P = body.points; m, em = L.glow(f'kw_seal_{id(f)}', (1.0, 0.05, 0.02), 10.0, 1.0); objs = []
             rt.reset(body.p); rt.rig_at(body.p, (0, 0, 0), 0); bpy.context.view_layer.update()
@@ -500,7 +501,7 @@ class Builder:
             elif f.kind == 'pressure':
                 b = self.bodies[o['person']]; k = ramp(u, o['at'], o['at'] + o['dur'] * 0.8); b.heat(o['organ'], k, 0.5 + 0.5 * math.sin(t * 16), o['swell'])
             elif f.kind == 'glow':
-                b = self.bodies[o['person']]; k = ramp(u, o['at'], o['at'] + 0.2) * (1 - 0.5 * ramp(u, o['at'] + o['dur'], o['at'] + o['dur'] + 0.4)); b.heat(o['organ'], k, 0.5 + 0.5 * math.sin(t * 10), 0.0, color=(LABEL_COL.get(o.get('color')) if o.get('color') not in (None, 'red') else None))
+                b = self.bodies[o['person']]; k = ramp(u, o['at'], o['at'] + 0.2) * (1 - 0.5 * ramp(u, o['at'] + o['dur'], o['at'] + o['dur'] + 0.4)); b.heat(o['organ'], k, 0.5 + 0.5 * math.sin(t * 10), 0.0, color=(LABEL_COL.get(o.get('color')) if o.get('color') else None))
             elif f.kind == 'seal':
                 hit = ramp(u, o['at'], o['at'] + 0.12); sp = hit * (1.0 + 0.25 * math.sin(t * 20))
                 for ob, bs in zip(it['objs'], it['base']): ob.scale = tuple(x * max(sp, 1e-4) for x in bs); ob.hide_render = hit <= 0
