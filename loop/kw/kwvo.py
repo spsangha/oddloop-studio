@@ -7,13 +7,13 @@ kwkit reads the json so shots placed with ep.line(i) land on the spoken words.  
 """
 import sys, os, json, asyncio, time, re
 
-def measure(text, voice, rate):
+def measure(text, voice, rate, say=None):
     """-> (duration, words) of one line as post_kw will play it (vo_trim: the TTS lead-in silence is cut, so the
     line is audible from its start time).  words = [[start, end, word]] relative to the line start."""
     import post_kw
     for i in range(4):
         try:
-            _, ws = post_kw.tts(dict(vo=[[0.0, text]], voice=voice, rate=rate, vo_trim=True))
+            _, ws = post_kw.tts(dict(vo=[[0.0, text]], voice=voice, rate=rate, vo_trim=True, say={'0': say} if say else {}))
             if ws: return round(max(b for a, b, w in ws) + 0.03, 3), [[round(a, 3), round(b, 3), w] for a, b, w in ws]
         except SystemExit as e: print('tts retry', e)
         time.sleep(3 * (i + 1))
@@ -29,7 +29,7 @@ if __name__ == '__main__':
     src = open(path).read(); exec(compile(src, path, 'exec'), {'__name__': '__main__', '__file__': os.path.abspath(path)})
     KW.Episode.run = orig
     ep = eps[0]
-    m = [measure(l, ep.voice, ep.rate) for l in ep.lines_text]; durs = [d for d, w in m]
+    sy = getattr(ep, 'tts_say', None) or {}; m = [measure(l, ep.voice, ep.rate, sy.get(i)) for i, l in enumerate(ep.lines_text)]; durs = [d for d, w in m]
     out = os.path.join(here, ep.name + '.vo.json')
     json.dump(dict(voice=ep.voice, rate=ep.rate, trim=True, lines=ep.lines_text, durations=durs, words=[w for d, w in m]), open(out, 'w'), indent=1)
     print('wrote', out, durs, 'total speech', round(sum(durs), 2))

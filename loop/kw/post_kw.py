@@ -17,7 +17,8 @@ def tts(cj):
         mp = os.path.join(tempfile.gettempdir(), f'kw{k}.mp3')
         for i in range(8):
             try:
-                c = edge_tts.Communicate(text, cj['voice'], rate=cj.get('rate', '+0%'), boundary='WordBoundary'); ws = []
+                say = (cj.get('say') or {}).get(str(k)) or text     # ep11: TTS-only text (e.g. no comma pause); captions keep the script text
+                c = edge_tts.Communicate(say, cj['voice'], rate=cj.get('rate', '+0%'), boundary='WordBoundary'); ws = []
                 async def go():
                     with open(mp, 'wb') as f:
                         async for ch in c.stream():

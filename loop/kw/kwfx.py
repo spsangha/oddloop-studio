@@ -674,7 +674,9 @@ class Builder:
                 if lab is None: continue
                 place(lab.root, o['pos'], o['size'] * 0.62)
                 v = o['v0'] + (o['v1'] - o['v0']) * ramp(u, o['at'], o['at'] + o['dur'])
-                ka = pop((u - o['at'] + 0.15) / 0.3) if u > o['at'] - 0.15 else 0.0; lab.set(scale=max(ka, 1e-5), text=_counter_text(o, v))
+                ka = pop((u - o['at'] + 0.15) / 0.3) if u > o['at'] - 0.15 else 0.0
+                if o.get('end') is not None: x_ = min(1.0, max(0.0, (u - o['end']) / 0.25)); ka *= 1.0 - x_ * x_ * (3 - 2 * x_)     # ep11: opt-in exit
+                lab.set(scale=max(ka, 1e-5), text=_counter_text(o, v))
 
 
 def _counter_text(o, v):
