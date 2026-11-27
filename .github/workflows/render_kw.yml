@@ -9,6 +9,7 @@ on:
       out: {description: 'Output file name', required: false, default: 'KindaWild.mp4'}
       heads: {description: "People: 'scan' (default) or 'humgen' (licensed cast from the private asset store)", required: false, default: 'scan'}
       range: {description: "Patch render: 'A-B' renders frames A..B-1 only (frames artifacts, no finish job); empty = whole Short", required: false, default: ''}
+      only: {description: "Stills: comma frame list, e.g. '9,27,45' (spread over the shards; frames artifacts, no finish job)", required: false, default: ''}
 env:
   BLENDER: blender-4.2.3-linux-x64
   SHARDS: 20
@@ -64,6 +65,13 @@ jobs:
         run: |
           EP=loop/kw/${{ github.event.inputs.episode }}.py; test -f $EP
           python3 -m pip install -q --break-system-packages fonttools shapely || true
+          ONLY_ALL='${{ github.event.inputs.only }}'
+          if [ -n "$ONLY_ALL" ]; then
+            S=${{ matrix.shard }}; MINE=$(python3 -c "l='$ONLY_ALL'.split(',');print(','.join(x for i,x in enumerate(l) if i%$SHARDS==$S))")
+            mkdir -p frames; if [ -z "$MINE" ]; then echo "no stills for shard $S"; exit 0; fi
+            echo "stills $MINE"; ONLY=$MINE ./$BLENDER/blender -b -P $EP -- frames 0 1 2>&1 | grep -E "Saved|Error|Traceback|line [0-9]" | tail -60
+            ls frames; exit 0
+          fi
           ./$BLENDER/blender -b -P $EP -- --cues cues.json >/dev/null 2>&1
           N=$(python3 -c "import json;c=json.load(open('cues.json'));print(round(c['duration']*c['fps']))")
           R0=0; RANGE='${{ github.event.inputs.range }}'; if [ -n "$RANGE" ]; then R0=${RANGE%-*}; N=$(( ${RANGE#*-} - R0 )); fi
@@ -79,7 +87,7 @@ jobs:
         with: {name: cues, path: cues.json, retention-days: 2}
   finish:
     needs: render
-    if: github.event.inputs.range == ''
+    if: github.event.inputs.range == '' && github.event.inputs.only == ''
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:

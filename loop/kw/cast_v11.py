@@ -334,6 +334,9 @@ def lashes(G):
         st = md.particle_system.settings
         if st.get('kw11'): continue
         st.rendered_child_count = LASH['children']; st.child_percent = LASH['children']; st.radius_scale *= LASH['radius']
+        if os.environ.get('KW_LASH2') == '1':     # B (owed): tips gather into small clumps so the lashes read as lashes, not dots (probe first)
+            st.clump_factor = float(os.environ.get('KW_LASH_CLUMP', 0.55)); st.clump_shape = -0.35
+            st.child_radius = 0.6 * st.child_radius if st.child_radius else st.child_radius; st.roughness_endpoint = 0.0
         st['kw11'] = 1
         head = next((m.node_tree.nodes.get('HG_Hair') for m in G.body.data.materials if m is not None and m.name.startswith('.HG_Hair_Head')
                      and m.node_tree and m.node_tree.nodes.get('HG_Hair')), None)
