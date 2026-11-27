@@ -14,7 +14,7 @@ ease, ramp, bump, clamp = KW.ease, KW.ramp, KW.bump, KW.clamp
 V = Vector
 LIE = Matrix(((0, 0, -1), (1, 0, 0), (0, -1, 0))).to_4x4()   # rig X->(0,1,0), Y->(0,0,-1), Z->(-1,0,0): on the back, head to -X
 SIT = {'upperleg01': (-85, 0, 0), 'lowerleg01': (88, 0, 0)}  # same as ep_sneeze (sets are built around it)
-RACE_TAN = {'caucasian': 0.45, 'asian': 0.3, 'african': 0.1, 'mixed': 0.25}
+RACE_TAN = {'caucasian': 0.45, 'asian': 0.3, 'african': 0.1, 'mixed': 0.25, 'hispanic': 0.25}
 SHAPES = {   # finger angles. curl: fingers 3-5 (0..1); idx: index curl; thumb: 0..1 ; spread not used
     'relaxed': dict(idx=0.25, curl=0.32, thumb=0.25), 'open': dict(idx=0.04, curl=0.05, thumb=0.05), 'fist': dict(idx=1.0, curl=1.0, thumb=0.9),
     'point': dict(idx=0.0, curl=1.0, thumb=0.7), 'press2': dict(idx=0.12, mid=0.12, curl=0.95, thumb=0.5), 'hold': dict(idx=0.55, curl=0.6, thumb=0.6),

@@ -426,7 +426,12 @@ def _skin_tone(p, G):
                 print('humgen skin tone', p.name, {k: round(n.inputs[k].default_value, 2) for k in ('Tone', 'Redness', 'Saturation') if k in n.inputs})
 
 
-OUTFIT_COLOR = {'Howard': {'SHIRT': (1.0, 1.0, 1.0), 'JEANS': (0.11, 0.115, 0.12)}, 'Ben': {'SHIRT': (0.62, 1.0, 0.84)}}   # 4.4: old look = white shirt + grey trousers under the coat
+OUTFIT_COLOR = {'Howard': {'SHIRT': (1.0, 1.0, 1.0), 'JEANS': (0.11, 0.115, 0.12)}, 'Ben': {'SHIRT': (0.62, 1.0, 0.84)},
+}
+# cloth whose HG shader overlays the colour on a coloured texture (female jeans / suede sneakers) cannot be recoloured through
+# Main Color: tint = hue/saturation of rgb on the cloth's own luminance (weave + normal kept) x gain
+OUTFIT_TINT = {'Maya': {'SHIRT': ((0.888, 0.147, 0.074), float(os.environ.get('KW_MAYA_TG', 0.55))), 'JEANS': ((0.018, 0.032, 0.069), float(os.environ.get('KW_MAYA_JG', 0.5))),
+                        'SNEAKER': ((0.85, 0.85, 0.85), float(os.environ.get('KW_MAYA_SG', 1.0)))}}   # coral #F26B4E, navy #24324A, white   # 4.4: old look = white shirt + grey trousers under the coat
 
 
 def _outfit_color(p, G):
@@ -438,6 +443,24 @@ def _outfit_color(p, G):
                 for n in m.node_tree.nodes:
                     if n.type == 'GROUP' and 'Main Color_C0' in n.inputs: n.inputs['Main Color_C0'].default_value = (*rgb, 1.0)
             print('humgen outfit colour', p.name, o.name, rgb)
+    for o in G.meshes:
+        for tag, (rgb, gain) in OUTFIT_TINT.get(p.name, {}).items():
+            if tag not in o.name.upper(): continue
+            for m in o.data.materials:
+                if m is None or not m.use_nodes or m.get('kw_tint'): continue
+                nt = m.node_tree; bs = next((n for n in nt.nodes if n.type == 'BSDF_PRINCIPLED'), None)
+                g = next((n for n in nt.nodes if n.type == 'GROUP' and 'Diffuse' in n.inputs and n.inputs['Diffuse'].links), None)
+                if bs is None or g is None: continue
+                tex = g.inputs['Diffuse'].links[0].from_socket          # the cloth's own colour map: keep only its light/dark detail
+                bw = nt.nodes.new('ShaderNodeRGBToBW'); nt.links.new(tex, bw.inputs[0])
+                mr = nt.nodes.new('ShaderNodeMapRange'); mr.inputs['From Min'].default_value = 0.0; mr.inputs['From Max'].default_value = 1.0
+                mr.inputs['To Min'].default_value = 0.55 * gain; mr.inputs['To Max'].default_value = 1.45 * gain; nt.links.new(bw.outputs[0], mr.inputs['Value'])
+                mx = nt.nodes.new('ShaderNodeMix'); mx.data_type = 'RGBA'; mx.blend_type = 'MULTIPLY'; mx.inputs['Factor'].default_value = 1.0
+                mx.inputs[6].default_value = (*rgb, 1.0)
+                cv = nt.nodes.new('ShaderNodeCombineColor'); [nt.links.new(mr.outputs[0], cv.inputs[i]) for i in range(3)]
+                nt.links.new(cv.outputs[0], mx.inputs[7]); nt.links.new(mx.outputs[2], bs.inputs['Base Color']); m['kw_tint'] = 1
+                print('humgen tint wired', m.name, tex.node.name, flush=True)
+            print('humgen outfit tint', p.name, o.name, rgb, gain)
 
 
 def _bloat(p, G):

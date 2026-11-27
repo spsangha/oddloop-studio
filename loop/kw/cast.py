@@ -39,6 +39,8 @@ def cast(role=None, seed=0, mp=None):
     if race == 'mixed':
         a, b = r.sample(list(RACE), 2); w = r.uniform(0.35, 0.65)
         rv = tuple(RACE[a][i] * w + RACE[b][i] * (1 - w) for i in range(3)); skin_r = a if w >= 0.5 else b
+    elif race == 'hispanic':      # HumGen slot f/m_<age>_hispanic; the MakeHuman proxy under it is a fixed blend
+        rv = (0.25, 0.0, 0.75); skin_r = 'caucasian'
     else:
         rv = RACE[race]; skin_r = race
     wgt, mus = BUILD[role.get('build') or r.choice(['slim', 'avg', 'avg', 'heavy', 'muscular'])]
