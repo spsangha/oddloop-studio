@@ -759,8 +759,21 @@ class Episode:
         out += self.extra_sounds
         out = sorted(set((round(t, 3), n, round(g, 3)) for t, n, g in out if -0.01 <= t < self.duration))
         return [list(c) for c in out]
+    def cap_avoid(self):
+        """screen boxes of pos labels in the lower half (CTA etc.): [[t0, t1, top, bottom]] as fractions from the top, so post_kw
+        moves the burned-in caption above them (ep13 mistake: the last caption sat on 'COMMENT BELOW')."""
+        out = []
+        for s in self.shots:
+            for f in s.fx:
+                o = f.o
+                if f.kind != 'label' or not o.get('pos') or o['pos'][1] > 0.45: continue
+                a = s.t + max(0.0, o.get('at') or 0.0); b = a + (o.get('dur') or (self.duration - a))
+                if o.get('at', 0) < 0: a = s.t
+                h = 0.030 * float(o.get('size', 1.0)); y = 1.0 - o['pos'][1]
+                out.append([round(a, 3), round(min(b, self.duration), 3), round(y - h, 4), round(y + h, 4)])
+        return out
     def cues(self):
-        return dict(duration=self.duration, fps=FPS, vo=[list(v) for v in self.vo], voice=self.voice, rate=self.rate, cues=self.cues_list(),
+        return dict(cap_avoid=self.cap_avoid(), duration=self.duration, fps=FPS, vo=[list(v) for v in self.vo], voice=self.voice, rate=self.rate, cues=self.cues_list(),
                     shots=[[s.t, s.name, s.set] for s in self.shots], music_gain=self.music_gain,
                     vo_trim=True, cap_lead0=True, cap_y=CAP_Y, say={str(k): v for k, v in (getattr(self, 'tts_say', None) or {}).items()},
                     hook=dict(injury=self.injury or '', inside=[s.name for s in self.shots if s.set in ('xray', 'macro')], loop=self.shots[-1].name if self.shots else None))

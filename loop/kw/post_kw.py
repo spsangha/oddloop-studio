@@ -100,7 +100,18 @@ def whip(im, i, cuts, half=3, px=180):
             return Image.fromarray(np.clip(a[:, :im.width], 0, 255).astype(np.uint8))
     return im.copy()
 
-def caption(im, t, caps, y=0.78):
+CAP_H = 0.032     # half height of a caption line (fraction of H)
+def cap_y_at(t, y, avoid):
+    """caption centre at time t: above every lower-screen label box that is on screen and would overlap (CTA rule, ep13)."""
+    live = [(top, bot) for a, b, top, bot in (avoid or []) if a <= t < b]
+    for _ in range(len(live) + 1):          # move up past each overlapping box in turn (stacked CTA lines)
+        box = [top for top, bot in live if top < y + CAP_H + 0.006 and bot > y - CAP_H - 0.006]
+        if not box: break
+        y = min(box) - CAP_H - 0.012
+    return y
+
+def caption(im, t, caps, y=0.78, avoid=None):
+    y = cap_y_at(t, y, avoid)
     for a, b, txt in caps:
         if a <= t < b:
             f = ImageFont.truetype(FONT, 70); d = ImageDraw.Draw(im)
@@ -141,7 +152,7 @@ if __name__ == '__main__':
     for i in range(n):
         src = idx.get(i) or last
         base = grade(Image.open(src).convert('RGB').resize((W, H), Image.LANCZOS)) if src != last else base; last = src
-        p.stdin.write(caption(whip(base, i, cuts), i / fps, caps, cj.get('cap_y', 0.78)).tobytes())
+        p.stdin.write(caption(whip(base, i, cuts), i / fps, caps, cj.get('cap_y', 0.78), cj.get('cap_avoid')).tobytes())
     p.stdin.close(); assert p.wait() == 0
     audio(cj, lines, music, out + '.a.wav')
     subprocess.run(['ffmpeg', '-v', 'error', '-y', '-i', out + '.v.mp4', '-i', out + '.a.wav', '-map', '0:v', '-map', '1:a', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '256k',
