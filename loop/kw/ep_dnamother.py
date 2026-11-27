@@ -18,9 +18,9 @@ try: from mathutils import Vector as V
 except ImportError: V = None
 def ease(x): x = max(0.0, min(1.0, x)); return x * x * (3 - 2 * x)
 R = {}
-BLUE = (0.0, 0.16, 1.0, 1.0); ORANGE = (1.0, 0.33, 0.04, 1.0)
-GLOW = float(os.environ.get('KW14_GLOW', 1.2)); MOS = float(os.environ.get('KW14_MOS', 0.12)); MOST = float(os.environ.get('KW14_MOST', 0.30))
-CELL = float(os.environ.get('KW14_CELL', 40.0))
+BLUE = (0.0, 0.16, 1.0, 1.0); ORANGE = (1.0, 0.22, 0.0, 1.0)
+GLOW = float(os.environ.get('KW14_GLOW', 1.2)); MOS = float(os.environ.get('KW14_MOS', 0.0)); MOST = float(os.environ.get('KW14_MOST', 0.16))
+CELL = float(os.environ.get('KW14_CELL', 16.0))
 
 ep.waive = {"1 shots;": "brief: one kit shot; the hard cuts (medium -> screen -> close ...) live in ep.cam_fn",
             "last shot must use cam=KW.cam.loop()": "brief: cam_fn cuts back to the frame-0 framing for the last 9 frames (the loop)",
@@ -54,7 +54,7 @@ def v_cheek(f): return on_at(f, fw(4, 'cheek,'))
 def v_skin(f): return on_at(f, fw(4, 'skin'))
 def v_blood(f): return on_at(f, fw(4, 'blood'))
 def v_preg(f): return 0.0 if LOOP(f) else keys(f, [(B0, 0.0), (B1 - 8, 1.0), (B1 + 2, 1.0), (B1 + 12, 0.0)])
-def v_mos(f): return 0.0 if LOOP(f) else keys(f, [(fw(6, 'chimera,') - 2, 0.0), (fw(6, 'chimera,') + 14, 1.0)])
+def v_mos(f): return 0.0 if LOOP(f) else keys(f, [(fw(6, 'chimera,') - 2, 0.0), (fw(6, 'chimera,') + 14, 1.0), (fw(7, 'dismissed'), 1.0), (CTA0 - 6, 0.0)])   # gone before the CTA
 
 # pose timeline (local time = global, one kit shot at 0): belly grows into line 3, flat at "birth"; faces ease over 6 frames
 B0 = fl(2) - 4; B1 = fw(2, 'birth')
@@ -198,9 +198,10 @@ def build_glow(hg):
             vein.inputs['From Min'].default_value = 0.0; vein.inputs['From Max'].default_value = 0.035; vein.inputs['To Min'].default_value = 1.0; vein.inputs['To Max'].default_value = 0.15
             glow = math_('ADD', math_('ADD', math_('MULTIPLY', sp.outputs['Red'], val('cheek')), math_('MULTIPLY', sp.outputs['Green'], val('skin'))),
                          math_('MULTIPLY', math_('MULTIPLY', sp.outputs['Blue'], vein.outputs['Result']), val('blood')))
-            vo = N.new('ShaderNodeTexVoronoi'); Lk(mp.outputs['Vector'], vo.inputs['Vector']); vo.inputs['Scale'].default_value = CELL
-            cs = N.new('ShaderNodeSeparateColor'); Lk(vo.outputs['Color'], cs.inputs[0])
-            cell = math_('GREATER_THAN', cs.outputs['Red'], 0.5)
+            nz2 = N.new('ShaderNodeTexNoise'); Lk(mp.outputs['Vector'], nz2.inputs['Vector']); nz2.inputs['Scale'].default_value = CELL
+            nz2.inputs['Detail'].default_value = 1.0; nz2.inputs['Roughness'].default_value = 0.4
+            cell = N.new('ShaderNodeMapRange'); cell.interpolation_type = 'SMOOTHSTEP'; Lk(nz2.outputs['Fac'], cell.inputs['Value'])
+            cell.inputs['From Min'].default_value = 0.44; cell.inputs['From Max'].default_value = 0.56; cell = cell.outputs['Result']   # feathered two-tone blobs
             cc = N.new('ShaderNodeMix'); cc.data_type = 'RGBA'; Lk(cell, cc.inputs['Factor']); cc.inputs['A'].default_value = BLUE; cc.inputs['B'].default_value = ORANGE
             mos = val('mos')
             ec = N.new('ShaderNodeMix'); ec.data_type = 'RGBA'; Lk(mos, ec.inputs['Factor']); ec.inputs['A'].default_value = BLUE; Lk(cc.outputs['Result'], ec.inputs['B'])

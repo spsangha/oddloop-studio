@@ -8,6 +8,7 @@ on:
       samples: {description: 'Cycles samples', required: false, default: '24'}
       out: {description: 'Output file name', required: false, default: 'KindaWild.mp4'}
       heads: {description: "People: 'scan' (default) or 'humgen' (licensed cast from the private asset store)", required: false, default: 'scan'}
+      range: {description: "Patch render: 'A-B' renders frames A..B-1 only (frames artifacts, no finish job); empty = whole Short", required: false, default: ''}
 env:
   BLENDER: blender-4.2.3-linux-x64
   SHARDS: 20
@@ -65,7 +66,8 @@ jobs:
           python3 -m pip install -q --break-system-packages fonttools shapely || true
           ./$BLENDER/blender -b -P $EP -- --cues cues.json >/dev/null 2>&1
           N=$(python3 -c "import json;c=json.load(open('cues.json'));print(round(c['duration']*c['fps']))")
-          S=${{ matrix.shard }}; I0=$(( N * S / SHARDS )); I1=$(( N * (S + 1) / SHARDS ))
+          R0=0; RANGE='${{ github.event.inputs.range }}'; if [ -n "$RANGE" ]; then R0=${RANGE%-*}; N=$(( ${RANGE#*-} - R0 )); fi
+          S=${{ matrix.shard }}; I0=$(( R0 + N * S / SHARDS )); I1=$(( R0 + N * (S + 1) / SHARDS ))
           echo "frames $I0..$I1 of $N"; START=$(date +%s); mkdir -p frames
           ./$BLENDER/blender -b -P $EP -- frames $I0 $I1 2>&1 | grep -E "Saved|Error|Traceback|line [0-9]" | tail -60
           echo "took $(( $(date +%s) - START ))s"; ls frames | wc -l
@@ -77,6 +79,7 @@ jobs:
         with: {name: cues, path: cues.json, retention-days: 2}
   finish:
     needs: render
+    if: github.event.inputs.range == ''
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
