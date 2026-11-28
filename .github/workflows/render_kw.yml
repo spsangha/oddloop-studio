@@ -91,7 +91,8 @@ jobs:
             echo "stills $MINE"; ONLY=$MINE ./$BLENDER/blender -b -P $EP -- frames 0 1 2>&1 | grep -E "Saved|Error|Traceback|line [0-9]" | tail -60
             ls frames; exit 0
           fi
-          ./$BLENDER/blender -b -P $EP -- --cues cues.json >/dev/null 2>&1
+          ./$BLENDER/blender -b -P $EP -- --cues cues.json > cues.log 2>&1 || true
+          test -f cues.json || { grep -E "Error|Traceback|line [0-9]" cues.log | tail -40; tail -20 cues.log; exit 1; }
           N=$(python3 -c "import json;c=json.load(open('cues.json'));print(round(c['duration']*c['fps']))")
           R0=0; RANGE='${{ github.event.inputs.range }}'; if [ -n "$RANGE" ]; then R0=${RANGE%-*}; N=$(( ${RANGE#*-} - R0 )); fi
           S=${{ matrix.shard }}; I0=$(( R0 + N * S / SHARDS )); I1=$(( R0 + N * (S + 1) / SHARDS ))
