@@ -368,14 +368,14 @@ for nm, rot in (('waiter0_sh1', (0.95, 0, -0.25)), ('waiter0_el1', (0.85, 0, 0))
     o_ = bpy.data.objects[nm]; o_.animation_data_clear(); o_.rotation_euler = rot
 drv(wt, 'location', 2, '0.004*sin(frame*0.12)')
 # SINCE 1860 stamp: thumps on low on the right, well inside the frame (in front of the walkers)
-st = empty('stamp', (0.95, -2.2, 0.6))
+st = empty('stamp', (0.85, -2.2, 0.6))
 prim('cyl', 'stamp_disc', (0, 0, 0), (0.95, 0.95, 0.04), toon('stampred', hx('c8302a'), lit=0.05), rot=(H90, 0, 0), seg=32).parent = st
 prim('cyl', 'stamp_ring', (0, -0.03, 0), (0.82, 0.82, 0.01), toon('stampring', hx('f6efe0'), lit=0.5), rot=(H90, 0, 0), seg=32).parent = st
 prim('cyl', 'stamp_in', (0, -0.05, 0), (0.76, 0.76, 0.01), toon('stampred', hx('c8302a'), lit=0.05), rot=(H90, 0, 0), seg=32).parent = st
 text('stamp_en', 'SINCE', (0, -0.08, 0.36), 0.22, TXT_W).parent = st
 text('stamp_num', '1860', (0, -0.08, 0.02), 0.46, TXT_W).parent = st
 text('stamp_zh', '創於廣州', (0, -0.08, -0.38), 0.22, TXT_W).parent = st
-kv(st, 'scale', [(0, (0.001, 0.001, 0.001)), (16, (0.001, 0.001, 0.001)), (22, (0.5, 0.5, 0.5)), (27, (0.38, 0.38, 0.38)), (31, (0.4, 0.4, 0.4)), (188, (0.4, 0.4, 0.4))])
+kv(st, 'scale', [(0, (0.001, 0.001, 0.001)), (16, (0.001, 0.001, 0.001)), (22, (0.7, 0.7, 0.7)), (27, (0.58, 0.58, 0.58)), (31, (0.62, 0.62, 0.62)), (188, (0.62, 0.62, 0.62))])
 kv(st, 'rotation_euler', [(16, (0, 0.5, 0)), (24, (0, -0.12, 0)), (31, (0, -0.12, 0))])
 WALK = [(-4.2, -1.3, 1, 1.15, 0.0), (4.0, -1.7, -1, 1.25, 1.1), (-6.4, -1.5, 1, 1.3, 2.0), (1.4, -1.0, 1, 0.9, 0.5)]
 for i, (x0, y0, d_, sp, ph) in enumerate(WALK):
@@ -403,24 +403,21 @@ GLAZE = toon('glaze', hx('6a2f16'), lit=0.08); GLAZE2 = toon('glaze2', hx('8a412
 PW = plate('wingplate', (QX, 0.35, 0.76), 0.36, 0.24)
 for k in range(6):
     a = -0.5 + (k % 3) * 0.5; row = k // 3
-    W = empty(f'wing{k}', (-0.17 + (k % 3) * 0.17, -0.06 + row * 0.12, 0.05), parent=PW); W.rotation_euler = (0, 0, a)
+    W = empty(f'wing{k}', (-0.17 + (k % 3) * 0.17, -0.06 + row * 0.12, 0.05), parent=PW); W.rotation_euler = (0, 0, a); W.scale = (1.3, 1.3, 1.45)
     prim('sph', f'wing{k}_a', (-0.04, 0, 0), (0.07, 0.035, 0.03), GLAZE, seg=10, parent=W)
     prim('sph', f'wing{k}_b', (0.05, 0.0, 0.004), (0.055, 0.03, 0.026), GLAZE2, seg=10, parent=W, rot=(0, 0, 0.4))
     shine(f'wing{k}_sh', W, (0.0, -0.01, 0.028), (0.026, 0.008, 0.005), 0.035, speed=0.06, ph=k * 0.9)
-boxes_obj('tent', [(QX + 0.6, 0.15, 0.83, 0.42, 0.02, 0.16, 0)], [toon('tent', hx('fffaf0'), lit=0.5)])
-text('tent_t', '瑞士雞翼', (QX + 0.6, 0.135, 0.86), 0.075, RED)
-text('tent_t2', 'SWISS WINGS', (QX + 0.6, 0.135, 0.8), 0.04, TXT_K)
 prim('sph', 'lettuce', (QX + 0.24, 0.42, 0.79), (0.07, 0.05, 0.02), toon('lettuce', hx('7aa64a')), seg=8)
 prim('cyl', 'saucebowl', (QX - 0.55, 0.15, 0.78), (0.07, 0.07, 0.03), WHITE, seg=14)
 prim('cyl', 'sauce', (QX - 0.55, 0.15, 0.805), (0.06, 0.06, 0.004), GLAZE, seg=14)
-steam('wst', QX, 0.4, 0.86, n=7, spread=0.3, rise=0.35, rate=0.012, size=0.03)
+steam('wst', QX, 0.4, 0.86, n=12, spread=0.3, rise=0.35, rate=0.012, size=0.016)
 gu = person('guest', hx('3f5f8f'), hx('34374a'), walk=False, sit=True, hair='short', top='jacket', face=True, shadow=False)
 gu.location = (QX - 0.5, 1.1, 0); gu.rotation_euler = (0, 0, math.pi + 0.35)
 wq = person('waiter1', hx('f4f1ea'), hx('2c2c30'), walk=False, hair='short', top='shirt', face=True, shadow=False)
 wq.location = (QX + 0.55, 1.15, 0); wq.rotation_euler = (0, 0, math.pi - 0.35)
 bowtie('waiter1')
-bubble('b_sweet', (QX - 0.42, 0.9, 1.5), 'Sweet!', 236, 313, size=0.09, w=0.28, h=0.12)
-bubble('b_swiss', (QX + 0.42, 0.9, 1.85), 'Swiss?', 284, 313, size=0.09, w=0.28, h=0.12)
+bubble('b_sweet', (QX - 0.48, 0.9, 1.84), 'Sweet!', 236, 313, size=0.12, w=0.34, h=0.15)
+bubble('b_swiss', (QX + 0.5, 0.9, 1.95), 'Swiss?', 284, 313, size=0.12, w=0.34, h=0.15)
 # head turns: the guest nods at "sweet", the waiter tilts his head at "Swiss"
 kv(bpy.data.objects['guest_hd'], 'rotation_euler', [(189, (0, 0, 0)), (236, (0, 0, 0)), (242, (0.18, 0, 0)), (250, (0, 0, 0)), (313, (0, 0, 0))])
 kv(bpy.data.objects['waiter1_hd'], 'rotation_euler', [(189, (0, 0, 0)), (284, (0, 0, 0)), (292, (0, 0.22, 0)), (313, (0, 0.22, 0))])
@@ -444,7 +441,7 @@ for k in range(4):     # lemon wedge + prawn crackers round the plate
     prim('sph', f'cracker{k}', (SX - 0.24 + k * 0.05, 0.22 + (k % 2) * 0.06, 0.785), (0.05, 0.04, 0.008), toon('cracker', hx('f6ecd2'), lit=0.3), seg=8)
 prim('sph', 'lemon', (SX + 0.24, 0.27, 0.79), (0.05, 0.03, 0.025), toon('lemon', hx('f0d24a'), lit=0.2), seg=8)
 prim('cyl', 'saltdish', (SX + 0.5, 0.05, 0.775), (0.05, 0.05, 0.015), WHITE, seg=12)
-steam('pst', SX, 0.35, 0.92, n=8, spread=0.25, rise=0.5, rate=0.013, size=0.035, f0=330)
+steam('pst', SX, 0.35, 0.92, n=12, spread=0.25, rise=0.45, rate=0.013, size=0.017, f0=330)
 # the plate is set down: it comes in from above-right on a waiter's hand, then the hand leaves
 kv(PP, 'location', [(314, (SX + 0.9, 0.2, 1.15)), (322, (SX + 0.9, 0.2, 1.15)), (338, (SX + 0.03, 0.33, 0.78)), (344, (SX, 0.35, 0.76)), (413, (SX, 0.35, 0.76))])
 HD = empty('hand', (SX + 1.3, 0.25, 1.15))
@@ -468,7 +465,7 @@ for k in range(14):     # icing-sugar dust on the top
 # rises out of the dish from L5 (f414) to "giant" (f433) and keeps breathing
 kv(SF, 'scale', [(414, (0.92, 0.92, 0.05)), (418, (0.92, 0.92, 0.05)), (440, (1.0, 1.0, 1.06)), (448, (1.0, 1.0, 0.98)), (455, (1.0, 1.0, 1.0)), (542, (1.0, 1.0, 1.0))])
 drv(bpy.data.objects['souf_crown'], 'location', 2, '0.38+0.008*sin(frame*0.2)')
-steam('ust', UX, 0.35, 1.45, n=8, spread=0.3, rise=0.4, rate=0.012, size=0.04, f0=440)
+steam('ust', UX, 0.35, 1.45, n=12, spread=0.3, rise=0.4, rate=0.012, size=0.02, f0=440)
 for s_ in (-1, 1):
     prim('box', f'spoon{s_}', (UX + s_ * 0.55, 0.05, 0.765), (0.02, 0.12, 0.006), toon('silver', hx('cfd3d8'), lit=0.3), rot=(0, 0, s_ * 0.2))
 for s_ in (-1, 1):
