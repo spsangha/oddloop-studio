@@ -1,0 +1,34 @@
+name: Render an HK Unlocked Reel
+# Full-length HK Unlocked render (template v6). Inputs: reel folder under hk/reels with job.json, vo.wav and words.json
+# (voice is made in the sandbox). Output: the mp4 (+ timeline.json) as an artifact.
+on:
+  workflow_dispatch:
+    inputs:
+      folder: {description: 'Reel folder under hk/reels, e.g. 2026-11-28_lion_rock_v6', required: true}
+      job: {description: 'Job file inside the folder', required: false, default: 'job.json'}
+jobs:
+  render:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: System packages
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends ffmpeg fonts-noto-cjk python3-cairo python3-numpy python3-pil python3-opencv
+          sudo mkdir -p /usr/local/share/fonts/asi-document && sudo cp hk/fonts/*.ttf /usr/local/share/fonts/asi-document/
+      - name: Render
+        run: |
+          D=hk/reels/${{ github.event.inputs.folder }}
+          J=${{ github.event.inputs.job }}
+          [ "$J" = job.json ] || cp "$D/$J" "$D/job.json"
+          test -f "$D/words.json" && test -f "$D/vo.wav"
+          cd hk/_template_v6 && python3 build.py ../reels/${{ github.event.inputs.folder }} render
+          ls -la ../reels/${{ github.event.inputs.folder }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ github.event.inputs.folder }}
+          path: |
+            hk/reels/${{ github.event.inputs.folder }}/*.mp4
+            hk/reels/${{ github.event.inputs.folder }}/timeline.json
+          retention-days: 14
