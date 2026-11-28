@@ -52,7 +52,7 @@ ep.shot(L(1) - 0.1, 'myth_x', set='xray', xray=ben, organs=XO, cast={ben: xr('hu
 ep.shot(L(2) - 0.1, 'nope', set='room', cast={ben: desk('huh', act=KW.act.shake_head(at=0.1, n=2))},
         fx=[lab('NOPE', 0.1, W(2, 'your') - L(2) - 0.1)], cam=KW.cam.face(ben, side=16, push=0.12))
 ep.shot(W(2, 'your') - 0.1, 'whole_x', set='xray', xray=ben, organs=XO, cast={ben: xr('huh')},
-        fx=[KW.fx.glow(ben, 'stomach', at=0.2, dur=1.2, color='yellow'), KW.fx.pressure(ben, 'stomach', at=1.8, dur=1.6, swell=0.35), lab('UNDIGESTED', 0.15, E(2) - W(2, 'your') - 0.05, size=1.05, color='yellow')],
+        fx=[KW.fx.glow(ben, 'stomach', at=0.2, dur=1.2, color='yellow', gain=2.2), KW.fx.pressure(ben, 'stomach', at=1.8, dur=1.6, swell=0.35), lab('STUCK?', 0.15, E(2) - W(2, 'your') - 0.05, size=1.05, color='yellow')],
         cam=KW.cam.xray(ben, 'stomach', view='front', dist=0.48, push=0.15))
 # ---- the gut squeezes it along (rung: visible change every 3-4 s) ---------------------------------------------------
 ep.shot(L(3) - 0.1, 'squeeze_x', set='xray', xray=ben, organs=XO, cast={ben: xr('neutral')},

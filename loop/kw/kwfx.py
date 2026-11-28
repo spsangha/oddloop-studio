@@ -501,7 +501,7 @@ class Builder:
             elif f.kind == 'pressure':
                 b = self.bodies[o['person']]; k = ramp(u, o['at'], o['at'] + o['dur'] * 0.8); b.heat(o['organ'], k, 0.5 + 0.5 * math.sin(t * 16), o['swell'])
             elif f.kind == 'glow':
-                b = self.bodies[o['person']]; k = ramp(u, o['at'], o['at'] + 0.2) * (1 - 0.5 * ramp(u, o['at'] + o['dur'], o['at'] + o['dur'] + 0.4)); b.heat(o['organ'], k, 0.5 + 0.5 * math.sin(t * 10), 0.0, color=(LABEL_COL.get(o.get('color')) if o.get('color') else None))
+                b = self.bodies[o['person']]; k = ramp(u, o['at'], o['at'] + 0.2) * (1 - 0.5 * ramp(u, o['at'] + o['dur'], o['at'] + o['dur'] + 0.4)); b.heat(o['organ'], k * o.get('gain', 1.0), 0.5 + 0.5 * math.sin(t * 10), 0.0, color=(LABEL_COL.get(o.get('color')) if o.get('color') else None))
             elif f.kind == 'seal':
                 hit = ramp(u, o['at'], o['at'] + 0.12); sp = hit * (1.0 + 0.25 * math.sin(t * 20))
                 for ob, bs in zip(it['objs'], it['base']): ob.scale = tuple(x * max(sp, 1e-4) for x in bs); ob.hide_render = hit <= 0

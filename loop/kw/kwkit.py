@@ -596,9 +596,9 @@ class fx:
         """an organ heats up, pulses and swells (x-ray shots)"""
         _check_name('organ', organ, ORGANS); return FX('pressure', person=person, organ=organ, at=at, dur=dur, swell=swell)
     @staticmethod
-    def glow(person, organ, at=0.0, dur=0.6, color='red'):
-        """an organ lights up (to show where something happens)"""
-        _check_name('organ', organ, ORGANS); return FX('glow', person=person, organ=organ, at=at, dur=dur, color=color)
+    def glow(person, organ, at=0.0, dur=0.6, color='red', gain=1.0):
+        """an organ lights up (to show where something happens); gain > 1 = brighter"""
+        _check_name('organ', organ, ORGANS); return FX('glow', person=person, organ=organ, at=at, dur=dur, color=color, gain=gain)
     @staticmethod
     def seal(person, where=('nose', 'mouth'), at=0.4):
         """red rings with an X pop over the nose and/or mouth (x-ray shots): 'the air has no way out'"""
