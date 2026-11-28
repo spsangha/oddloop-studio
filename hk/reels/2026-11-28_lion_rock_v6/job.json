@@ -46,12 +46,12 @@
    "zh": "收藏，揀個天晴早上去"
   }
  ],
- "captions_from": "L2",
+ "captions_from": 3.0,
  "tail": 2.0,
  "music": null,
  "foley": true,
  "headline": {
-  "en": "Lion Rock: shortest way\nup from the {MTR}",
+  "en": "Lion Rock: shortest way\nup from {MTR}",
   "zh": "{獅子山} 港鐵站出發最短上山路",
   "until": 2.5,
   "max_w": 760
@@ -61,7 +61,6 @@
   "at": 1.2,
   "text": "Steep steps · no shade · bring water",
   "zh": "樓梯斜 · 冇遮蔭 · 帶夠水",
-  "tag": "caveat",
   "until": "L2+0.6"
  },
  "map": {
@@ -601,7 +600,7 @@
    [
     "L3",
     114.19365,
-    22.3418,
+    22.3443,
     0.82
    ],
    [
