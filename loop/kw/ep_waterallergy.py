@@ -10,6 +10,7 @@ Body changes on Maya's own mesh: wet skin, hives on her forearm (hook), a tear r
 import sys, os, math; sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import kwkit as KW
 os.environ.setdefault('KW_LIGHT', '1')
+os.environ.setdefault('KW_NAILS', '1')                 # ladder rung 9 (nails + knuckle creases) proven on this Short
 HERE = os.path.dirname(os.path.abspath(__file__))
 ep = KW.Episode('ep_waterallergy', injury="hives",
                 voice_lines=[l.strip() for l in open(os.path.join(HERE, 'ep_waterallergy.txt')) if l.strip()],

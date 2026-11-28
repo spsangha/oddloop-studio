@@ -378,9 +378,74 @@ def _dump(G):
         if md.type == 'PARTICLE_SYSTEM': st = md.particle_system.settings; print('V11DBG psys', G.p.name, st.name, st.count, st.rendered_child_count, st.material_slot)
 
 
+NAIL = dict(tint=(0.96, 0.80, 0.76), amt=0.45, edge=(0.97, 0.93, 0.88), rough=0.28, bump=0.5, crease=0.6)
+def nails(G):
+    """ladder rung 9 (behind KW_NAILS=1 until proven): fingernail plates (lighter, pinker, glossier, a pale free edge, a raised rim)
+    and dorsal knuckle creases, from the HG finger bones + vertex groups, rest space"""
+    if os.environ.get('KW_NAILS') != '1': return
+    body, rig = G.body, G.rig; me = body.data; n = len(me.vertices)
+    co = np.empty(n * 3); me.shape_keys.key_blocks[0].data.foreach_get('co', co); co = co.reshape(-1, 3)
+    nr = np.empty(n * 3); me.vertices.foreach_get('normal', nr); nr = nr.reshape(-1, 3)
+    B2M = np.array(body.matrix_world.inverted() @ rig.matrix_world)
+    P = lambda v: B2M[:3, :3] @ np.array(v) + B2M[:3, 3]
+    gidx = {g.name: g.index for g in body.vertex_groups}
+    W = {}
+    want = {gidx[k] for s in 'LR' for f in ('f_index', 'f_middle', 'f_ring', 'f_pinky', 'thumb') for k in (f'{f}.03.{s}',) if k in gidx}
+    for v in me.vertices:
+        for g in v.groups:
+            if g.group in want and g.weight > 0.5: W.setdefault(g.group, []).append(v.index)
+    nail = np.zeros(n); edge = np.zeros(n); crease = np.zeros(n); cnt = 0
+    for s in 'LR':
+        B = rig.data.bones
+        if f'f_index.01.{s}' not in B: continue
+        i1, p1, hh = P(B[f'f_index.01.{s}'].head_local), P(B[f'f_pinky.01.{s}'].head_local), P(B[f'hand.{s}'].head_local) if f'hand.{s}' in B else None
+        if hh is None: continue
+        nd = np.cross(p1 - i1, hh - i1); nd /= np.linalg.norm(nd) + 1e-9
+        if np.dot(P(B[f'thumb.01.{s}'].head_local) - i1, nd) > 0: nd = -nd            # dorsal = away from the thumb base (palm side)
+        for f in ('f_index', 'f_middle', 'f_ring', 'f_pinky', 'thumb'):
+            k = f'{f}.03.{s}'
+            if k not in gidx or gidx[k] not in W: continue
+            h, t = P(B[k].head_local), P(B[k].tail_local); ax = t - h; L_ = np.linalg.norm(ax); ax /= L_ + 1e-9
+            dn = nd if f != 'thumb' else (lambda d: d / (np.linalg.norm(d) + 1e-9))(nd - np.dot(nd, ax) * ax)
+            idx = np.array(W[gidx[k]]); u = ((co[idx] - h) @ ax) / L_
+            dors = nr[idx] @ dn
+            m = np.clip((dors - 0.45) / 0.25, 0, 1) * np.clip((u - 0.30) / 0.12, 0, 1)
+            nail[idx] = np.maximum(nail[idx], m); edge[idx] = np.maximum(edge[idx], m * np.clip((u - 0.92) / 0.08, 0, 1)); cnt += int((m > 0.5).sum())
+            for jk in (f'{f}.02.{s}', f'{f}.03.{s}'):          # creases across the back of the two finger joints
+                if jk not in B: continue
+                j = P(B[jk].head_local); d = (co - j) @ ax; r = np.linalg.norm((co - j) - np.outer(d, ax), axis=1)
+                wv = np.exp(-(d / 0.0022) ** 2) * (np.abs(np.sin(d / 0.0011 * math.pi)) ** 0.5) * (r < 0.013) * np.clip(((nr @ dn) - 0.3) / 0.3, 0, 1)
+                crease = np.maximum(crease, wv)
+    at = me.color_attributes.get('kw11_nail') or me.color_attributes.new('kw11_nail', 'FLOAT_COLOR', 'POINT')
+    at.data.foreach_set('color', np.stack([nail, edge, crease, np.ones(n)], 1).astype(np.float32).ravel())
+    for mt in me.materials:
+        if mt is None or not mt.use_nodes or not mt.name.startswith('.Human'): continue
+        N, L = _nodes(mt)
+        if 'kw11_nail' in N: continue
+        bs = N.get('Principled BSDF'); a = N.new('ShaderNodeAttribute'); a.name = 'kw11_nail'; a.attribute_name = 'kw11_nail'
+        sp = N.new('ShaderNodeSeparateColor'); L.new(a.outputs['Color'], sp.inputs[0])
+        src = bs.inputs['Base Color'].links[0].from_socket
+        fm = N.new('ShaderNodeMath'); fm.operation = 'MULTIPLY'; fm.inputs[1].default_value = NAIL['amt']; L.new(sp.outputs[0], fm.inputs[0])
+        m1 = N.new('ShaderNodeMix'); m1.data_type = 'RGBA'; m1.blend_type = 'SCREEN'; m1.inputs['B'].default_value = (*NAIL['tint'], 1)
+        L.new(fm.outputs[0], m1.inputs['Factor']); L.new(src, m1.inputs['A'])
+        m2 = N.new('ShaderNodeMix'); m2.data_type = 'RGBA'; m2.inputs['B'].default_value = (*NAIL['edge'], 1)
+        L.new(sp.outputs[1], m2.inputs['Factor']); L.new(m1.outputs['Result'], m2.inputs['A']); L.new(m2.outputs['Result'], bs.inputs['Base Color'])
+        ri = bs.inputs['Roughness']; rm = N.new('ShaderNodeMix'); rm.data_type = 'FLOAT'; L.new(sp.outputs[0], rm.inputs['Factor'])
+        if ri.is_linked: L.new(ri.links[0].from_socket, rm.inputs['A'])
+        else: rm.inputs['A'].default_value = ri.default_value
+        rm.inputs['B'].default_value = NAIL['rough']; L.new(rm.outputs['Result'], ri)
+        hs = N.new('ShaderNodeMath'); hs.operation = 'SUBTRACT'; L.new(sp.outputs[0], hs.inputs[0])
+        cm = N.new('ShaderNodeMath'); cm.operation = 'MULTIPLY'; cm.inputs[1].default_value = NAIL['crease']; L.new(sp.outputs[2], cm.inputs[0]); L.new(cm.outputs[0], hs.inputs[1])
+        bp = N.new('ShaderNodeBump'); bp.inputs['Strength'].default_value = NAIL['bump']; bp.inputs['Distance'].default_value = 0.0006
+        L.new(hs.outputs[0], bp.inputs['Height']); ni = bs.inputs['Normal']
+        if ni.is_linked: L.new(ni.links[0].from_socket, bp.inputs['Normal'])
+        L.new(bp.outputs['Normal'], ni)
+    print(f'cast v1.1: nails {G.p.name} nail verts {cnt} crease verts {(crease > 0.4).sum()}')
+
+
 def apply(kr, p, G):
     if not on(): return
     _dump(G)
-    eyes(G); skin(G); hair(G); lashes(G); under_coat(G); coat_inside(G)      # B1 catch-light: the kit key light already gives one per eye at the same clock position (catch_light() kept, unused)
+    eyes(G); skin(G); nails(G); hair(G); lashes(G); under_coat(G); coat_inside(G)      # B1 catch-light: the kit key light already gives one per eye at the same clock position (catch_light() kept, unused)
     tl = next((o for o in G.meshes if o.name.startswith('HG_TeethLower')), None)
     G.v11_tongue = tl.data.shape_keys.key_blocks.get('tongue_down') if tl is not None and tl.data.shape_keys else None
