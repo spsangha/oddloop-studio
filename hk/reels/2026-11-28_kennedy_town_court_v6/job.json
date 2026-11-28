@@ -1,0 +1,354 @@
+{
+ "slug": "kennedy_town_court",
+ "date": "2026-11-28",
+ "category": "attraction",
+ "format": "map",
+ "look": "map_day",
+ "out": "HKUnlocked_kennedy_town_court_v6.mp4",
+ "route_guide": true,
+ "format_row": 0,
+ "opener_pattern": "crowd/queue reveal (beat the queue)",
+ "no_photo_reason": "route guide: the court is upstairs behind tangled streets, so the map with the walk from Exit C is the point; no free-licence photo of the view checked in time",
+ "voice": {
+  "voice": "en-US-AvaNeural",
+  "rate": "+4%",
+  "gaps": {
+   "default": 0.3
+  }
+ },
+ "lines": [
+  {
+   "text": "Everyone queues here. Come at 8 am instead.",
+   "say": "Everyone queues here. Come at eight a m instead.",
+   "zh": "人人排隊影相？朝早8點嚟"
+  },
+  {
+   "text": "Kennedy Town's viral basketball court looks straight down to the sea.",
+   "zh": "堅尼地城爆紅籃球場，直望落海"
+  },
+  {
+   "text": "Take Kennedy Town MTR Exit C and turn left.",
+   "say": "Take Kennedy Town M T R Exit C and turn left.",
+   "zh": "堅尼地城站C出口，向左轉"
+  },
+  {
+   "text": "Climb the stairs past the playground, about 100 metres.",
+   "say": "Climb the stairs past the playground, about a hundred metres.",
+   "zh": "上樓梯經過遊樂場，約100米"
+  },
+  {
+   "text": "It's a public court, so don't block players. Shoot through the fence.",
+   "zh": "公眾球場，唔好阻人打波，隔住鐵網影"
+  },
+  {
+   "text": "Save this for an early morning.",
+   "zh": "收藏，揀個朝早去"
+  }
+ ],
+ "captions_from": 3.0,
+ "tail": 2.0,
+ "music": null,
+ "foley": true,
+ "headline": {
+  "en": "Kennedy Town's viral\n{photo spot}",
+  "zh": "{堅尼地城} 爆紅打卡籃球場",
+  "until": 2.5,
+  "max_w": 760
+ },
+ "proof_at": 1.2,
+ "caveat": {
+  "at": 1.2,
+  "text": "Public court · don't block players",
+  "zh": "公眾球場 · 唔好阻人打波",
+  "until": "L2+0.6"
+ },
+ "map": {
+  "area": "kennedytown",
+  "view": [
+   114.1225,
+   22.277,
+   114.1325,
+   22.2875
+  ],
+  "mpp": 0.3,
+  "route": [
+   {
+    "mode": "walk",
+    "pts": [
+     [
+      114.128036,
+      22.281283
+     ],
+     [
+      114.127995,
+      22.28115
+     ],
+     [
+      114.12786,
+      22.28106
+     ],
+     [
+      114.12765,
+      22.28103
+     ],
+     [
+      114.1274,
+      22.28101
+     ],
+     [
+      114.127039,
+      22.281015
+     ]
+    ]
+   }
+  ],
+  "camera": [
+   [
+    0,
+    114.1273,
+    22.2828,
+    0.42
+   ],
+   [
+    1.3,
+    114.1272,
+    22.2826,
+    0.37
+   ],
+   [
+    2.4,
+    114.1271,
+    22.2824,
+    0.32
+   ],
+   [
+    "L2",
+    114.127,
+    22.2822,
+    0.38
+   ],
+   [
+    "L3",
+    114.128036,
+    22.281283,
+    0.28
+   ],
+   [
+    "L4",
+    114.12753749999999,
+    22.281149,
+    0.27
+   ],
+   [
+    "L5",
+    114.127039,
+    22.281015,
+    0.3
+   ],
+   [
+    "L6",
+    114.1273,
+    22.282,
+    0.42
+   ],
+   [
+    "end",
+    114.1273,
+    22.282,
+    0.41
+   ]
+  ],
+  "progress": [
+   [
+    0,
+    0.08
+   ],
+   [
+    2.8,
+    0.3
+   ],
+   [
+    "L3",
+    0.32
+   ],
+   [
+    "L4-0.1",
+    0.6
+   ],
+   [
+    "L5-0.1",
+    1.0
+   ],
+   [
+    "end",
+    1.0
+   ]
+  ],
+  "pins": [
+   {
+    "at": [
+     114.128036,
+     22.281283
+    ],
+    "col": "teal",
+    "from": 0
+   },
+   {
+    "at": [
+     114.127039,
+     22.281015
+    ],
+    "col": "gold",
+    "from": 0
+   }
+  ],
+  "price_pin": {
+   "seg": 0,
+   "at": 0.5,
+   "from": 0.9,
+   "until": "L2+0.6",
+   "price": "FREE",
+   "en": "About 100 m from Exit C",
+   "en2": "Public court · don't block players",
+   "zh": "免費 · C出口行100米 · 唔好阻人打波",
+   "off": [
+    0,
+    -90
+   ],
+   "anchor": "mb"
+  },
+  "labels": [
+   {
+    "en": "Davis Street → the sea",
+    "zh": "爹核士街 → 海邊",
+    "at": [
+     114.12695,
+     22.28215
+    ],
+    "off": [
+     0,
+     -60
+    ],
+    "anchor": "mb",
+    "size": 42,
+    "from": "L2",
+    "until": "L3-0.1"
+   },
+   {
+    "en": "Exit C · turn left",
+    "zh": "C出口 · 左轉",
+    "at": [
+     114.128036,
+     22.281283
+    ],
+    "off": [
+     0,
+     70
+    ],
+    "anchor": "mt",
+    "size": 42,
+    "from": "L3",
+    "until": "L4-0.1"
+   },
+   {
+    "en": "Stairs · past the playground",
+    "zh": "樓梯 · 經過遊樂場",
+    "at": [
+     114.12753749999999,
+     22.281149
+    ],
+    "off": [
+     0,
+     80
+    ],
+    "anchor": "mt",
+    "size": 42,
+    "from": "L4",
+    "until": "L5-0.1"
+   },
+   {
+    "en": "Basketball court · photo spot",
+    "zh": "籃球場 · 打卡位",
+    "at": [
+     114.127039,
+     22.281015
+    ],
+    "off": [
+     0,
+     -70
+    ],
+    "anchor": "mb",
+    "size": 42,
+    "from": "L5",
+    "until": "L6-0.1"
+   }
+  ]
+ },
+ "scenes": [
+  {
+   "from": 0,
+   "kind": "map"
+  },
+  {
+   "from": "L6",
+   "kind": "summary",
+   "cam": [
+    114.1273,
+    22.282,
+    0.41
+   ],
+   "title_en": "Kennedy Town court",
+   "title_zh": "堅尼地城籃球場",
+   "rows": [
+    {
+     "en": "Entry, public court",
+     "zh": "入場 · 公眾球場",
+     "value": "Free"
+    },
+    {
+     "en": "From Exit C",
+     "zh": "C出口起步",
+     "value": "≈100 m"
+    },
+    {
+     "en": "Walk",
+     "zh": "步行",
+     "value": "≈2 min"
+    },
+    {
+     "en": "Best time, before the queue",
+     "zh": "最好時間 · 未排隊",
+     "value": "8–9 am"
+    },
+    {
+     "en": "Court open daily",
+     "zh": "球場開放 · 每日",
+     "value": "7am–11pm"
+    }
+   ],
+   "foot": "Checked 28 Nov 2026 · LCSD · MTR · Jetsetter · route: OSM"
+  }
+ ],
+ "credits": [
+  "Map drawn in code by HK Unlocked",
+  "Map data © OpenStreetMap contributors (ODbL)",
+  "Synthetic spoken narration (Microsoft Azure neural voice Ava via edge-tts)"
+ ],
+ "topic": {
+  "place": "Kennedy Town Playground basketball court",
+  "angle": "viral photo spot down Davis Street to the sea: Exit C route, come at 8 am",
+  "category": "attraction",
+  "tags": [
+   "kennedy town",
+   "basketball court",
+   "davis street",
+   "forbes street",
+   "photo spot"
+  ]
+ },
+ "improve": {
+  "fixes": "2026-11-27 Glenealy: from 3 s to 8 s the camera sat on empty green map with no route, street or label in frame; here the camera stays on the streets, with the route, the exit pin and the court pin in frame on every second",
+  "new": "beat-the-queue time hook: open on the crowd problem and the fix in one line (\"Everyone queues here. Come at 8 am instead.\")",
+  "from": "@crrcho Kennedy Town court Reel (vidIQ IG outlier, 801.9K views, last 30 days): https://www.instagram.com/reel/DgAVCOrJsaA"
+ }
+}
