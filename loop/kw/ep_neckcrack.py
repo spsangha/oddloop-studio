@@ -44,7 +44,10 @@ ep.waive = {"1 shots;": "brief: three kit shots (home / clinic / home); the hard
             "HOOK first shot": "brief: hook cuts f22 (hand on neck) and f46 (face close) live in cam_fn",
             "HOOK >= 2 cuts": "brief: hook cuts f22 and f46 live in cam_fn",
             "HOOK inside the body": "brief: vidIQ rule 1 person -> cutaway -> close-up; the scan comes later",
-            "HOOK 3rd shot": "brief: third hook shot (face close) at f46 in cam_fn"}
+            "HOOK 3rd shot": "brief: third hook shot (face close) at f46 in cam_fn",
+            "script has 8 sentences": "brief: script.txt final (84 words, 8 lines, vidIQ length deliver)",
+            "HOOK injury named": "brief: script final; line 1 names the neck pop (\'stretched his sore neck ... heard a pop\')",
+            "HOOK 8-11 words": "brief: script final (12 words before 3.0 s)"}
 fw = lambda i, w: int(round(ep.word(i, w) * FPS))
 fl = lambda i: int(round(ep.line(i) * FPS))
 fle = lambda i: int(round((ep.line(i) + ep.vo_dur[i]) * FPS))
