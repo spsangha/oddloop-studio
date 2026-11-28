@@ -44,7 +44,7 @@ jobs:
         run: |
           B=$PWD/$BLENDER/blender; cd hk/reels/${{ github.event.inputs.folder }}/blender
           $B -b -y --factory-startup -P scene.py -- $PWD/scene.blend 2>&1 | grep -E "SAVED|INDEXED|FRAME|Error|Traceback|line [0-9]" | tail -80
-          N=$(python3 -c "import re;print(int(re.search(r'sc.frame_end = (\d+)',open('scene.py').read()).group(1))+1)")
+          N=$(python3 -c "import re;print(int(re.findall(r'sc.frame_end = (\d+)\s*$',open('scene.py').read(),re.M)[-1])+1)"); echo "plate frames $N"
           S="${{ github.event.inputs.stills }}"
           if [ -n "$S" ]; then
             $B -b -y scene.blend -f $S 2>&1 | grep -E "Saved|Error" | tail -20

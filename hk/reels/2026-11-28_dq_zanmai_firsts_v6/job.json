@@ -299,5 +299,6 @@
    "say": "That's ninety dollars of tuna, free until December twenty-third.",
    "zh": "價值HK$90，送到12月23日"
   }
- ]
+ ],
+ "route_guide": false
 }
