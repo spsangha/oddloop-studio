@@ -10,7 +10,7 @@ on:
       heads: {description: "People: 'scan' (default) or 'humgen' (licensed cast from the private asset store)", required: false, default: 'scan'}
       range: {description: "Patch render: 'A-B' renders frames A..B-1 only (frames artifacts, no finish job); empty = whole Short", required: false, default: ''}
       only: {description: "Stills: comma frame list, e.g. '9,27,45' (spread over the shards; frames artifacts, no finish job)", required: false, default: ''}
-      base_run: {description: "Patch: with range, a run id whose frames artifacts fill every frame outside the range; the finish job then builds the full Short", required: false, default: ''}
+      base_run: {description: "Patch: with range, run id(s), comma list, later wins, whose frames artifacts fill every frame outside the range; the finish job then builds the full Short", required: false, default: ''}
       shards: {description: 'Shard count override (default: 20 for a whole Short, 1 per still up to 20, 1 per 15 frames for a range)', required: false, default: ''}
 env:
   BLENDER: blender-4.2.3-linux-x64
@@ -117,8 +117,11 @@ jobs:
         if: github.event.inputs.base_run != ''
         env: {GH_TOKEN: '${{ github.token }}'}
         run: |
-          gh run download ${{ github.event.inputs.base_run }} -R ${{ github.repository }} -p 'frames-*' -D base
-          mkdir -p frames; find base -name 'f*.png' -exec mv -f {} frames/ \;; rm -rf base; ls frames | wc -l
+          mkdir -p frames
+          for B in $(echo '${{ github.event.inputs.base_run }}' | tr ',' ' '); do   # later ids win
+            gh run download $B -R ${{ github.repository }} -p 'frames-*' -D base
+            find base -name 'f*.png' -exec mv -f {} frames/ \;; rm -rf base; echo "after $B: $(ls frames | wc -l) frames"
+          done
       - uses: actions/download-artifact@v4
         with: {pattern: 'frames-*', path: frames, merge-multiple: true}
       - uses: actions/download-artifact@v4

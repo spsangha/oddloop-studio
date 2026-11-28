@@ -33,6 +33,8 @@ KW.FACES.update({
     'tired3': {'blink': 0.48, 'worry': 0.2, 'x_droop': 1.0},
     'nod': {'blink': 1.0, 'x_droop': 0.6},
     'snap': {'wide': 0.6, 'x_droop': 0.7},
+    'heavy': {'blink': 0.78, 'worry': 0.25, 'x_droop': 1.0},
+    'sadder': {'blink': 0.5, 'worry': 0.6, 'x_droop': 1.5},
 })
 try:
     import bpy  # noqa: F401
@@ -54,7 +56,8 @@ CTA0 = FN - 40
 FND = fl(4) + 11                        # consequence: head drops at 24 h (micro-sleep) ...
 FSN = FND + 22                          # ... and snaps back
 CUTS = [(0, 'MED0'), (22, 'CLOCK'), (46, 'CLOSE'), (fl(1) - 4, 'EYES'), (fl(2) - 4, 'FACE'), (fw(2, 'mouth') - 3, 'MOUTH'),
-        (fl(3) - 4, 'SCR'), (fl(4) - 4, 'MED1'), (fw(4, 'percent') - 6, 'SCR'), (fl(5) - 4, 'SCR'), (fl(6) - 4, 'SCR'),
+        (fl(3) - 4, 'EYES'), (fw(3, 'blood') - 3, 'SCR'), (fl(4) - 4, 'MED1'), (fw(4, 'percent') - 6, 'SCR'),
+        (fl(5) - 4, 'BFACE'), (fw(5, '40') - 3, 'SCR'), (fl(6) - 4, 'MOUTH'), (fw(6, 'rated') - 3, 'SCR'),
         (CTA0 - 4, 'BFACE'), (FN - 9, 'MED0')]
 def shot_of(f):
     cur = CUTS[0]
@@ -77,9 +80,14 @@ PB = (KW.pose('sit', at='bed_sit', face='fresh', blend=5 * F)
       .then(8 * F, face='tired1', blend=30 * F)
       .then((fw(1, 'eyelids') + 4) * F, face='tired2', head=(4, 0, 0), blend=8 * F)
       .then((fw(2, 'droop.') - 3) * F, face='tired3', head=(7, 0, 0), blend=8 * F)
+      .then((fl(3) - 2) * F, face='heavy', head=(10, 0, 1), blend=14 * F)          # 17 h: lids sink, eyes glaze
+      .then((fw(3, 'blood') - 4) * F, face='tired3', head=(7, 0, 0), blend=10 * F)
       .then(FND * F, face='nod', head=(26, 0, 2), blend=12 * F)
       .then(FSN * F, face='snap', head=(-3, 0, 0), blend=6 * F)
       .then((FSN + 14) * F, face='tired3', head=(7, 0, 0), blend=12 * F)
+      .then((fl(5) - 4) * F, face='tired3', act=KW.act.yawn(at=(fl(5) - 1) * F), blend=4 * F)   # 28 h test: a jaw-cracking yawn
+      .then((fl(6) - 4) * F, face='sadder', head=(9, 0, -2), blend=10 * F)          # faces rated sadder: corners sink further
+      .then((fw(6, 'rated') - 3) * F, face='tired3', head=(7, 0, 0), blend=10 * F)
       .then((FN - 14) * F, face='fresh', head=(0, 0, 0), blend=5 * F))
 ep.blinks = {'Ben': [fl(1) + 14, fl(2) - 2, fl(3) + 30, FSN + 1, fl(5) + 40, fl(6) + 10]}
 
