@@ -24,7 +24,8 @@ except ImportError: V = None
 def ease(x): x = max(0.0, min(1.0, x)); return x * x * (3 - 2 * x)
 def lerp(a, b, u): return a + (b - a) * u
 R = {}
-OV = float(os.environ.get('KW22_OV', 0.30))            # hive redness (<= 0.30 lead rule on faces; lips excluded)
+OV = float(os.environ.get('KW22_OV', 0.30))            # hive redness on the face (<= 0.30 lead rule; lips excluded)
+OVB = float(os.environ.get('KW22_OVB', 0.50))          # arms / neck / chest may go higher
 FORCE = os.environ.get('KW22_FORCE')
 
 KW.FACES.update({
@@ -225,7 +226,7 @@ def body_keys(hg):
             for g in v.groups:
                 if g.group in gi: w[v.index] += g.weight
         return np.clip(w, 0, 1), len(gi)
-    fore, nf = grp(('lowerarm',)); upper, nu = grp(('upperarm',))
+    fore, nf = grp(('lowerarm', 'forearm')); upper, nu = grp(('upperarm', 'upper_arm'))
     neck = np.clip((-d[:, 2] - 0.13) / 0.03, 0, 1) * np.clip((d[:, 2] + 0.40) / 0.04, 0, 1) * (np.abs(d[:, 0]) < 0.17)
     spread = np.clip(fore + upper + neck, 0, 1)
     fy = c[(np.abs(c[:, 0] - EC[0]) < 0.01) & (np.abs(d[:, 2] + 0.035) < 0.006)][:, 1]
@@ -240,6 +241,9 @@ def body_keys(hg):
         idx = np.nonzero(m)[0]
         if len(idx): path.append(int(idx[np.argmin(c[idx, 1])]))
     R['tpath'] = path
+    hbr = hg.rig.data.bones['head']; Mh = (hg.rig.matrix_world @ hbr.matrix_local).inverted() @ body.matrix_world
+    nr_ = np.empty(n * 3); body.data.vertices.foreach_get('normal', nr_); nr_ = nr_.reshape(-1, 3)
+    R["tpts"] = [(Mh @ V(tuple(c[i])), (Mh.to_3x3() @ V(tuple(nr_[i]))).normalized()) for i in path]; R['rig'] = hg.rig
     print('kw22 groups fore', nf, 'upper', nu, 'verts fore', int((fore > 0.3).sum()), 'spread', int((spread > 0.3).sum()), 'cheek', int((cheek > 0.3).sum()), 'tear path', len(path))
     ca = body.data.color_attributes.get('kw22h') or body.data.color_attributes.new('kw22h', 'FLOAT_COLOR', 'POINT')
     ca.data.foreach_set('color', np.stack([fore, spread, cheek, np.ones(n)], 1).astype(np.float32).ravel())
@@ -250,10 +254,11 @@ def body_keys(hg):
         bs = next(q for q in N if q.bl_idname == 'ShaderNodeBsdfPrincipled'); bc = bs.inputs['Base Color']
         if not bc.is_linked: continue
         at = N.new('ShaderNodeAttribute'); at.attribute_name = 'kw22h'; sp = N.new('ShaderNodeSeparateColor'); Lk(at.outputs['Color'], sp.inputs[0])
-        acc = None
+        acc = None; accs = []
         for ch_, lst in ((0, va), (1, vs), (2, vc)):
             a = N.new('ShaderNodeValue'); a.outputs[0].default_value = 0.0; lst.append(a)
             m1 = N.new('ShaderNodeMath'); m1.operation = 'MULTIPLY'; Lk(sp.outputs[ch_], m1.inputs[0]); Lk(a.outputs[0], m1.inputs[1])
+            accs.append(m1.outputs[0])
             if acc is None: acc = m1.outputs[0]
             else:
                 mm = N.new('ShaderNodeMath'); mm.operation = 'MAXIMUM'; Lk(acc, mm.inputs[0]); Lk(m1.outputs[0], mm.inputs[1]); acc = mm.outputs[0]
@@ -262,7 +267,10 @@ def body_keys(hg):
         sm = N.new('ShaderNodeMapRange'); Lk(vo.outputs['Distance'], sm.inputs[0]); sm.inputs[1].default_value = 0.42; sm.inputs[2].default_value = 0.05
         sm.inputs[3].default_value = 0.0; sm.inputs[4].default_value = 1.0; sm.interpolation_type = 'SMOOTHSTEP'      # 1 at the wheal centre
         wm = N.new('ShaderNodeMath'); wm.operation = 'MULTIPLY'; Lk(sm.outputs[0], wm.inputs[0]); Lk(acc, wm.inputs[1])
-        fm = N.new('ShaderNodeMath'); fm.operation = 'MULTIPLY'; fm.inputs[1].default_value = OV; Lk(acc, fm.inputs[0])
+        fb = N.new('ShaderNodeMath'); fb.operation = 'MAXIMUM'; Lk(accs[0], fb.inputs[0]); Lk(accs[1], fb.inputs[1])
+        fb2 = N.new('ShaderNodeMath'); fb2.operation = 'MULTIPLY'; fb2.inputs[1].default_value = OVB; Lk(fb.outputs[0], fb2.inputs[0])
+        ff = N.new('ShaderNodeMath'); ff.operation = 'MULTIPLY'; ff.inputs[1].default_value = OV; Lk(accs[2], ff.inputs[0])
+        fm = N.new('ShaderNodeMath'); fm.operation = 'MAXIMUM'; Lk(fb2.outputs[0], fm.inputs[0]); Lk(ff.outputs[0], fm.inputs[1])
         cur = bc.links[0].from_socket
         mx = N.new('ShaderNodeMix'); mx.data_type = 'RGBA'; Lk(fm.outputs[0], mx.inputs['Factor']); Lk(cur, mx.inputs['A'])
         mx.inputs['B'].default_value = (0.72, 0.12, 0.10, 1.0); cur = mx.outputs['Result']                 # red flare
@@ -283,7 +291,11 @@ def body_keys(hg):
 def build_tear(c):
     import bpy, bmesh
     me = bpy.data.meshes.new('kw22_tear'); bm = bmesh.new(); bmesh.ops.create_uvsphere(bm, u_segments=16, v_segments=10, radius=0.0026); bm.to_mesh(me); bm.free()
-    mt = bpy.data.materials.get('kw22_water'); me.materials.append(mt)
+    mt = bpy.data.materials.new('kw22_tearmat'); mt.use_nodes = True; bs = mt.node_tree.nodes['Principled BSDF']
+    bs.inputs['Base Color'].default_value = (1, 1, 1, 1); bs.inputs['Roughness'].default_value = 0.02; bs.inputs['IOR'].default_value = 1.33
+    for nm in ('Transmission Weight', 'Transmission'):
+        if nm in bs.inputs: bs.inputs[nm].default_value = 1.0; break
+    me.materials.append(mt)
     ob = bpy.data.objects.new('kw22_tear', me); c.objects.link(ob); ob.scale = (1.0, 0.7, 1.5); ob.hide_render = True; R['tear'] = ob
     tr = []
     for i in range(6):                              # the wet trail it leaves
@@ -292,21 +304,17 @@ def build_tear(c):
 
 def place_tear(f):
     import bpy
-    ob = R['tear']; tr = R['trail']; path = R['tpath']
-    show = TT0 <= f <= TT1 + 40 and in_shower(f) and f < LOOPF and len(path) >= 2
-    if not show:
-        ob.hide_render = True
-        for o in tr: o.hide_render = True
-        return
-    body = R['body']; dg = bpy.context.evaluated_depsgraph_get(); ev = body.evaluated_get(dg); me = ev.to_mesh(); Mw = ev.matrix_world
-    P = [Mw @ me.vertices[i].co for i in path]; Nn = [(Mw.to_3x3() @ me.vertices[i].normal).normalized() for i in path]
-    ev.to_mesh_clear()
-    def at(s):
-        s = max(0.0, min(1.0, s)) * (len(P) - 1); i = min(int(s), len(P) - 2); u = s - i
-        return P[i].lerp(P[i + 1], u) + Nn[i].lerp(Nn[i + 1], u) * 0.0022
-    s = ease((f - TT0) / max(1, TT1 - TT0)); ob.location = at(s); ob.hide_render = f > TT1 + 8
-    for k, o in enumerate(tr):
-        sk = s * (k + 0.5) / len(tr); o.location = at(sk); o.hide_render = s <= 0.05
+    from mathutils import Vector as V_
+    ob = R['tear']; tr = R['trail']; pts = R.get('tpts')
+    for o in tr: o.hide_render = True
+    show = TT0 <= f <= TT1 + 8 and in_shower(f) and f < LOOPF and pts
+    if not show: ob.hide_render = True; return
+    rg = R['rig']; hb = rg.pose.bones['head']; M = rg.matrix_world @ hb.matrix
+    P = [M @ p for p, _ in pts]; Nn = [(M.to_3x3() @ q).normalized() for _, q in pts]
+    s_ = max(0.0, min(1.0, (f - TT0) / max(1, TT1 - TT0)))
+    s_ = s_ * s_ * (3 - 2 * s_) * (len(P) - 1); i = min(int(s_), len(P) - 2); u = s_ - i
+    ob.location = P[i].lerp(P[i + 1], u) + Nn[i].lerp(Nn[i + 1], u) * 0.0024
+    ob.hide_render = f > TT1 + 6
 
 def eyes(rt, who):
     rg = rt.actors[who].p.hg.rig; W_ = rg.matrix_world
@@ -363,7 +371,7 @@ def frame_hook(rt, t):
 ep.frame_hook = frame_hook
 
 def arm_pt(rt):
-    rg = rt.actors[maya].p.hg.rig; W_ = rg.matrix_world; b = rg.pose.bones['lowerarm01.L']
+    rg = rt.actors[maya].p.hg.rig; W_ = rg.matrix_world; b = rg.pose.bones['forearm.L'] if 'forearm.L' in rg.pose.bones else rg.pose.bones['lowerarm01.L']
     return W_ @ ((b.head + b.tail) / 2)
 def cam_fn(rt, t):
     import bpy
