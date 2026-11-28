@@ -10,18 +10,37 @@ on:
       heads: {description: "People: 'scan' (default) or 'humgen' (licensed cast from the private asset store)", required: false, default: 'scan'}
       range: {description: "Patch render: 'A-B' renders frames A..B-1 only (frames artifacts, no finish job); empty = whole Short", required: false, default: ''}
       only: {description: "Stills: comma frame list, e.g. '9,27,45' (spread over the shards; frames artifacts, no finish job)", required: false, default: ''}
+      base_run: {description: "Patch: with range, a run id whose frames artifacts fill every frame outside the range; the finish job then builds the full Short", required: false, default: ''}
+      shards: {description: 'Shard count override (default: 20 for a whole Short, 1 per still up to 20, 1 per 15 frames for a range)', required: false, default: ''}
 env:
   BLENDER: blender-4.2.3-linux-x64
   SHARDS: 20
   MPFB_URL: https://extensions.blender.org/download/sha256:c075b3e9b94b8e5556a5f03f4653602d02ea306de08126e8f55ed6dee28a2dad/add-on-mpfb-v2.0.18.zip
   ASSETS_URL: https://files.makehumancommunity.org/asset_packs/makehuman_system_assets/makehuman_system_assets_cc0.zip
 jobs:
+  plan:
+    runs-on: ubuntu-24.04
+    outputs: {list: '${{ steps.p.outputs.list }}', n: '${{ steps.p.outputs.n }}'}
+    steps:
+      - id: p
+        run: |
+          python3 - >> "$GITHUB_OUTPUT" <<'PY'
+          import json, math
+          only, rng, ov = '${{ github.event.inputs.only }}', '${{ github.event.inputs.range }}', '${{ github.event.inputs.shards }}'
+          n = 20
+          if only: n = min(20, len([x for x in only.split(',') if x.strip()]))
+          elif rng: a, b = map(int, rng.split('-')); n = min(20, max(1, math.ceil((b - a) / 15)))
+          if ov: n = max(1, min(20, int(ov)))
+          print('n=%d' % n); print('list=' + json.dumps(list(range(n))))
+          PY
   render:
+    needs: plan
     runs-on: ubuntu-24.04
     timeout-minutes: 300
+    env: {SHARDS: '${{ needs.plan.outputs.n }}'}
     strategy:
       fail-fast: true
-      matrix: {shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]}
+      matrix: {shard: '${{ fromJSON(needs.plan.outputs.list) }}'}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/cache@v4
@@ -87,11 +106,18 @@ jobs:
         with: {name: cues, path: cues.json, retention-days: 2}
   finish:
     needs: render
-    if: github.event.inputs.range == '' && github.event.inputs.only == ''
+    if: github.event.inputs.only == '' && (github.event.inputs.range == '' || github.event.inputs.base_run != '')
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    permissions: {actions: read, contents: read}
     steps:
       - uses: actions/checkout@v4
+      - name: Base frames (patch)
+        if: github.event.inputs.base_run != ''
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: |
+          gh run download ${{ github.event.inputs.base_run }} -R ${{ github.repository }} -p 'frames-*' -D base
+          mkdir -p frames; find base -name 'f*.png' -exec mv -f {} frames/ \;; rm -rf base; ls frames | wc -l
       - uses: actions/download-artifact@v4
         with: {pattern: 'frames-*', path: frames, merge-multiple: true}
       - uses: actions/download-artifact@v4
