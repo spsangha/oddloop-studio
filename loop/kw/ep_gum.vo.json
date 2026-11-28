@@ -3,7 +3,7 @@
  "rate": "+6%",
  "trim": true,
  "lines": [
-  "He was chewing gum and swallowed it by accident.",
+  "He swallowed his gum, and it came out whole.",
   "The old myth says it stays in your stomach for seven years.",
   "It doesn't, because your body can't digest gum base, so it stays whole.",
   "Your gut just squeezes it along, through the stomach and intestines.",
@@ -12,7 +12,7 @@
   "Only lots of gum, like a piece a day, can block your gut; one piece is fine."
  ],
  "durations": [
-  2.329,
+  2.259,
   2.973,
   4.161,
   3.503,
@@ -24,48 +24,48 @@
   [
    [
     0.0,
-    0.082,
+    0.094,
     "He"
    ],
    [
-    0.094,
-    0.259,
-    "was"
-   ],
-   [
-    0.271,
-    0.578,
-    "chewing"
-   ],
-   [
-    0.589,
-    0.872,
-    "gum"
-   ],
-   [
-    0.884,
-    0.99,
-    "and"
-   ],
-   [
-    1.002,
-    1.403,
+    0.106,
+    0.542,
     "swallowed"
    ],
    [
-    1.415,
-    1.497,
+    0.554,
+    0.707,
+    "his"
+   ],
+   [
+    0.719,
+    1.038,
+    "gum,"
+   ],
+   [
+    1.262,
+    1.344,
+    "and"
+   ],
+   [
+    1.356,
+    1.438,
     "it"
    ],
    [
-    1.509,
+    1.45,
     1.663,
-    "by"
+    "came"
    ],
    [
     1.674,
-    2.299,
-    "accident."
+    1.839,
+    "out"
+   ],
+   [
+    1.851,
+    2.229,
+    "whole."
    ]
   ],
   [

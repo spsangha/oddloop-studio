@@ -12,8 +12,9 @@ import sys, os; sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import kwkit as KW
 os.environ.setdefault('KW_LIGHT', '1')
 HERE = os.path.dirname(os.path.abspath(__file__))
-ep = KW.Episode('ep_gum', injury="swallowed it",
-                voice_lines=[l.strip() for l in open(os.path.join(HERE, 'ep_gum.txt')) if l.strip()],
+T0 = [None, 2.93, 6.5, 11.26, 15.37, 18.69, 23.4]   # pinned to the 26 Nov render: a line-1 rewrite only touches the hook shards
+ep = KW.Episode('ep_gum', injury="swallowed his gum",
+                voice_lines=list(zip(T0, [l.strip() for l in open(os.path.join(HERE, 'ep_gum.txt')) if l.strip()])),
                 music='sneaky_snitch', gap=0.6)
 ben = ep.person('Ben', 'civilian', 'eatmore-ben', gender='m', age='young', race='caucasian', hair='short02', tee='teal')
 doc = ep.person('Howard', 'scientist', 'eatmore-sci', gender='m', age='old', race='caucasian', hair='short02')

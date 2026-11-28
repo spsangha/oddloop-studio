@@ -3,7 +3,7 @@
  "rate": "+6%",
  "trim": true,
  "lines": [
-  "He cracked his sore neck, and heard a loud pop.",
+  "He cracked his own neck and tore an artery to his brain.",
   "Within moments, his left side went numb.",
   "He could barely walk, tilting hard to the left.",
   "At the hospital, doctors said he was having a stroke.",
@@ -12,7 +12,7 @@
   "Weeks later, he was walking again, and a stroke doctor says ninety-nine point nine percent of neck pops are fine."
  ],
  "durations": [
-  2.57,
+  2.747,
   2.343,
   2.553,
   2.621,
@@ -29,48 +29,58 @@
    ],
    [
     0.099,
-    0.453,
+    0.441,
     "cracked"
    ],
    [
-    0.464,
-    0.594,
+    0.453,
+    0.606,
     "his"
    ],
    [
-    0.606,
-    0.83,
-    "sore"
-   ],
-   [
+    0.618,
     0.842,
-    1.184,
-    "neck,"
+    "own"
    ],
    [
-    1.408,
-    1.502,
+    0.854,
+    1.089,
+    "neck"
+   ],
+   [
+    1.101,
+    1.207,
     "and"
    ],
    [
+    1.219,
     1.514,
-    1.738,
-    "heard"
+    "tore"
    ],
    [
-    1.75,
-    1.797,
-    "a"
+    1.526,
+    1.608,
+    "an"
    ],
    [
-    1.809,
-    2.139,
-    "loud"
+    1.62,
+    1.986,
+    "artery"
    ],
    [
-    2.151,
-    2.54,
-    "pop."
+    1.997,
+    2.115,
+    "to"
+   ],
+   [
+    2.127,
+    2.269,
+    "his"
+   ],
+   [
+    2.28,
+    2.717,
+    "brain."
    ]
   ],
   [

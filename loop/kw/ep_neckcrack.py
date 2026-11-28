@@ -12,7 +12,7 @@ import kwkit as KW
 os.environ.setdefault('KW_LIGHT', '1')
 HERE = os.path.dirname(os.path.abspath(__file__))
 T0 = [None, 3.5, 6.45, 9.6, 12.82, 17.49, 20.76]    # pinned to the 26 Nov render so a line-1 rewrite only touches the hook shards
-ep = KW.Episode('ep_neckcrack', injury="cracked his sore neck",
+ep = KW.Episode('ep_neckcrack', injury="cracked his own neck",
                 voice_lines=list(zip(T0, [l.strip() for l in open(os.path.join(HERE, 'ep_neckcrack.txt')) if l.strip()])),
                 music='sneaky_snitch', gap=0.6)
 ep.tts_say = {6: "Weeks later, he was walking again, and a stroke doctor says ninety-nine point nine percent of neck pops are fine."}
@@ -45,13 +45,15 @@ ep.waive = {"1 shots;": "brief: three kit shots (home / clinic / home); the hard
             "HOOK first shot": "brief: hook cuts f22 (hand on neck) and f46 (face close) live in cam_fn",
             "HOOK >= 2 cuts": "brief: hook cuts f22 and f46 live in cam_fn",
             "HOOK inside the body": "brief: vidIQ rule 1 person -> cutaway -> close-up; the scan comes later",
-            "HOOK 3rd shot": "brief: third hook shot (face close) at f46 in cam_fn"}
+            "HOOK 3rd shot": "brief: third hook shot (face close) at f46 in cam_fn",
+            "HOOK 8-11 words": "lead 28 Nov: line 1 wording set by the lead (vidIQ 97), 12 words spoken in 2.75 s"}
 fw = lambda i, w: int(round(ep.word(i, w) * FPS))
 fl = lambda i: int(round(ep.line(i) * FPS))
 fle = lambda i: int(round((ep.line(i) + ep.vo_dur[i]) * FPS))
 f_last = fle(6); FN = max(f_last + 34, 700); NF = FN + 1; ep.duration = round(NF / FPS, 4)
 CTA0 = FN - 44; LOOPF = FN - 9
-FPOP = fw(0, 'pop.')
+FPOP = fw(0, 'neck') + 4                           # the crack lands just after 'neck'
+FTORE = fw(0, 'tore')
 FH = fl(3) - 4                                      # clinic from here
 FP = fl(6) - 4                                      # home again: walking (payoff), CTA, loop
 FTORN = fw(4, 'torn')                               # consequence (50-60 %): the torn artery + clot
@@ -266,8 +268,8 @@ YL = dict(color='yellow', size=1.2); Y = 0.89
 ep.label_outline = True; ep.label_maxw = 820.0; ep.label_lens_fix = True
 def lab(txt, f0, f1, **k): return KW.fx.label(txt, at=f0 * F, pos=(0.5, Y), dur=(f1 - f0) * F, **(k or YL))
 wd = fw
-labels = [KW.fx.label('CRACKED', at=-1.0, pos=(0.5, Y), dur=1.0 + (FPOP - 2) * F, **YL),
-          lab('POP', FPOP, fl(1) - 6),
+labels = [KW.fx.label('CRACKED', at=-1.0, pos=(0.5, Y), dur=1.0 + (FTORE - 2) * F, **YL),
+          lab('ARTERY', FTORE, fl(1) - 6),
           lab('NUMB', wd(1, 'numb.'), fl(2) - 6),
           lab('TILTING', wd(2, 'tilting'), fl(3) - 6),
           lab('STROKE', wd(3, 'stroke.'), fl(4) - 6),
