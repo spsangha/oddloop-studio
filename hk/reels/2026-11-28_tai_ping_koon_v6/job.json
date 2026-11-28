@@ -1,0 +1,364 @@
+{
+ "slug": "tai_ping_koon",
+ "date": "2026-11-28",
+ "category": "eats",
+ "format": "map",
+ "look": "map_day",
+ "out": "HKUnlocked_tai_ping_koon_v6.mp4",
+ "format_row": 0,
+ "opener_pattern": "heritage stamp: \"since 1860\" sign + 3 famous dishes",
+ "no_photo_reason": "no free-licence photos of the dishes or the shop interior, so the shopfront and the three famous dishes are drawn as animated ink plates (owner asked for the same drawn look as the last Reel)",
+ "voice": {
+  "voice": "en-US-AvaNeural",
+  "rate": "+4%",
+  "gaps": {
+   "default": 0.3
+  }
+ },
+ "captions_from": 3.0,
+ "tail": 2.4,
+ "music": null,
+ "foley": true,
+ "headline": {
+  "en": "Cooking since {1860}",
+  "zh": "{1860年}開業 · 太平館",
+  "until": 2.5,
+  "max_w": 760
+ },
+ "proof_at": 1.2,
+ "caveat": {
+  "at": 1.2,
+  "text": "One of HK's oldest · prices vary",
+  "zh": "香港最老字號之一 · 價錢或有變",
+  "tag": "caveat",
+  "until": "L2+0.6"
+ },
+ "pill": {
+  "from": 0.9,
+  "until": "L2+0.6",
+  "en": "3 famous dishes",
+  "zh": "三大招牌菜"
+ },
+ "plate": {
+  "file": "blender/plates/%04d.png",
+  "made_by": "HK Unlocked, Blender",
+  "frames": 543,
+  "keys": [
+   [
+    0,
+    0
+   ],
+   [
+    "L3-0.05",
+    189
+   ],
+   [
+    "L4-0.05",
+    314
+   ],
+   [
+    "L5-0.05",
+    414
+   ],
+   [
+    "L6",
+    542
+   ]
+  ],
+  "tags": [
+   {
+    "from": "L2+0.2",
+    "until": "L3-0.25",
+    "kind": "chip",
+    "en": "Guangzhou 1860 → Hong Kong 1938",
+    "zh": "廣州創立 · 1938年來港"
+   },
+   {
+    "from": "L4+0.3",
+    "until": "L5-0.2",
+    "kind": "tag",
+    "price": "Pigeon",
+    "en": "Roast pigeon · fried to order",
+    "zh": "燒乳鴿 · 古法即叫即炸",
+    "pos": [
+     70,
+     250
+    ]
+   },
+   {
+    "from": "L5+0.9",
+    "until": "L6-0.1",
+    "kind": "tag",
+    "price": "≈HK$165",
+    "en": "Giant soufflé · size of your head",
+    "zh": "巨型梳乎厘 · 夠幾個人分",
+    "pos": [
+     70,
+     250
+    ]
+   }
+  ],
+  "sizzle": [
+   "L4",
+   "L5"
+  ],
+  "clapper": []
+ },
+ "map": {
+  "area": "hkcore2",
+  "view": [
+   114.164,
+   22.295,
+   114.179,
+   22.3125
+  ],
+  "mpp": 0.3,
+  "route": [
+   {
+    "mode": "walk",
+    "pts": [
+     [
+      114.1722798,
+      22.3057169
+     ],
+     [
+      114.17205,
+      22.30558
+     ],
+     [
+      114.17178,
+      22.30552
+     ],
+     [
+      114.17176,
+      22.3058
+     ],
+     [
+      114.17171,
+      22.3062
+     ],
+     [
+      114.17166,
+      22.3069
+     ],
+     [
+      114.17163,
+      22.30738
+     ],
+     [
+      114.1719,
+      22.30741
+     ],
+     [
+      114.1722,
+      22.30744
+     ],
+     [
+      114.1724,
+      22.30745
+     ]
+    ]
+   }
+  ],
+  "camera": [
+   [
+    0,
+    114.172,
+    22.3065,
+    0.46
+   ],
+   [
+    "L6",
+    114.172,
+    22.3065,
+    0.46
+   ],
+   [
+    "L6e",
+    114.172,
+    22.3066,
+    0.43
+   ],
+   [
+    "end",
+    114.172,
+    22.3038,
+    0.9
+   ]
+  ],
+  "progress": [
+   [
+    0,
+    0.0
+   ],
+   [
+    "L6",
+    0.0
+   ],
+   [
+    "L6e",
+    1.0
+   ],
+   [
+    "end",
+    1.0
+   ]
+  ],
+  "pins": [
+   {
+    "at": [
+     114.1722798,
+     22.3057169
+    ],
+    "col": "teal",
+    "from": "L6"
+   },
+   {
+    "at": [
+     114.1723978,
+     22.3071605
+    ],
+    "col": "gold",
+    "from": "L6"
+   }
+  ],
+  "labels": [
+   {
+    "en": "Jordan Exit B2",
+    "zh": "佐敦站B2出口",
+    "at": [
+     114.1722798,
+     22.3057169
+    ],
+    "off": [
+     0,
+     70
+    ],
+    "anchor": "mt",
+    "size": 42,
+    "from": "L6",
+    "until": "L6e+0.3"
+   },
+   {
+    "en": "Tai Ping Koon · 19-21 Mau Lam St",
+    "zh": "太平館 · 茂林街19-21號",
+    "at": [
+     114.1723978,
+     22.3071605
+    ],
+    "off": [
+     0,
+     -125
+    ],
+    "anchor": "mb",
+    "size": 42,
+    "from": "L6+0.6",
+    "until": "L6e+0.3"
+   }
+  ]
+ },
+ "scenes": [
+  {
+   "from": 0,
+   "kind": "plate"
+  },
+  {
+   "from": "L6",
+   "kind": "map"
+  },
+  {
+   "from": "L6e+0.3",
+   "kind": "summary",
+   "cam": [
+    114.172,
+    22.3038,
+    0.9
+   ],
+   "title_en": "Tai Ping Koon",
+   "title_zh": "太平館餐廳",
+   "rows": [
+    {
+     "en": "Founded in Guangzhou",
+     "zh": "廣州創立",
+     "value": "1860"
+    },
+    {
+     "en": "First Hong Kong shop",
+     "zh": "首間香港分店",
+     "value": "1938"
+    },
+    {
+     "en": "Giant soufflé, to share",
+     "zh": "巨型梳乎厘 · 一齊分",
+     "value": "≈HK$165"
+    },
+    {
+     "en": "19-21 Mau Lam St · Exit B2",
+     "zh": "茂林街19-21號 · 佐敦站B2出口",
+     "value": "≈4 min"
+    },
+    {
+     "en": "Also Central · TST · CWB",
+     "zh": "其他分店：中環 · 尖沙咀 · 銅鑼灣",
+     "value": "4 shops"
+    }
+   ],
+   "foot": "Checked 28 Nov 2026 · taipingkoon.com.hk · CNN · Atlas Obscura · map: OSM"
+  }
+ ],
+ "credits": [
+  "Animation drawn in code by HK Unlocked (Blender)",
+  "Map data © OpenStreetMap contributors (ODbL)",
+  "Synthetic spoken narration (Microsoft Azure neural voice Ava via edge-tts)"
+ ],
+ "topic": {
+  "place": "Tai Ping Koon 太平館, 19-21 Mau Lam St, Jordan/Yau Ma Tei",
+  "angle": "one of HK's oldest restaurants (1860 Guangzhou, HK 1938): Swiss wings sweet/Swiss legend, original-way pigeon, giant soufflé, oldest branch from Jordan Exit B2",
+  "category": "eats",
+  "tags": [
+   "tai ping koon",
+   "soy sauce western",
+   "swiss wings",
+   "soufflé",
+   "jordan",
+   "yau ma tei",
+   "heritage restaurant"
+  ]
+ },
+ "improve": {
+  "fixes": "2026-11-28 DQ+Zanmai: the FIRST IN HK stamp was cut off at the right edge and the One Causeway Bay pin was approximate with no MTR exit; here the 1860 stamp sits fully inside the frame (checked by the framing log), both pins are exact OSM nodes and the walk from Jordan Exit B2 is drawn",
+  "new": "one drawn plate per famous dish, each with its own motion (glaze shine on the wings, steam off the pigeon, the soufflé rising out of its dish)",
+  "from": "owner 28 Nov: same look as the last Reel but better, tell about the famous dishes"
+ },
+ "lines": [
+  {
+   "text": "This Hong Kong restaurant started cooking in 1860.",
+   "say": "This Hong Kong restaurant started cooking in eighteen sixty.",
+   "zh": "呢間香港餐廳1860年已經開爐"
+  },
+  {
+   "text": "Tai Ping Koon came from Guangzhou to Hong Kong in 1938.",
+   "say": "Tai Ping Koon came from Guangzhou to Hong Kong in nineteen thirty-eight.",
+   "zh": "太平館源自廣州，1938年來港"
+  },
+  {
+   "text": "Legend says a guest called the wings sweet, and staff heard Swiss.",
+   "zh": "相傳外國客讚雞翼「sweet」，夥計聽成「Swiss」"
+  },
+  {
+   "text": "The pigeon is still made the original way, fried to order.",
+   "zh": "燒乳鴿仍然用古法，即叫即炸"
+  },
+  {
+   "text": "Then share the giant soufflé, about HK$165.",
+   "say": "Then share the giant soufflé, about a hundred and sixty-five dollars.",
+   "zh": "再一齊分巨型梳乎厘，約HK$165"
+  },
+  {
+   "text": "The oldest branch is on Mau Lam Street, near Jordan Exit B2.",
+   "say": "The oldest branch is on Mau Lam Street, near Jordan Exit B two.",
+   "zh": "最老分店喺茂林街，近佐敦站B2出口"
+  }
+ ],
+ "route_guide": false
+}
