@@ -1,0 +1,40 @@
+{
+ "slug": "dq_zanmai_firsts",
+ "date": "2026-11-28",
+ "voice": {
+  "voice": "en-US-AvaNeural",
+  "rate": "+4%",
+  "gaps": {
+   "default": 0.3
+  }
+ },
+ "lines": [
+  {
+   "text": "Two famous chains just opened in Hong Kong.",
+   "zh": "兩大名店啱啱登陸香港"
+  },
+  {
+   "text": "Dairy Queen's first shop is in One Causeway Bay.",
+   "zh": "Dairy Queen首間分店喺銅鑼灣One Causeway Bay"
+  },
+  {
+   "text": "Say Upside Down for a large Blizzard at HK$25, until Monday.",
+   "say": "Say Upside Down for a large Blizzard at twenty-five dollars, until Monday.",
+   "zh": "講「反轉唔跌」大杯暴風雪只需HK$25，至星期一"
+  },
+  {
+   "text": "Sushi Zanmai from Tokyo is on Humphreys Avenue in Tsim Sha Tsui.",
+   "zh": "東京壽司三味喺尖沙咀堪富利士道"
+  },
+  {
+   "text": "Dine in, and the first 300 a day get three free tuna sushi.",
+   "say": "Dine in, and the first three hundred a day get three free tuna sushi.",
+   "zh": "堂食每日首300位送三件吞拿魚壽司"
+  },
+  {
+   "text": "That's HK$90 of tuna, free until 23 December.",
+   "say": "That's ninety dollars of tuna, free until December twenty-third.",
+   "zh": "價值HK$90，送到12月23日"
+  }
+ ]
+}

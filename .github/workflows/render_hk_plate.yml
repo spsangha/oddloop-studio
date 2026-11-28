@@ -1,0 +1,87 @@
+name: Render an HK Unlocked plate Reel (Blender ink plates + v6 template)
+# Blender scene (reel blender/scene.py) -> passes -> ink.py -> plates, sharded; then build.py render.
+# stills: comma list of plate frames -> only those plates (draft check), no final.
+on:
+  workflow_dispatch:
+    inputs:
+      folder: {description: 'Reel folder under hk/reels', required: true}
+      stills: {description: 'Comma list of plate frames for a draft check (empty = full render)', required: false, default: ''}
+      shards: {description: 'Number of shards for the full render', required: false, default: '12'}
+env:
+  BLENDER: blender-4.2.3-linux-x64
+jobs:
+  plan:
+    runs-on: ubuntu-24.04
+    outputs: {list: '${{ steps.p.outputs.list }}'}
+    steps:
+      - id: p
+        run: |
+          if [ -n "${{ github.event.inputs.stills }}" ]; then echo 'list=[0]' >> $GITHUB_OUTPUT
+          else python3 -c "import json;print('list='+json.dumps(list(range(int('${{ github.event.inputs.shards }}')))))" >> $GITHUB_OUTPUT; fi
+  plates:
+    needs: plan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 80
+    strategy:
+      fail-fast: true
+      matrix: {shard: '${{ fromJSON(needs.plan.outputs.list) }}'}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        id: bc
+        with: {path: '${{ env.BLENDER }}', key: '${{ env.BLENDER }}'}
+      - name: Blender
+        if: steps.bc.outputs.cache-hit != 'true'
+        run: |
+          for u in https://download.blender.org/release/Blender4.2/$BLENDER.tar.xz https://mirrors.ocf.berkeley.edu/blender/release/Blender4.2/$BLENDER.tar.xz https://ftp.halifax.rwth-aachen.de/blender/release/Blender4.2/$BLENDER.tar.xz; do
+            curl -fsSL --retry 3 -o b.tar.xz "$u" && break; done
+          tar xf b.tar.xz && rm b.tar.xz
+      - name: Libraries
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends libxi6 libxxf86vm1 libxfixes3 libxrender1 libgl1 libxkbcommon0 libsm6 fonts-noto-cjk python3-numpy python3-opencv python3-scipy
+      - name: Plates
+        run: |
+          B=$PWD/$BLENDER/blender; cd hk/reels/${{ github.event.inputs.folder }}/blender
+          $B -b -y --factory-startup -P scene.py -- $PWD/scene.blend 2>&1 | grep -E "SAVED|INDEXED|FRAME|Error|Traceback|line [0-9]" | tail -80
+          N=$(python3 -c "import re;print(int(re.search(r'sc.frame_end = (\d+)',open('scene.py').read()).group(1))+1)")
+          S="${{ github.event.inputs.stills }}"
+          if [ -n "$S" ]; then
+            $B -b -y scene.blend -f $S 2>&1 | grep -E "Saved|Error" | tail -20
+            for f in ${S//,/ }; do python3 ink.py pass $f $f plates; done
+          else
+            K=${{ matrix.shard }}; M=${{ github.event.inputs.shards }}; A=$(( K * N / M )); E=$(( (K + 1) * N / M - 1 ))
+            echo "shard $K frames $A-$E"; time $B -b -y scene.blend -s $A -e $E -a 2>&1 | grep -E "Saved|Error" | tail -5
+            python3 ink.py pass $A $E plates
+          fi
+          ls plates | wc -l
+      - uses: actions/upload-artifact@v4
+        with:
+          name: plates-${{ matrix.shard }}
+          path: hk/reels/${{ github.event.inputs.folder }}/blender/plates/*.png
+          retention-days: 7
+  final:
+    needs: plates
+    if: github.event.inputs.stills == ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: {pattern: 'plates-*', merge-multiple: true, path: 'hk/reels/${{ github.event.inputs.folder }}/blender/plates'}
+      - name: System packages
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends ffmpeg fonts-noto-cjk python3-cairo python3-numpy python3-pil python3-opencv
+          sudo mkdir -p /usr/local/share/fonts/asi-document && sudo cp hk/fonts/*.ttf /usr/local/share/fonts/asi-document/
+      - name: Render
+        run: |
+          D=hk/reels/${{ github.event.inputs.folder }}; ls $D/blender/plates | wc -l
+          cd hk/_template_v6 && python3 build.py ../reels/${{ github.event.inputs.folder }} render
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ github.event.inputs.folder }}
+          path: |
+            hk/reels/${{ github.event.inputs.folder }}/*.mp4
+            hk/reels/${{ github.event.inputs.folder }}/timeline.json
+          retention-days: 14
