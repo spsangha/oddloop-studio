@@ -1,12 +1,275 @@
 {
  "slug": "dq_zanmai_firsts",
  "date": "2026-11-28",
+ "category": "opening",
+ "format": "map",
+ "look": "map_day",
+ "out": "HKUnlocked_dq_zanmai_firsts_v6.mp4",
+ "format_row": 0,
+ "opener_pattern": "two firsts in one (opening news)",
+ "no_photo_reason": "both shops opened this week; no free-licence photos exist, so the items are drawn as animated ink plates (owner asked for drawings like Temple Street)",
  "voice": {
   "voice": "en-US-AvaNeural",
   "rate": "+4%",
   "gaps": {
    "default": 0.3
   }
+ },
+ "captions_from": 3.0,
+ "tail": 2.4,
+ "music": null,
+ "foley": true,
+ "headline": {
+  "en": "2 famous chains,\nfirst time in {HK}",
+  "zh": "兩大名店 {首次登陸香港}",
+  "until": 2.5,
+  "max_w": 760
+ },
+ "proof_at": 1.2,
+ "caveat": {
+  "at": 1.2,
+  "text": "Offers limited · T&Cs apply",
+  "zh": "優惠有限 · 受條款約束",
+  "tag": "caveat",
+  "until": "L2+0.6"
+ },
+ "pill": {
+  "from": 0.9,
+  "until": "L2+0.6",
+  "en": "HK$25 + FREE",
+  "zh": "雪糕$25 · 壽司免費"
+ },
+ "plate": {
+  "file": "blender/plates/%04d.png",
+  "made_by": "HK Unlocked, Blender",
+  "frames": 556,
+  "keys": [
+   [
+    0,
+    0
+   ],
+   [
+    "L2-0.05",
+    81
+   ],
+   [
+    "L4-0.05",
+    303
+   ],
+   [
+    "L6",
+    555
+   ]
+  ],
+  "tags": [
+   {
+    "from": "L2+0.2",
+    "until": "L3-0.25",
+    "kind": "chip",
+    "en": "Shop 113, 1/F, One Causeway Bay",
+    "zh": "銅鑼灣告士打道281號"
+   },
+   {
+    "from": "L3+0.6",
+    "until": "L4-0.2",
+    "kind": "tag",
+    "price": "HK$25",
+    "en": "Large Blizzard · was HK$52",
+    "zh": "講「Upside Down」至11月30日",
+    "pos": [
+     50,
+     420
+    ]
+   },
+   {
+    "from": "L4+0.2",
+    "until": "L5-0.2",
+    "kind": "chip",
+    "en": "G/F, One Humphreys, TST",
+    "zh": "尖沙咀堪富利士道1-2A號"
+   },
+   {
+    "from": "L5+0.9",
+    "until": "L6-0.1",
+    "kind": "tag",
+    "price": "FREE",
+    "en": "3 tuna sushi · HK$90 value",
+    "zh": "堂食 · 每日首300位",
+    "pos": [
+     50,
+     420
+    ]
+   }
+  ],
+  "sizzle": [],
+  "clapper": [
+   "L3+0.4",
+   "L5+0.9"
+  ]
+ },
+ "map": {
+  "area": "hkcore2",
+  "view": [
+   114.155,
+   22.261,
+   114.196,
+   22.318
+  ],
+  "mpp": 1.0,
+  "route": [],
+  "camera": [
+   [
+    0,
+    114.1785,
+    22.2895,
+    2.0
+   ],
+   [
+    "L6",
+    114.1785,
+    22.2895,
+    2.0
+   ],
+   [
+    "end",
+    114.1785,
+    22.2897,
+    1.92
+   ]
+  ],
+  "progress": [
+   [
+    0,
+    0.0
+   ],
+   [
+    "end",
+    0.0
+   ]
+  ],
+  "pins": [
+   {
+    "at": [
+     114.1845,
+     22.2812
+    ],
+    "col": "teal",
+    "from": "L6"
+   },
+   {
+    "at": [
+     114.1724,
+     22.2982
+    ],
+    "col": "gold",
+    "from": "L6"
+   }
+  ],
+  "labels": [
+   {
+    "en": "Dairy Queen · One Causeway Bay",
+    "zh": "銅鑼灣告士打道281號",
+    "at": [
+     114.1845,
+     22.2812
+    ],
+    "off": [
+     0,
+     -70
+    ],
+    "anchor": "mb",
+    "size": 42,
+    "from": "L6",
+    "until": "L6e+0.3"
+   },
+   {
+    "en": "Sushi Zanmai · One Humphreys",
+    "zh": "尖沙咀堪富利士道1-2A號",
+    "at": [
+     114.1724,
+     22.2982
+    ],
+    "off": [
+     0,
+     60
+    ],
+    "anchor": "mt",
+    "size": 42,
+    "from": "L6",
+    "until": "L6e+0.3"
+   }
+  ]
+ },
+ "scenes": [
+  {
+   "from": 0,
+   "kind": "plate"
+  },
+  {
+   "from": "L6",
+   "kind": "map"
+  },
+  {
+   "from": "L6e+0.3",
+   "kind": "summary",
+   "cam": [
+    114.1785,
+    22.2897,
+    1.92
+   ],
+   "title_en": "Two firsts in Hong Kong",
+   "title_zh": "兩大名店 首次登陸香港",
+   "rows": [
+    {
+     "en": "DQ Large Blizzard, say \"Upside Down\"",
+     "zh": "大杯暴風雪 · 至11月30日(一)",
+     "value": "HK$25"
+    },
+    {
+     "en": "DQ · 281 Gloucester Rd, CWB",
+     "zh": "One Causeway Bay 1樓113號舖",
+     "value": "11am–10pm"
+    },
+    {
+     "en": "Zanmai 3 tuna sushi, first 300/day",
+     "zh": "壽司三味 · 堂食每日首300位",
+     "value": "FREE"
+    },
+    {
+     "en": "Free sushi offer ends",
+     "zh": "送壽司優惠至",
+     "value": "23 Dec"
+    },
+    {
+     "en": "Zanmai · 1-2A Humphreys Ave, TST",
+     "zh": "尖沙咀 One Humphreys 地下",
+     "value": "G/F"
+    }
+   ],
+   "foot": "Checked 28 Nov 2026 · topick.hket.com · travelandtourworld.com · map: OSM"
+  }
+ ],
+ "credits": [
+  "Animation drawn in code by HK Unlocked (Blender)",
+  "Map data © OpenStreetMap contributors (ODbL)",
+  "Synthetic spoken narration (Microsoft Azure neural voice Ava via edge-tts)"
+ ],
+ "topic": {
+  "place": "Dairy Queen One Causeway Bay + Sushi Zanmai One Humphreys",
+  "angle": "two first-in-HK openings: DQ Upside Down Blizzard HK$25 to 30 Nov, Zanmai 3 free tuna sushi first 300/day to 23 Dec",
+  "category": "opening",
+  "tags": [
+   "dairy queen",
+   "sushi zanmai",
+   "causeway bay",
+   "tsim sha tsui",
+   "opening"
+  ]
+ },
+ "improve": {
+  "fixes": "2026-11-28 Kennedy Town: the whole Reel was one zoomed map with no drawing of the subject itself; here the items (Blizzard flip, tuna, the 3 free pieces) are drawn and animated and the map only shows where",
+  "new": "two-venue split opener: both shopfronts drawn side by side with a FIRST IN HK stamp",
+  "from": "owner order 28 Nov: both openings in one Reel, items drawn like Temple Street"
  },
  "lines": [
   {

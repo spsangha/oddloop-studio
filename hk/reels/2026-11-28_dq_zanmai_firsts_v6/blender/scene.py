@@ -304,7 +304,7 @@ NAVY = toon('navy', hx('22386a')); STEEL = toon('steel', hx('c3c8ce')); DARK = t
 TXT_W = toon('txtw', hx('ffffff'), lit=0.6); TXT_R = toon('txtr', hx('c81e28'), lit=0.1); TXT_K = toon('txtk', hx('2a2626'))
 
 def floor(name, cx, w_=14, d_=12):
-    boxes_obj(name, [(cx, -2.0, -0.05, w_, d_, 0.1, 0)], [toon('floor', hx('d9d1c3'), mottle=0.05)], coll=GROUND)
+    boxes_obj(name, [(cx, -2.0, -0.05, w_, d_, 0.1, 0)], [toon('floor', hx('cbbfa9'), mottle=0.05)], coll=GROUND)
 def kv(ob, path, keys, interp='BEZIER'):
     for f, v in keys:
         setattr(ob, path, v); ob.keyframe_insert(path, frame=f)
@@ -313,33 +313,33 @@ def kv(ob, path, keys, interp='BEZIER'):
 
 # ---------------- S1: two shopfronts side by side + FIRST IN HK stamp ----------------
 floor('floor1', 0, 16, 14)
-boxes_obj('mallwall', [(0, 0.6, 4.6, 9.0, 0.3, 9.2, 0)], [toon('mallwall', hx('ece4d4'))])
-boxes_obj('mallbands', [(0, 0.42, 3.55, 9.0, 0.08, 0.12, 0), (0, 0.42, 6.4, 9.0, 0.08, 0.12, 0)], [toon('mallband', hx('c9b79a'))])
+boxes_obj('mallwall', [(0, 0.6, 5.5, 9.0, 0.3, 11.0, 0)], [toon('mallwall', hx('e6d3b3'))])
+boxes_obj('mallbands', [(0, 0.42, 3.55, 9.0, 0.08, 0.12, 0), (0, 0.42, 6.4, 9.0, 0.08, 0.12, 0), (0, 0.42, 9.2, 9.0, 0.08, 0.12, 0)], [toon('mallband', hx('c9b79a'))])
 # Dairy Queen (left)
 DX = -1.45
 boxes_obj('dq_front', [(DX - 1.2, 0.0, 1.5, 0.14, 0.4, 3.0, 0), (DX + 1.2, 0.0, 1.5, 0.14, 0.4, 3.0, 0),
-                       (DX, 0.0, 2.95, 2.54, 0.4, 0.6, 0)], [WHITE])
+                       (DX, 0.0, 3.05, 2.54, 0.4, 0.8, 0)], [WHITE])
 boxes_obj('dq_back', [(DX, 0.42, 1.3, 2.3, 0.05, 2.6, 0)], [DQRED])
 boxes_obj('dq_counter', [(DX, -0.05, 0.5, 2.2, 0.5, 1.0, 0), (DX, -0.31, 0.62, 2.2, 0.02, 0.16, 1)], [WHITE, DQRED])
 for i, c_ in enumerate(['f2c879', 'f4f1ea', 'f2c879']):
     prim('box', f'dq_menu{i}', (DX - 0.7 + i * 0.7, 0.38, 2.0), (0.3, 0.02, 0.22), toon(f'menu{i}', hx(c_), lit=0.3))
-sg = prim('cyl', 'dq_sign', (DX, -0.25, 2.98), (0.8, 0.46, 0.05), DQRED, rot=(H90, 0, 0), seg=28)
-prim('cyl', 'dq_signrim', (DX, -0.23, 2.98), (0.86, 0.52, 0.04), TXT_W, rot=(H90, 0, 0), seg=28)
-text('dq_txt', 'DQ', (DX, -0.31, 2.98), 0.62, TXT_W)
-boxes_obj('dq_band', [(DX, -0.22, 2.42, 2.5, 0.06, 0.2, 0)], [DQBLUE])
-text('dq_txt2', 'DAIRY QUEEN', (DX, -0.26, 2.42), 0.15, TXT_W)
+sg = prim('cyl', 'dq_sign', (DX, -0.25, 3.15), (1.0, 0.58, 0.05), DQRED, rot=(H90, 0, 0), seg=28)
+prim('cyl', 'dq_signrim', (DX, -0.23, 3.15), (1.07, 0.65, 0.04), TXT_W, rot=(H90, 0, 0), seg=28)
+text('dq_txt', 'DQ', (DX, -0.31, 3.15), 0.8, TXT_W)
+boxes_obj('dq_band', [(DX, -0.32, 2.42, 2.5, 0.06, 0.22, 0)], [DQBLUE])
+text('dq_txt2', 'DAIRY QUEEN', (DX, -0.36, 2.42), 0.17, TXT_W)
 for i in range(3):     # cups on the counter
     prim('frustum', f'dq_cupc{i}', (DX - 0.5 + i * 0.5, -0.1, 1.09), (0.07, 0.07, 0.09), WHITE, rot=(math.pi, 0, 0), seg=12)
     prim('sph', f'dq_cupt{i}', (DX - 0.5 + i * 0.5, -0.1, 1.19), (0.07, 0.07, 0.035), toon('icecream', hx('f3e6cf')), seg=12)
 # Sushi Zanmai (right)
 ZX = 1.45
 boxes_obj('zm_front', [(ZX - 1.2, 0.0, 1.5, 0.16, 0.4, 3.0, 0), (ZX + 1.2, 0.0, 1.5, 0.16, 0.4, 3.0, 0),
-                       (ZX, 0.0, 2.95, 2.56, 0.4, 0.6, 0)], [WOOD])
+                       (ZX, 0.0, 3.05, 2.56, 0.4, 0.8, 0)], [WOOD])
 boxes_obj('zm_back', [(ZX, 0.42, 1.3, 2.3, 0.05, 2.6, 0)], [CREAM])
 boxes_obj('zm_counter', [(ZX, 0.0, 0.5, 2.2, 0.5, 1.0, 0), (ZX, 0.0, 1.03, 2.3, 0.6, 0.06, 0)], [WOOD, HINOKI])
-boxes_obj('zm_board', [(ZX, -0.23, 2.98, 2.2, 0.06, 0.48, 0)], [toon('zmboard', hx('f6f1e4'), lit=0.4)])
-text('zm_txt', 'すしざんまい', (ZX, -0.27, 3.03), 0.32, TXT_R)
-text('zm_txt2', 'SUSHI ZANMAI', (ZX, -0.27, 2.82), 0.11, TXT_K)
+boxes_obj('zm_board', [(ZX, -0.23, 3.1, 2.36, 0.06, 0.62, 0)], [toon('zmboard', hx('f6f1e4'), lit=0.4)])
+text('zm_txt', 'すしざんまい', (ZX, -0.27, 3.18), 0.36, TXT_R)
+text('zm_txt2', 'SUSHI ZANMAI', (ZX, -0.27, 2.92), 0.14, TXT_K)
 for i in range(3):     # noren curtain, swaying in the doorway breeze
     nr = prim('box', f'zm_noren{i}', (0, 0, -0.32), (0.35, 0.012, 0.32), NAVY)
     pv = empty(f'zm_nor_pv{i}', (ZX - 0.74 + i * 0.74, -0.24, 2.66)); nr.parent = pv
@@ -354,16 +354,16 @@ c0.location = (ZX - 0.3, 0.25, 0); c0.rotation_euler = (0, 0, math.pi)
 s0 = person('srv0', hx('d3202e'), hx('34374a'), walk=False, hair='cap', top='tee', face=True, shadow=False)
 s0.location = (DX + 0.4, 0.25, 0); s0.rotation_euler = (0, 0, math.pi)
 # FIRST IN HK stamp: thumps on at frame 18-30 over the mall wall between the two signs
-st = empty('stamp', (0, -0.6, 3.98))
+st = empty('stamp', (1.95, -0.6, 5.9))
 prim('cyl', 'stamp_disc', (0, 0, 0), (0.95, 0.95, 0.04), toon('stampred', hx('c8302a'), lit=0.05), rot=(H90, 0, 0), seg=32).parent = st
 prim('cyl', 'stamp_ring', (0, -0.03, 0), (0.82, 0.82, 0.01), toon('stampring', hx('f6efe0'), lit=0.5), rot=(H90, 0, 0), seg=32).parent = st
 prim('cyl', 'stamp_in', (0, -0.05, 0), (0.76, 0.76, 0.01), toon('stampred', hx('c8302a'), lit=0.05), rot=(H90, 0, 0), seg=32).parent = st
 text('stamp_en', 'FIRST IN HK', (0, -0.08, 0.2), 0.24, TXT_W).parent = st
 text('stamp_zh', '香港首間', (0, -0.08, -0.17), 0.36, TXT_W).parent = st
-kv(st, 'scale', [(0, (0.001, 0.001, 0.001)), (16, (0.001, 0.001, 0.001)), (22, (0.95, 0.95, 0.95)), (27, (0.72, 0.72, 0.72)), (31, (0.76, 0.76, 0.76))])
+kv(st, 'scale', [(0, (0.001, 0.001, 0.001)), (16, (0.001, 0.001, 0.001)), (22, (0.75, 0.75, 0.75)), (27, (0.57, 0.57, 0.57)), (31, (0.6, 0.6, 0.6))])
 kv(st, 'rotation_euler', [(16, (0, 0.5, 0)), (24, (0, -0.12, 0)), (31, (0, -0.12, 0))])
 # shoppers crossing in front of the shops
-WALK = [(-5.2, -2.3, 1, 1.15, 0.0), (4.8, -3.1, -1, 1.25, 1.1), (-6.5, -3.8, 1, 1.3, 2.0), (1.0, -1.8, 1, 1.0, 0.5)]
+WALK = [(-4.2, -1.6, 1, 1.15, 0.0), (4.0, -2.2, -1, 1.25, 1.1), (-5.0, -2.8, 1, 1.3, 2.0), (0.6, -1.3, 1, 1.0, 0.5)]
 for i, (x0, y0, d_, sp, ph) in enumerate(WALK):
     rr = random.Random(300 + i)
     p = person(f'w{i}', rr.choice(P['cloth']), rr.choice(P['pants']), scale=rr.uniform(0.93, 1.04), speed=sp, phase=ph, face=False, rr=rr)
@@ -418,32 +418,32 @@ boxes_obj('s_board', [(SX, 0.62, 1.065, 1.6, 0.42, 0.05, 0)], [toon('board', hx(
 chef = person('chef', hx('f4f1ea'), hx('34374a'), walk=False, hair='short', top='shirt', face=True, shadow=False)
 chef.location = (SX + 0.2, 1.3, 0); chef.rotation_euler = (0, 0, math.pi)
 hd = bpy.data.objects['chef_hd']
-prim('cyl', 'chef_hat', (0, 0, 0.17), (0.095, 0.1, 0.06), WHITE, parent=hd, seg=12)
-prim('box', 'chef_band', (0, 0, 0.12), (0.095, 0.1, 0.015), NAVY, parent=hd)
+prim('cyl', 'chef_hat', (0, 0, 0.25), (0.095, 0.1, 0.06), WHITE, parent=hd, seg=12)
+prim('box', 'chef_band', (0, 0, 0.185), (0.097, 0.102, 0.015), NAVY, parent=hd)
 # the tuna on the board (head to the right), with a red block of loin at the cut end
-TU = empty('tuna', (SX - 0.25, 0.62, 1.2))
+TU = empty('tuna', (SX - 0.55, 0.62, 1.2))
 prim('sph', 'tuna_back', (0, 0, 0.02), (0.55, 0.17, 0.15), toon('tunaback', hx('2b3a58')), seg=16, parent=TU)
 prim('sph', 'tuna_belly', (0, -0.005, -0.04), (0.53, 0.16, 0.12), toon('tunabelly', hx('cfd3da'), lit=0.2), seg=16, parent=TU)
 prim('cone', 'tuna_tail', (-0.62, 0, 0), (0.1, 0.06, 0.12), toon('tunaback', hx('2b3a58')), rot=(0, -H90, 0), parent=TU)
 prim('box', 'tuna_fin', (-0.76, 0, 0), (0.03, 0.02, 0.16), toon('tunaback', hx('2b3a58')), rot=(0, 0.2, 0), parent=TU)
 prim('cone', 'tuna_dorsal', (-0.1, 0, 0.16), (0.07, 0.015, 0.07), toon('fin', hx('d9b13a')), parent=TU)
 prim('sph', 'tuna_eye', (0.43, -0.12, 0.04), (0.03, 0.01, 0.03), DARK, parent=TU)
-prim('box', 'loin_red', (SX + 0.45, 0.6, 1.14), (0.16, 0.12, 0.05), toon('akami', hx('b52a37'), lit=0.05))
-prim('box', 'loin_pink', (SX + 0.45, 0.6, 1.2), (0.16, 0.12, 0.018), toon('otoro', hx('efb3ab'), lit=0.15))
+prim('box', 'loin_red', (SX + 0.12, 0.62, 1.14), (0.16, 0.12, 0.05), toon('akami', hx('b52a37'), lit=0.05))
+prim('box', 'loin_pink', (SX + 0.12, 0.62, 1.2), (0.16, 0.12, 0.018), toon('otoro', hx('efb3ab'), lit=0.15))
 # chef's right arm saws the knife (parented to the forearm), slices appear on the board
 sh = bpy.data.objects['chef_sh-1']; el = bpy.data.objects['chef_el-1']
 for o_ in (sh, el): o_.animation_data_clear()
-drv(sh, 'rotation_euler', 0, '1.05+0.10*sin(frame*0.33)'); drv(sh, 'rotation_euler', 1, '0.0'); el.rotation_euler = (0.55, 0, 0)
+drv(sh, 'rotation_euler', 0, '1.2+0.08*sin(frame*0.33)'); drv(sh, 'rotation_euler', 1, '0.0'); el.rotation_euler = (0.55, 0, 0)
 sh2 = bpy.data.objects['chef_sh1']; el2 = bpy.data.objects['chef_el1']
 for o_ in (sh2, el2): o_.animation_data_clear()
 sh2.rotation_euler = (0.9, 0, -0.3); el2.rotation_euler = (0.7, 0, 0)
-kn = empty('knife', (SX + 0.45, 0.52, 1.27))
-drv(kn, 'location', 0, f'{SX + 0.42}+0.11*sin(frame*0.33)'); drv(kn, 'location', 2, '1.25+0.025*cos(frame*0.33)')
+kn = empty('knife', (SX + 0.1, 0.66, 1.27))
+drv(kn, 'location', 0, f'{SX + 0.1}+0.06*sin(frame*0.33)'); drv(kn, 'location', 2, '1.25+0.025*cos(frame*0.33)')
 kn.rotation_euler = (0, 0.12, 0)
 prim('box', 'knife_blade', (0.0, 0, 0), (0.24, 0.006, 0.028), STEEL, parent=kn)
 prim('box', 'knife_handle', (0.31, 0, 0.005), (0.08, 0.014, 0.016), WOOD, parent=kn)
 for k, f in enumerate((340, 370, 400)):
-    sl = prim('box', f'slice{k}', (SX + 0.12 - k * 0.1, 0.5, 1.1), (0.045, 0.09, 0.012), toon('chutoro', hx('e0707a'), lit=0.1), rot=(0, 0, 0.15))
+    sl = prim('box', f'slice{k}', (SX + 0.4 + k * 0.1, 0.5, 1.1), (0.045, 0.09, 0.012), toon('chutoro', hx('e0707a'), lit=0.1), rot=(0, 0, 0.15))
     kv(sl, 'scale', [(303, (0.001, 0.001, 0.001)), (f, (0.001, 0.001, 0.001)), (f + 6, (0.045, 0.09, 0.012))])
 # the plate of 3 (otoro, chutoro, akami) slides along the counter to the front on "Dine in" (L5 ~ f428)
 PL = empty('plate', (SX + 2.4, 0.1, 1.045))
@@ -469,12 +469,10 @@ def cam(name, keys, lens=24):
             for kp in fcu.keyframe_points: kp.interpolation = 'LINEAR'
     return c
 
-C1 = cam('S1', [(0, (0.4, -14.0, 1.6), (0, 6, 3.9)), (90, (0.4, -9.5, 1.6), (0, 6, 3.6))], lens=22)
-C2 = cam('S2', [(90, (0.0, -3.0, 1.75), (0, 12, 3.2)), (210, (-0.3, 3.0, 1.75), (0.4, 18, 2.6))], lens=22)
 
-C1 = cam('S1', [(0, (0.0, -8.6, 1.7), (0, 0, 2.55)), (80, (0.0, -7.6, 1.7), (0, 0, 2.5))], lens=30)
+C1 = cam('S1', [(0, (0.0, -7.9, 3.0), (0, 0, 4.3)), (80, (0.0, -7.3, 3.0), (0, 0, 4.25))], lens=28)
 C2 = cam('S2', [(81, (QX - 0.1, -1.6, 1.62), (QX + 0.08, 0.4, 1.3)), (150, (QX - 0.05, -1.05, 1.6), (QX + 0.08, 0.15, 1.36)), (302, (QX, -0.85, 1.58), (QX + 0.08, 0.1, 1.38))], lens=32)
-C3 = cam('S3', [(303, (SX - 0.2, -1.9, 1.9), (SX + 0.1, 0.8, 1.35)), (420, (SX - 0.1, -1.6, 1.8), (SX + 0.15, 0.6, 1.25)),
+C3 = cam('S3', [(303, (SX - 0.1, -1.45, 1.72), (SX + 0.05, 0.7, 1.28)), (420, (SX - 0.05, -1.3, 1.68), (SX + 0.1, 0.6, 1.22)),
                 (460, (SX + 0.1, -1.0, 1.45), (SX + 0.2, 0.2, 1.08)), (555, (SX + 0.15, -0.85, 1.42), (SX + 0.2, 0.2, 1.08))], lens=32)
 for f, c in ((0, C1), (81, C2), (303, C3)):
     mk = sc.timeline_markers.new(c.name, frame=f); mk.camera = c

@@ -409,10 +409,11 @@ class Reel:
     # ----- scene painters -----
     def paint_map(self, fr, t, cam=None, dim=0.0):
         cr = fr.cr; cam = cam or self.cam(t); self.map.draw(cr, cam); S = self.map.to_screen(cam)
-        allp = [S(p) for p in self.route_all()]; allp_s = smooth(allp)
-        stroke_path(cr, allp_s, 9, rgb(C['ink'], 0.35), dash=[2, 18], offset=-t * 40)   # whole route, faint dotted
-        done = sub_path(allp_s, self.progress(t))
-        stroke_path(cr, done, 20, rgb(C['card'], 0.95)); stroke_path(cr, done, 11, rgb(C['coral']))
+        if self.route:     # pins-only maps (route: []) draw no route and no guide
+            allp = [S(p) for p in self.route_all()]; allp_s = smooth(allp)
+            stroke_path(cr, allp_s, 9, rgb(C['ink'], 0.35), dash=[2, 18], offset=-t * 40)   # whole route, faint dotted
+            done = sub_path(allp_s, self.progress(t))
+            stroke_path(cr, done, 20, rgb(C['card'], 0.95)); stroke_path(cr, done, 11, rgb(C['coral']))
         m = self.job['map']
         for er in m.get('extra_routes', []):   # extra walks drawn as growing lines (no traveller), e.g. one per MTR exit
             u = max(0.0, min(1.0, (t - self.T(er['from'])) / er.get('dur', 1.0)))
@@ -422,8 +423,10 @@ class Reel:
         for p in m.get('pins', []):
             if t >= self.T(p.get('from', 0)):
                 x, y = S(p['at']); draw_pin(cr, x, y, C[p.get('col', 'teal')], back((t - self.T(p.get('from', 0))) / 0.45))
-        (lon, lat), ang, mode = self.traveller(t); x, y = S((lon, lat))
-        if mode == 'ferry':
+        if not self.route: mode = None
+        else: (lon, lat), ang, mode = self.traveller(t); x, y = S((lon, lat))
+        if mode is None: pass
+        elif mode == 'ferry':
             draw_boat(cr, x, y, ang, t, 1.3); draw_guide(cr, x, y - 2, t, walking=False, scale=0.85)
         elif mode == 'taxi':
             draw_taxi(cr, x, y, ang, t, self.job['map'].get('taxi_scale', 1.25), moving=self.progress(t + 0.05) > self.progress(t) + 1e-5)
