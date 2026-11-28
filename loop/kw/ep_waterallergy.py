@@ -25,7 +25,7 @@ def ease(x): x = max(0.0, min(1.0, x)); return x * x * (3 - 2 * x)
 def lerp(a, b, u): return a + (b - a) * u
 R = {}
 OV = float(os.environ.get('KW22_OV', 0.30))            # hive redness on the face (<= 0.30 lead rule; lips excluded)
-OVB = float(os.environ.get('KW22_OVB', 0.50))          # arms / neck / chest may go higher
+OVB = float(os.environ.get('KW22_OVB', 0.60))          # arms / neck / chest may go higher
 FORCE = os.environ.get('KW22_FORCE')
 
 KW.FACES.update({
@@ -372,7 +372,7 @@ ep.frame_hook = frame_hook
 
 def arm_pt(rt):
     rg = rt.actors[maya].p.hg.rig; W_ = rg.matrix_world; b = rg.pose.bones['forearm.L'] if 'forearm.L' in rg.pose.bones else rg.pose.bones['lowerarm01.L']
-    return W_ @ ((b.head + b.tail) / 2)
+    return W_ @ (b.head * 0.25 + b.tail * 0.75)            # towards the wrist: forearm + the back of the hand (nails) in frame
 def cam_fn(rt, t):
     import bpy
     f = t * FPS; bpy.context.view_layer.update(); shot, u = shot_of(f)
@@ -384,7 +384,7 @@ def cam_fn(rt, t):
     if shot == 'HEAD':                                             # cutaway: the shower head, water pouring
         tg = R['shead'] + V((0, -0.04, -0.10)); return look(tg, (-1.0, -0.55, -0.05), push(0.62, 0.54), 50.0, 8.0, tg)
     if shot == 'ARM':                                              # close: hives on her raised forearm
-        tg = arm_pt(rt); return look(tg, (-0.35, -1.0, 0.25), push(0.42, 0.36), 70.0, 9.0, tg)
+        tg = arm_pt(rt); return look(tg, (-0.35, -1.0, 0.25), push(0.50, 0.44), 70.0, 18.0, tg)
     if shot == 'CLOSE':                                            # the tear on her cheek
         tg = EB + V((0, 0, -0.04)); return look(tg, (-0.30, -1.0, 0.02), push(0.50, 0.42), 85.0, 11.0, EB + V((0, 0, -0.03)))
     if shot == 'FACE':
