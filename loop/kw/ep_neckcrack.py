@@ -11,10 +11,11 @@ import sys, os, math; sys.path.insert(0, os.path.dirname(os.path.abspath(__file_
 import kwkit as KW
 os.environ.setdefault('KW_LIGHT', '1')
 HERE = os.path.dirname(os.path.abspath(__file__))
-ep = KW.Episode('ep_neckcrack', injury="neck crack",
-                voice_lines=[l.strip() for l in open(os.path.join(HERE, 'ep_neckcrack.txt')) if l.strip()],
+T0 = [None, 3.5, 6.45, 9.6, 12.82, 17.49, 20.76]    # pinned to the 26 Nov render so a line-1 rewrite only touches the hook shards
+ep = KW.Episode('ep_neckcrack', injury="cracked his sore neck",
+                voice_lines=list(zip(T0, [l.strip() for l in open(os.path.join(HERE, 'ep_neckcrack.txt')) if l.strip()])),
                 music='sneaky_snitch', gap=0.6)
-ep.tts_say = {7: "A stroke doctor says ninety-nine point nine percent of neck pops are fine."}
+ep.tts_say = {6: "Weeks later, he was walking again, and a stroke doctor says ninety-nine point nine percent of neck pops are fine."}
 ben = ep.person('Ben', 'civilian', 'eatmore-ben', gender='m', age='young', race='caucasian', hair='short02', tee='teal')
 doc = ep.person('Howard', 'scientist', 'eatmore-sci', gender='m', age='old', race='caucasian', hair='short02')
 
@@ -44,14 +45,11 @@ ep.waive = {"1 shots;": "brief: three kit shots (home / clinic / home); the hard
             "HOOK first shot": "brief: hook cuts f22 (hand on neck) and f46 (face close) live in cam_fn",
             "HOOK >= 2 cuts": "brief: hook cuts f22 and f46 live in cam_fn",
             "HOOK inside the body": "brief: vidIQ rule 1 person -> cutaway -> close-up; the scan comes later",
-            "HOOK 3rd shot": "brief: third hook shot (face close) at f46 in cam_fn",
-            "script has 8 sentences": "brief: script.txt final (84 words, 8 lines, vidIQ length deliver)",
-            "HOOK injury named": "brief: script final; line 1 names the neck pop (\'stretched his sore neck ... heard a pop\')",
-            "HOOK 8-11 words": "brief: script final (12 words before 3.0 s)"}
+            "HOOK 3rd shot": "brief: third hook shot (face close) at f46 in cam_fn"}
 fw = lambda i, w: int(round(ep.word(i, w) * FPS))
 fl = lambda i: int(round(ep.line(i) * FPS))
 fle = lambda i: int(round((ep.line(i) + ep.vo_dur[i]) * FPS))
-f_last = fle(7); FN = max(f_last + 34, 700); NF = FN + 1; ep.duration = round(NF / FPS, 4)
+f_last = fle(6); FN = max(f_last + 34, 700); NF = FN + 1; ep.duration = round(NF / FPS, 4)
 CTA0 = FN - 44; LOOPF = FN - 9
 FPOP = fw(0, 'pop.')
 FH = fl(3) - 4                                      # clinic from here
@@ -268,7 +266,7 @@ YL = dict(color='yellow', size=1.2); Y = 0.89
 ep.label_outline = True; ep.label_maxw = 820.0; ep.label_lens_fix = True
 def lab(txt, f0, f1, **k): return KW.fx.label(txt, at=f0 * F, pos=(0.5, Y), dur=(f1 - f0) * F, **(k or YL))
 wd = fw
-labels = [KW.fx.label('STRETCH', at=-1.0, pos=(0.5, Y), dur=1.0 + (FPOP - 2) * F, **YL),
+labels = [KW.fx.label('CRACKED', at=-1.0, pos=(0.5, Y), dur=1.0 + (FPOP - 2) * F, **YL),
           lab('POP', FPOP, fl(1) - 6),
           lab('NUMB', wd(1, 'numb.'), fl(2) - 6),
           lab('TILTING', wd(2, 'tilting'), fl(3) - 6),
@@ -280,7 +278,7 @@ labels = [KW.fx.label('STRETCH', at=-1.0, pos=(0.5, Y), dur=1.0 + (FPOP - 2) * F
           lab('WALKING', wd(6, 'walking'), CTA0 - 2),
           KW.fx.label('CRACK IT?', at=CTA0 * F, pos=(0.5, 0.30), dur=(LOOPF - 1 - CTA0) * F, **YL),
           KW.fx.label('COMMENT BELOW', at=(CTA0 + 3) * F, pos=(0.5, 0.235), dur=(LOOPF - 4 - CTA0) * F, color='white', size=0.5),
-          KW.fx.label('STRETCH', at=LOOPF * F, pos=(0.5, Y), dur=2.0, **YL)]
+          KW.fx.label('CRACKED', at=LOOPF * F, pos=(0.5, Y), dur=2.0, **YL)]
 labels[-1].o['nopop'] = True
 fxs = [KW.fx.crackle(ben.part(NECKP), times=(FPOP * F,))]
 ep.sound(0.0, 'thud', 0.6)

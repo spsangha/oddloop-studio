@@ -3,85 +3,73 @@
  "rate": "+6%",
  "trim": true,
  "lines": [
-  "He stretched his sore neck with his hand, and heard a pop.",
+  "He cracked his sore neck, and heard a loud pop.",
   "Within moments, his left side went numb.",
   "He could barely walk, tilting hard to the left.",
   "At the hospital, doctors said he was having a stroke.",
   "The pop had torn an artery in his neck, and a clot was blocking blood to his brain.",
   "Doctors had twelve minutes to give a clot-busting drug.",
-  "Weeks later, he was walking again.",
-  "A stroke doctor says ninety-nine point nine percent of neck pops are fine."
+  "Weeks later, he was walking again, and a stroke doctor says ninety-nine point nine percent of neck pops are fine."
  ],
  "durations": [
-  2.904,
+  2.57,
   2.343,
   2.553,
   2.621,
   4.066,
   2.67,
-  1.971,
-  3.735
+  5.87
  ],
  "words": [
   [
    [
     0.0,
-    0.091,
+    0.087,
     "He"
    ],
    [
-    0.103,
-    0.539,
-    "stretched"
+    0.099,
+    0.453,
+    "cracked"
    ],
    [
-    0.551,
-    0.68,
+    0.464,
+    0.594,
     "his"
    ],
    [
-    0.692,
-    0.94,
+    0.606,
+    0.83,
     "sore"
    ],
    [
-    0.952,
-    1.211,
-    "neck"
+    0.842,
+    1.184,
+    "neck,"
    ],
    [
-    1.223,
-    1.305,
-    "with"
-   ],
-   [
-    1.317,
-    1.423,
-    "his"
-   ],
-   [
-    1.435,
-    1.777,
-    "hand,"
-   ],
-   [
-    2.001,
-    2.143,
+    1.408,
+    1.502,
     "and"
    ],
    [
-    2.154,
-    2.367,
+    1.514,
+    1.738,
     "heard"
    ],
    [
-    2.378,
-    2.437,
+    1.75,
+    1.797,
     "a"
    ],
    [
-    2.449,
-    2.874,
+    1.809,
+    2.139,
+    "loud"
+   ],
+   [
+    2.151,
+    2.54,
     "pop."
    ]
   ],
@@ -363,99 +351,102 @@
   [
    [
     0.0,
-    0.255,
+    0.239,
     "Weeks"
    ],
    [
-    0.267,
-    0.632,
+    0.25,
+    0.616,
     "later,"
    ],
    [
-    0.88,
-    0.974,
+    0.852,
+    0.946,
     "he"
    ],
    [
-    0.986,
-    1.139,
+    0.958,
+    1.088,
     "was"
    ],
    [
-    1.151,
-    1.517,
+    1.099,
+    1.465,
     "walking"
    ],
    [
-    1.529,
-    1.941,
-    "again."
-   ]
-  ],
-  [
-   [
-    0.0,
-    0.026,
-    "A"
+    1.477,
+    1.842,
+    "again,"
    ],
    [
-    0.038,
-    0.403,
+    2.066,
+    2.184,
+    "and"
+   ],
+   [
+    2.196,
+    2.243,
+    "a"
+   ],
+   [
+    2.255,
+    2.597,
     "stroke"
    ],
    [
-    0.415,
-    0.781,
+    2.609,
+    2.927,
     "doctor"
    ],
    [
-    0.792,
-    1.04,
+    2.939,
+    3.187,
     "says"
    ],
    [
-    1.052,
-    1.582,
+    3.199,
+    3.729,
     "ninety-nine"
    ],
    [
-    1.594,
-    1.854,
+    3.741,
+    4.0,
     "point"
    ],
    [
-    1.865,
-    2.089,
+    4.012,
+    4.224,
     "nine"
    ],
    [
-    2.101,
-    2.455,
+    4.236,
+    4.59,
     "percent"
    ],
    [
-    2.467,
-    2.549,
+    4.602,
+    4.684,
     "of"
    ],
    [
-    2.561,
-    2.797,
+    4.696,
+    4.932,
     "neck"
    ],
    [
-    2.809,
-    3.127,
+    4.944,
+    5.262,
     "pops"
    ],
    [
-    3.139,
-    3.245,
+    5.274,
+    5.38,
     "are"
    ],
    [
-    3.257,
-    3.705,
+    5.392,
+    5.84,
     "fine."
    ]
   ]
