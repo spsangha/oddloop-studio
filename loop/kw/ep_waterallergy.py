@@ -384,7 +384,7 @@ def cam_fn(rt, t):
     if shot == 'HEAD':                                             # cutaway: the shower head, water pouring
         tg = R['shead'] + V((0, -0.04, -0.10)); return look(tg, (-1.0, -0.55, -0.05), push(0.62, 0.54), 50.0, 8.0, tg)
     if shot == 'ARM':                                              # close: hives on her raised forearm
-        tg = arm_pt(rt); return look(tg, (-0.35, -1.0, 0.25), push(0.50, 0.44), 70.0, 18.0, tg)
+        tg = arm_pt(rt); return look(tg, (-0.95, -0.75, 0.20), push(0.62, 0.55), 60.0, 18.0, tg)   # side-on: the hand stays off the lens and clear of the label
     if shot == 'CLOSE':                                            # the tear on her cheek
         tg = EB + V((0, 0, -0.04)); return look(tg, (-0.30, -1.0, 0.02), push(0.50, 0.42), 85.0, 11.0, EB + V((0, 0, -0.03)))
     if shot == 'FACE':
